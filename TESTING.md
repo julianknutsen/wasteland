@@ -45,6 +45,8 @@ Run with: `go test -tags integration ./test/`
 | Does SQL escaping prevent injection? | Unit test |
 | Does the federation join workflow call steps in order? | Unit test |
 | Does a real dolt clone succeed from DoltHub? | Integration |
+| Does `hop/wl-commons` schema match expected tables/columns? | Integration |
+| Are all `wanted` statuses/priorities/types valid? | Integration |
 
 ## Test doubles
 
