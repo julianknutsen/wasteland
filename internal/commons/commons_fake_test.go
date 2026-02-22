@@ -18,13 +18,6 @@ type fakeWLCommonsStore struct {
 	QueryWantedErr      error
 }
 
-func newFakeWLCommonsStore() *fakeWLCommonsStore {
-	return &fakeWLCommonsStore{
-		items: make(map[string]*WantedItem),
-		dbOK:  true,
-	}
-}
-
 func (f *fakeWLCommonsStore) EnsureDB() error {
 	if f.EnsureDBErr != nil {
 		return f.EnsureDBErr
@@ -83,7 +76,7 @@ func (f *fakeWLCommonsStore) ClaimWanted(wantedID, rigHandle string) error {
 	return nil
 }
 
-func (f *fakeWLCommonsStore) SubmitCompletion(completionID, wantedID, rigHandle, evidence string) error {
+func (f *fakeWLCommonsStore) SubmitCompletion(_, wantedID, rigHandle, _ string) error {
 	if f.SubmitCompletionErr != nil {
 		return f.SubmitCompletionErr
 	}

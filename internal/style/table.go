@@ -19,6 +19,7 @@ type Column struct {
 // Alignment specifies column text alignment.
 type Alignment int
 
+// Column alignment constants.
 const (
 	AlignLeft Alignment = iota
 	AlignRight

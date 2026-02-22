@@ -12,7 +12,7 @@ func newVersionCmd(stdout io.Writer) *cobra.Command {
 		Use:   "version",
 		Short: "Print version information",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			fmt.Fprintf(stdout, "wl %s (commit: %s, built: %s)\n", version, commit, date)
 			return nil
 		},

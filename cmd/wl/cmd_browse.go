@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -40,7 +41,7 @@ EXAMPLES:
   wl browse --priority 0             # Critical priority only
   wl browse --limit 5               # Show 5 items
   wl browse --json                   # JSON output`,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			return runBrowse(stdout, stderr, project, status, itemType, priority, limit, jsonOut)
 		},
 	}
@@ -55,7 +56,7 @@ EXAMPLES:
 	return cmd
 }
 
-func runBrowse(stdout, stderr io.Writer, project, status, itemType string, priority, limit int, jsonOut bool) error {
+func runBrowse(stdout, _ io.Writer, project, status, itemType string, priority, limit int, jsonOut bool) error {
 	doltPath, err := exec.LookPath("dolt")
 	if err != nil {
 		return fmt.Errorf("dolt not found in PATH — install from https://docs.dolthub.com/introduction/installation")
@@ -65,7 +66,7 @@ func runBrowse(stdout, stderr io.Writer, project, status, itemType string, prior
 	if err != nil {
 		return fmt.Errorf("creating temp directory: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	commonsOrg := "hop"
 	commonsDB := "wl-commons"
@@ -140,7 +141,8 @@ func renderBrowseTable(stdout io.Writer, doltPath, cloneDir, query string) error
 	sqlCmd.Dir = cloneDir
 	output, err := sqlCmd.Output()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			return fmt.Errorf("query failed: %s", string(exitErr.Stderr))
 		}
 		return fmt.Errorf("running query: %w", err)

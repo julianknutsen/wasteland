@@ -45,7 +45,7 @@ Examples:
 	return cmd
 }
 
-func runDone(cmd *cobra.Command, stdout, stderr io.Writer, wantedID, evidence string) error {
+func runDone(cmd *cobra.Command, stdout, _ io.Writer, wantedID, evidence string) error {
 	wlCfg, err := resolveWasteland(cmd)
 	if err != nil {
 		return fmt.Errorf("loading wasteland config: %w", err)

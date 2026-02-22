@@ -100,7 +100,7 @@ func (f *FakeDoltCLI) Clone(remoteURL, targetDir string) error {
 	return nil
 }
 
-func (f *FakeDoltCLI) RegisterRig(localDir, handle, dolthubOrg, displayName, ownerEmail, version string) error {
+func (f *FakeDoltCLI) RegisterRig(localDir, handle, _, _, _, _ string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	call := fmt.Sprintf("RegisterRig(%s, %s)", localDir, handle)

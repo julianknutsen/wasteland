@@ -35,20 +35,28 @@ type WLCommons struct{ dbDir string }
 // dbDir is the actual database directory (e.g., {dataDir}/wl_commons/{org}/{db}).
 func NewWLCommons(dbDir string) *WLCommons { return &WLCommons{dbDir: dbDir} }
 
-func (w *WLCommons) EnsureDB() error               { return EnsureWLCommons(w.dbDir) }
+// EnsureDB ensures the wl-commons database exists.
+func (w *WLCommons) EnsureDB() error { return EnsureWLCommons(w.dbDir) }
+
+// DatabaseExists reports whether the named database exists in the data directory.
 func (w *WLCommons) DatabaseExists(db string) bool { return DatabaseExists(w.dbDir, db) }
+
+// InsertWanted inserts a new wanted item.
 func (w *WLCommons) InsertWanted(item *WantedItem) error {
 	return InsertWanted(w.dbDir, item)
 }
 
+// ClaimWanted claims a wanted item for a rig.
 func (w *WLCommons) ClaimWanted(wantedID, rigHandle string) error {
 	return ClaimWanted(w.dbDir, wantedID, rigHandle)
 }
 
+// SubmitCompletion records completion evidence for a claimed wanted item.
 func (w *WLCommons) SubmitCompletion(completionID, wantedID, rigHandle, evidence string) error {
 	return SubmitCompletion(w.dbDir, completionID, wantedID, rigHandle, evidence)
 }
 
+// QueryWanted fetches a wanted item by ID.
 func (w *WLCommons) QueryWanted(wantedID string) (*WantedItem, error) {
 	return QueryWanted(w.dbDir, wantedID)
 }

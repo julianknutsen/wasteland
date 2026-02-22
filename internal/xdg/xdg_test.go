@@ -10,7 +10,7 @@ import (
 func TestConfigHome_Default(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "")
 	got := ConfigHome()
-	if !strings.HasSuffix(got, filepath.Join(".config")) {
+	if !strings.HasSuffix(got, ".config") {
 		t.Errorf("ConfigHome() = %q, want suffix %q", got, ".config")
 	}
 }

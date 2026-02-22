@@ -56,7 +56,7 @@ Examples:
   wl join test-org/wl-commons --remote-base /tmp/remotes --fork-org my-fork
   wl join test-org/wl-commons --git-remote /tmp/git-remotes --fork-org my-fork`,
 		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) error {
 			return runJoin(stdout, stderr, args[0], handle, displayName, email, forkOrg, remoteBase, gitRemote)
 		},
 	}

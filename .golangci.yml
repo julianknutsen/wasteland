@@ -15,10 +15,15 @@ linters:
     - revive
     - unconvert
     - unparam
-
-linters-settings:
-  misspell:
-    locale: US
+  settings:
+    errcheck:
+      # CLI output to stdout/stderr — writes that fail are not recoverable.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    misspell:
+      locale: US
 
 issues:
   # Show all issues, don't limit per-linter.

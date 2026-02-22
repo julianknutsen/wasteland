@@ -49,13 +49,13 @@ func doltSQLScript(dbDir, script string) error {
 	if err != nil {
 		return fmt.Errorf("creating temp SQL file: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	if _, err := tmpFile.WriteString(script); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		return fmt.Errorf("writing SQL script: %w", err)
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

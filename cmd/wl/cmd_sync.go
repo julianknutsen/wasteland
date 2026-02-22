@@ -25,7 +25,7 @@ the latest changes from upstream.
 EXAMPLES:
   wl sync                # Pull upstream changes
   wl sync --dry-run      # Show what would change`,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runSync(cmd, stdout, stderr, dryRun)
 		},
 	}
@@ -35,7 +35,7 @@ EXAMPLES:
 	return cmd
 }
 
-func runSync(cmd *cobra.Command, stdout, stderr io.Writer, dryRun bool) error {
+func runSync(cmd *cobra.Command, stdout, _ io.Writer, dryRun bool) error {
 	doltPath, err := exec.LookPath("dolt")
 	if err != nil {
 		return fmt.Errorf("dolt not found in PATH — install from https://docs.dolthub.com/introduction/installation")

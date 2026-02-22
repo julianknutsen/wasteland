@@ -36,7 +36,7 @@ Examples:
 	}
 }
 
-func runLeave(cmd *cobra.Command, stdout, stderr io.Writer, positional string) error {
+func runLeave(cmd *cobra.Command, stdout, _ io.Writer, positional string) error {
 	store := federation.NewConfigStore()
 
 	// Determine which upstream to leave: positional arg > --wasteland flag > auto.

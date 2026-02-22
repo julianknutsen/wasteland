@@ -37,7 +37,7 @@ Examples:
   wl post --title "Fix auth bug" --project gastown --type bug
   wl post --title "Add federation sync" --type feature --priority 1 --effort large
   wl post --title "Update docs" --tags "docs,federation" --effort small`,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runPost(cmd, stdout, stderr, title, description, project, itemType, priority, effort, tags)
 		},
 	}
@@ -55,7 +55,7 @@ Examples:
 	return cmd
 }
 
-func runPost(cmd *cobra.Command, stdout, stderr io.Writer, title, description, project, itemType string, priority int, effort, tags string) error {
+func runPost(cmd *cobra.Command, stdout, _ io.Writer, title, description, project, itemType string, priority int, effort, tags string) error {
 	var tagList []string
 	if tags != "" {
 		for _, t := range strings.Split(tags, ",") {

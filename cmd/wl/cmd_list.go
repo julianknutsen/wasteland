@@ -21,7 +21,7 @@ for each wasteland.
 Examples:
   wl list`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			return runList(stdout, stderr)
 		},
 	}

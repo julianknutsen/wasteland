@@ -115,8 +115,12 @@ func TestFileConfigStore_List(t *testing.T) {
 	}
 
 	// Save two configs.
-	store.Save(&Config{Upstream: "org1/db1", ForkOrg: "fork1", ForkDB: "db1"})
-	store.Save(&Config{Upstream: "org2/db2", ForkOrg: "fork2", ForkDB: "db2"})
+	if err = store.Save(&Config{Upstream: "org1/db1", ForkOrg: "fork1", ForkDB: "db1"}); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+	if err = store.Save(&Config{Upstream: "org2/db2", ForkOrg: "fork2", ForkDB: "db2"}); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
 
 	upstreams, err = store.List()
 	if err != nil {
@@ -145,7 +149,9 @@ func TestFileConfigStore_Delete(t *testing.T) {
 	store := NewConfigStore()
 
 	// Save then delete.
-	store.Save(&Config{Upstream: "org1/db1", ForkOrg: "fork1", ForkDB: "db1"})
+	if err := store.Save(&Config{Upstream: "org1/db1", ForkOrg: "fork1", ForkDB: "db1"}); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
 
 	if err := store.Delete("org1/db1"); err != nil {
 		t.Fatalf("Delete() error: %v", err)

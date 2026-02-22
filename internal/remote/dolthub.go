@@ -26,6 +26,7 @@ func NewDoltHubProvider(token string) *DoltHubProvider {
 	return &DoltHubProvider{token: token}
 }
 
+// DatabaseURL returns the DoltHub remote API URL for the given org/db.
 func (d *DoltHubProvider) DatabaseURL(org, db string) string {
 	return fmt.Sprintf("%s/%s/%s", dolthubRemoteBase, org, db)
 }
@@ -44,6 +45,7 @@ type graphqlResponse struct {
 	} `json:"errors"`
 }
 
+// Fork creates a fork of fromOrg/fromDB under toOrg via the DoltHub GraphQL API.
 func (d *DoltHubProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	query := `mutation CreateFork($ownerName: String!, $parentOwnerName: String!, $parentRepoName: String!) {
   createFork(ownerName: $ownerName, parentOwnerName: $parentOwnerName, parentRepoName: $parentRepoName) {
@@ -104,4 +106,5 @@ func (d *DoltHubProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	return nil
 }
 
+// Type returns "dolthub".
 func (d *DoltHubProvider) Type() string { return "dolthub" }

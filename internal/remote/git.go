@@ -22,10 +22,12 @@ func NewGitProvider(baseDir string) *GitProvider {
 	return &GitProvider{baseDir: baseDir}
 }
 
+// DatabaseURL returns the file:// URL for the bare git repo at org/db.git.
 func (g *GitProvider) DatabaseURL(org, db string) string {
 	return fmt.Sprintf("file://%s", filepath.Join(g.baseDir, org, db+".git"))
 }
 
+// Fork clones the source and pushes to a new bare git repo under toOrg.
 func (g *GitProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	srcURL := g.DatabaseURL(fromOrg, fromDB)
 	destPath := filepath.Join(g.baseDir, toOrg, fromDB+".git")
@@ -41,7 +43,7 @@ func (g *GitProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	if err != nil {
 		return fmt.Errorf("creating temp dir for fork: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	workDir := filepath.Join(tmpDir, "work")
 	cmd := exec.Command("dolt", "clone", srcURL, workDir)
@@ -79,4 +81,5 @@ func (g *GitProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	return nil
 }
 
+// Type returns "git".
 func (g *GitProvider) Type() string { return "git" }

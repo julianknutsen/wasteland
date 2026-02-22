@@ -22,10 +22,12 @@ func NewFileProvider(baseDir string) *FileProvider {
 	return &FileProvider{baseDir: baseDir}
 }
 
+// DatabaseURL returns the file:// URL for the given org/db.
 func (f *FileProvider) DatabaseURL(org, db string) string {
 	return fmt.Sprintf("file://%s", filepath.Join(f.baseDir, org, db))
 }
 
+// Fork copies the source dolt remote store to create a fork under toOrg.
 func (f *FileProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	srcURL := f.DatabaseURL(fromOrg, fromDB)
 	destPath := filepath.Join(f.baseDir, toOrg, fromDB)
@@ -41,7 +43,7 @@ func (f *FileProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	if err != nil {
 		return fmt.Errorf("creating temp dir for fork: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	workDir := filepath.Join(tmpDir, "work")
 	cmd := exec.Command("dolt", "clone", srcURL, workDir)
@@ -72,4 +74,5 @@ func (f *FileProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	return nil
 }
 
+// Type returns "file".
 func (f *FileProvider) Type() string { return "file" }

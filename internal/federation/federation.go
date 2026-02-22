@@ -352,7 +352,7 @@ func (f *fileConfigStore) Delete(upstream string) error {
 	orgDir := filepath.Dir(path)
 	entries, err := os.ReadDir(orgDir)
 	if err == nil && len(entries) == 0 {
-		os.Remove(orgDir)
+		_ = os.Remove(orgDir)
 	}
 	return nil
 }
