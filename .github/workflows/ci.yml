@@ -41,8 +41,30 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
 
+  integration-offline:
+    name: Integration (offline)
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install dolt
+        run: sudo bash -c 'curl -L https://github.com/dolthub/dolt/releases/latest/download/install.sh | bash'
+
+      - name: Configure dolt
+        run: |
+          dolt config --global --add user.email "ci@wasteland.dev"
+          dolt config --global --add user.name "CI"
+
+      - name: Offline integration tests
+        run: make test-integration-offline
+
   integration:
-    name: Integration
+    name: Integration (DoltHub)
     needs: check
     if: github.event_name == 'push'
     runs-on: ubuntu-latest

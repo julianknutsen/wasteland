@@ -17,10 +17,26 @@ injection. These are fast and run everywhere.
 When to use: corrupted data, concurrent writes, specific error types,
 double-claim conflicts, rollback behavior, boundary conditions.
 
-### 2. Integration tests (`//go:build integration`)
+### 2a. Offline integration tests (`test/integration/offline/`)
 
-Test that real pieces fit together. Need real dolt CLI, real DoltHub,
-real filesystem. Run separately — not in CI by default.
+Test the wl binary end-to-end against real dolt databases using `file://`
+remotes. No network access required. Runs in CI on every PR.
+
+Each test gets its own isolated `testEnv` with temp XDG dirs — zero
+cross-contamination. The `wl` binary is built once in `TestMain`.
+
+- **Lifecycle tests**: post -> claim -> done full cycle, error cases
+- **Sync tests**: file:// upstream remotes, `wl sync` and `--dry-run`
+
+Run with: `make test-integration-offline`
+
+When to use: verifying CLI behavior end-to-end, testing dolt interactions
+without network, validating the full post/claim/done lifecycle.
+
+### 2b. DoltHub integration tests (`test/integration/`)
+
+Test that real pieces fit together with DoltHub. Need real dolt CLI,
+real DoltHub, real filesystem. Runs only on push to main.
 
 ```go
 //go:build integration
@@ -31,9 +47,9 @@ func TestRealDoltClone(t *testing.T) {
 ```
 
 When to use: proving the fakes are honest, smoke testing the real infra,
-testing dolt CLI interactions with real databases.
+testing dolt CLI interactions with real DoltHub databases.
 
-Run with: `go test -tags integration ./test/`
+Run with: `go test -tags integration ./test/integration/`
 
 ## Decision guide
 
@@ -44,9 +60,12 @@ Run with: `go test -tags integration ./test/`
 | Does CSV parsing handle quoted fields? | Unit test |
 | Does SQL escaping prevent injection? | Unit test |
 | Does the federation join workflow call steps in order? | Unit test |
-| Does a real dolt clone succeed from DoltHub? | Integration |
-| Does `hop/wl-commons` schema match expected tables/columns? | Integration |
-| Are all `wanted` statuses/priorities/types valid? | Integration |
+| Does `wl post` create a valid database row? | Offline integration |
+| Does `wl claim` on an already-claimed item fail? | Offline integration |
+| Does `wl sync` pull from an upstream file:// remote? | Offline integration |
+| Does a real dolt clone succeed from DoltHub? | DoltHub integration |
+| Does `hop/wl-commons` schema match expected tables/columns? | DoltHub integration |
+| Are all `wanted` statuses/priorities/types valid? | DoltHub integration |
 
 ## Test doubles
 

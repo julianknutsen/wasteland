@@ -10,15 +10,15 @@ import (
 func TestJoin_Success(t *testing.T) {
 	t.Parallel()
 	log := NewCallLog()
-	api := NewFakeDoltHubAPI()
-	api.Log = log
+	provider := NewFakeProvider()
+	provider.Log = log
 	cli := NewFakeDoltCLI()
 	cli.Log = log
 	cfgStore := NewFakeConfigStore()
 
-	svc := &Service{API: api, CLI: cli, Config: cfgStore}
+	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	cfg, err := svc.Join("steveyegge/wl-commons", "alice-dev", "token123", "alice-rig", "Alice", "alice@example.com", "dev")
+	cfg, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev")
 	if err != nil {
 		t.Fatalf("Join() error: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestJoin_Success(t *testing.T) {
 		t.Errorf("RigHandle = %q, want %q", cfg.RigHandle, "alice-rig")
 	}
 
-	if !api.Forked["steveyegge/wl-commons->alice-dev"] {
+	if !provider.Forked["steveyegge/wl-commons->alice-dev"] {
 		t.Error("expected fork to be created")
 	}
 	if len(cli.Cloned) != 1 {
@@ -55,7 +55,7 @@ func TestJoin_Success(t *testing.T) {
 	}
 
 	// Verify call ordering: fork, clone, remote, register, push
-	expectedOrder := []string{"ForkRepo", "Clone", "AddUpstreamRemote", "RegisterRig", "Push"}
+	expectedOrder := []string{"Fork", "Clone", "AddUpstreamRemote", "RegisterRig", "Push"}
 	if len(log.Calls) < len(expectedOrder) {
 		t.Fatalf("expected at least %d calls in unified log, got %d: %v", len(expectedOrder), len(log.Calls), log.Calls)
 	}
@@ -72,14 +72,14 @@ func TestJoin_Success(t *testing.T) {
 
 func TestJoin_ForkFails(t *testing.T) {
 	t.Parallel()
-	api := NewFakeDoltHubAPI()
-	api.ForkErr = fmt.Errorf("DoltHub API error (HTTP 403): forbidden")
+	provider := NewFakeProvider()
+	provider.ForkErr = fmt.Errorf("DoltHub API error (HTTP 403): forbidden")
 	cli := NewFakeDoltCLI()
 	cfgStore := NewFakeConfigStore()
 
-	svc := &Service{API: api, CLI: cli, Config: cfgStore}
+	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	_, err := svc.Join("steveyegge/wl-commons", "alice-dev", "bad-token", "alice-rig", "Alice", "alice@example.com", "dev")
+	_, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev")
 	if err == nil {
 		t.Fatal("Join() expected error when fork fails")
 	}
@@ -90,18 +90,18 @@ func TestJoin_ForkFails(t *testing.T) {
 
 func TestJoin_CloneFails(t *testing.T) {
 	t.Parallel()
-	api := NewFakeDoltHubAPI()
+	provider := NewFakeProvider()
 	cli := NewFakeDoltCLI()
 	cli.CloneErr = fmt.Errorf("dolt clone failed: network timeout")
 	cfgStore := NewFakeConfigStore()
 
-	svc := &Service{API: api, CLI: cli, Config: cfgStore}
+	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	_, err := svc.Join("steveyegge/wl-commons", "alice-dev", "token", "alice-rig", "Alice", "alice@example.com", "dev")
+	_, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev")
 	if err == nil {
 		t.Fatal("Join() expected error when clone fails")
 	}
-	if !api.Forked["steveyegge/wl-commons->alice-dev"] {
+	if !provider.Forked["steveyegge/wl-commons->alice-dev"] {
 		t.Error("fork should have been created before clone failed")
 	}
 	if len(cli.Pushed) != 0 {
@@ -111,7 +111,7 @@ func TestJoin_CloneFails(t *testing.T) {
 
 func TestJoin_AlreadyJoined(t *testing.T) {
 	t.Parallel()
-	api := NewFakeDoltHubAPI()
+	provider := NewFakeProvider()
 	cli := NewFakeDoltCLI()
 	cfgStore := NewFakeConfigStore()
 	cfgStore.Config = &Config{
@@ -121,17 +121,17 @@ func TestJoin_AlreadyJoined(t *testing.T) {
 		RigHandle: "alice-rig",
 	}
 
-	svc := &Service{API: api, CLI: cli, Config: cfgStore}
+	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	cfg, err := svc.Join("steveyegge/wl-commons", "alice-dev", "token", "alice-rig", "Alice", "alice@example.com", "dev")
+	cfg, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev")
 	if err != nil {
 		t.Fatalf("Join() should succeed (no-op) when already joined: %v", err)
 	}
 	if cfg.RigHandle != "alice-rig" {
 		t.Errorf("returned config RigHandle = %q, want %q", cfg.RigHandle, "alice-rig")
 	}
-	if len(api.Calls) != 0 {
-		t.Errorf("expected 0 API calls for already-joined, got %d", len(api.Calls))
+	if len(provider.Calls) != 0 {
+		t.Errorf("expected 0 provider calls for already-joined, got %d", len(provider.Calls))
 	}
 	if len(cli.Calls) != 0 {
 		t.Errorf("expected 0 CLI calls for already-joined, got %d", len(cli.Calls))
@@ -140,7 +140,7 @@ func TestJoin_AlreadyJoined(t *testing.T) {
 
 func TestJoin_DifferentUpstreamAlreadyJoined(t *testing.T) {
 	t.Parallel()
-	api := NewFakeDoltHubAPI()
+	provider := NewFakeProvider()
 	cli := NewFakeDoltCLI()
 	cfgStore := NewFakeConfigStore()
 	cfgStore.Config = &Config{
@@ -150,50 +150,50 @@ func TestJoin_DifferentUpstreamAlreadyJoined(t *testing.T) {
 		RigHandle: "alice-rig",
 	}
 
-	svc := &Service{API: api, CLI: cli, Config: cfgStore}
+	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	_, err := svc.Join("org2/commons", "alice-dev", "token", "alice-rig", "Alice", "alice@example.com", "dev")
+	_, err := svc.Join("org2/commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev")
 	if err == nil {
 		t.Fatal("Join() should error when already joined to a different upstream")
 	}
 	if !strings.Contains(err.Error(), "already joined to org1/commons") {
 		t.Errorf("error = %q, want to contain %q", err.Error(), "already joined to org1/commons")
 	}
-	if len(api.Calls) != 0 {
-		t.Errorf("expected 0 API calls, got %d", len(api.Calls))
+	if len(provider.Calls) != 0 {
+		t.Errorf("expected 0 provider calls, got %d", len(provider.Calls))
 	}
 }
 
 func TestJoin_ConfigLoadError(t *testing.T) {
 	t.Parallel()
-	api := NewFakeDoltHubAPI()
+	provider := NewFakeProvider()
 	cli := NewFakeDoltCLI()
 	cfgStore := NewFakeConfigStore()
 	cfgStore.LoadErr = fmt.Errorf("reading wasteland config: permission denied")
 
-	svc := &Service{API: api, CLI: cli, Config: cfgStore}
+	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	_, err := svc.Join("steveyegge/wl-commons", "alice-dev", "token", "alice-rig", "Alice", "alice@example.com", "dev")
+	_, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev")
 	if err == nil {
 		t.Fatal("Join() should error when config load fails with non-not-found error")
 	}
 	if errors.Is(err, ErrNotJoined) {
 		t.Error("error should NOT be ErrNotJoined for disk/permission errors")
 	}
-	if len(api.Calls) != 0 {
-		t.Errorf("expected 0 API calls, got %d", len(api.Calls))
+	if len(provider.Calls) != 0 {
+		t.Errorf("expected 0 provider calls, got %d", len(provider.Calls))
 	}
 }
 
 func TestJoin_InvalidUpstream(t *testing.T) {
 	t.Parallel()
 	svc := &Service{
-		API:    NewFakeDoltHubAPI(),
+		Remote: NewFakeProvider(),
 		CLI:    NewFakeDoltCLI(),
 		Config: NewFakeConfigStore(),
 	}
 
-	_, err := svc.Join("invalid", "org", "token", "handle", "name", "email", "v1")
+	_, err := svc.Join("invalid", "org", "handle", "name", "email", "v1")
 	if err == nil {
 		t.Fatal("Join() expected error for invalid upstream")
 	}

@@ -21,24 +21,31 @@ func (l *CallLog) Record(call string) {
 	l.Calls = append(l.Calls, call)
 }
 
-// FakeDoltHubAPI is a test double for DoltHubAPI.
-type FakeDoltHubAPI struct {
-	mu     sync.Mutex
-	Forked map[string]bool // "fromOrg/fromDB -> toOrg" => true
-	Calls  []string
-	Log    *CallLog // shared ordered log (optional)
-
+// FakeProvider is a test double for remote.Provider.
+type FakeProvider struct {
+	mu      sync.Mutex
+	Forked  map[string]bool // "fromOrg/fromDB->toOrg" => true
+	Calls   []string
+	Log     *CallLog // shared ordered log (optional)
 	ForkErr error
+	BaseURL string // returned by DatabaseURL (default "https://fake-remote")
 }
 
-func NewFakeDoltHubAPI() *FakeDoltHubAPI {
-	return &FakeDoltHubAPI{Forked: make(map[string]bool)}
+func NewFakeProvider() *FakeProvider {
+	return &FakeProvider{
+		Forked:  make(map[string]bool),
+		BaseURL: "https://fake-remote",
+	}
 }
 
-func (f *FakeDoltHubAPI) ForkRepo(fromOrg, fromDB, toOrg, token string) error {
+func (f *FakeProvider) DatabaseURL(org, db string) string {
+	return fmt.Sprintf("%s/%s/%s", f.BaseURL, org, db)
+}
+
+func (f *FakeProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	call := fmt.Sprintf("ForkRepo(%s, %s, %s)", fromOrg, fromDB, toOrg)
+	call := fmt.Sprintf("Fork(%s, %s, %s)", fromOrg, fromDB, toOrg)
 	f.Calls = append(f.Calls, call)
 	if f.Log != nil {
 		f.Log.Record(call)
@@ -50,13 +57,15 @@ func (f *FakeDoltHubAPI) ForkRepo(fromOrg, fromDB, toOrg, token string) error {
 	return nil
 }
 
+func (f *FakeProvider) Type() string { return "fake" }
+
 // FakeDoltCLI is a test double for DoltCLI.
 type FakeDoltCLI struct {
 	mu         sync.Mutex
-	Cloned     map[string]bool // "org/db -> targetDir"
+	Cloned     map[string]bool // "remoteURL -> targetDir"
 	Registered map[string]bool // "handle"
 	Pushed     map[string]bool // "localDir"
-	Remotes    map[string]bool // "localDir -> upstreamOrg/upstreamDB"
+	Remotes    map[string]bool // "localDir -> remoteURL"
 	Calls      []string
 	Log        *CallLog // shared ordered log (optional)
 
@@ -75,10 +84,10 @@ func NewFakeDoltCLI() *FakeDoltCLI {
 	}
 }
 
-func (f *FakeDoltCLI) Clone(org, db, targetDir string) error {
+func (f *FakeDoltCLI) Clone(remoteURL, targetDir string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	call := fmt.Sprintf("Clone(%s, %s, %s)", org, db, targetDir)
+	call := fmt.Sprintf("Clone(%s, %s)", remoteURL, targetDir)
 	f.Calls = append(f.Calls, call)
 	if f.Log != nil {
 		f.Log.Record(call)
@@ -86,7 +95,7 @@ func (f *FakeDoltCLI) Clone(org, db, targetDir string) error {
 	if f.CloneErr != nil {
 		return f.CloneErr
 	}
-	f.Cloned[fmt.Sprintf("%s/%s->%s", org, db, targetDir)] = true
+	f.Cloned[fmt.Sprintf("%s->%s", remoteURL, targetDir)] = true
 	return nil
 }
 
@@ -120,10 +129,10 @@ func (f *FakeDoltCLI) Push(localDir string) error {
 	return nil
 }
 
-func (f *FakeDoltCLI) AddUpstreamRemote(localDir, upstreamOrg, upstreamDB string) error {
+func (f *FakeDoltCLI) AddUpstreamRemote(localDir, remoteURL string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	call := fmt.Sprintf("AddUpstreamRemote(%s, %s, %s)", localDir, upstreamOrg, upstreamDB)
+	call := fmt.Sprintf("AddUpstreamRemote(%s, %s)", localDir, remoteURL)
 	f.Calls = append(f.Calls, call)
 	if f.Log != nil {
 		f.Log.Record(call)
@@ -131,7 +140,7 @@ func (f *FakeDoltCLI) AddUpstreamRemote(localDir, upstreamOrg, upstreamDB string
 	if f.RemoteErr != nil {
 		return f.RemoteErr
 	}
-	f.Remotes[fmt.Sprintf("%s->%s/%s", localDir, upstreamOrg, upstreamDB)] = true
+	f.Remotes[fmt.Sprintf("%s->%s", localDir, remoteURL)] = true
 	return nil
 }
 

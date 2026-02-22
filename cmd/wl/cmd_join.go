@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/wasteland/internal/commons"
 	"github.com/steveyegge/wasteland/internal/federation"
+	"github.com/steveyegge/wasteland/internal/remote"
 	"github.com/steveyegge/wasteland/internal/style"
 )
 
@@ -17,6 +18,9 @@ func newJoinCmd(stdout, stderr io.Writer) *cobra.Command {
 		handle      string
 		displayName string
 		email       string
+		forkOrg     string
+		remoteBase  string
+		gitRemote   string
 	)
 
 	cmd := &cobra.Command{
@@ -25,51 +29,53 @@ func newJoinCmd(stdout, stderr io.Writer) *cobra.Command {
 		Long: `Join a wasteland community by forking its shared commons database.
 
 This command:
-  1. Forks the upstream commons to your DoltHub org
+  1. Forks the upstream commons to your org
   2. Clones the fork locally
   3. Registers your rig in the rigs table
   4. Pushes the registration to your fork
   5. Saves wasteland configuration locally
 
-The upstream argument is a DoltHub path like 'steveyegge/wl-commons'.
+The upstream argument is an org/database path like 'steveyegge/wl-commons'.
 
-Required environment variables:
-  DOLTHUB_TOKEN  - Your DoltHub API token
-  DOLTHUB_ORG    - Your DoltHub organization name
+DoltHub mode (default):
+  Requires DOLTHUB_TOKEN and DOLTHUB_ORG (or --fork-org).
+  Forks and clones via DoltHub.
+
+Offline file mode (--remote-base):
+  Uses file:// dolt remotes. No DoltHub credentials needed.
+  Requires --fork-org (or DOLTHUB_ORG).
+
+Git remote mode (--git-remote):
+  Uses bare git repos as dolt remotes. No DoltHub credentials needed.
+  Requires --fork-org (or DOLTHUB_ORG).
 
 Examples:
   wl join steveyegge/wl-commons
   wl join steveyegge/wl-commons --handle my-rig
-  wl join steveyegge/wl-commons --display-name "Alice's Workshop"`,
+  wl join test-org/wl-commons --remote-base /tmp/remotes --fork-org my-fork
+  wl join test-org/wl-commons --git-remote /tmp/git-remotes --fork-org my-fork`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runJoin(stdout, stderr, args[0], handle, displayName, email)
+			return runJoin(stdout, stderr, args[0], handle, displayName, email, forkOrg, remoteBase, gitRemote)
 		},
 	}
 
-	cmd.Flags().StringVar(&handle, "handle", "", "Rig handle for registration (default: DoltHub org)")
+	cmd.Flags().StringVar(&handle, "handle", "", "Rig handle for registration (default: fork org)")
 	cmd.Flags().StringVar(&displayName, "display-name", "", "Display name for the rig registry")
 	cmd.Flags().StringVar(&email, "email", "", "Registration email (default: git config user.email)")
+	cmd.Flags().StringVar(&forkOrg, "fork-org", "", "Fork organization (default: DOLTHUB_ORG)")
+	cmd.Flags().StringVar(&remoteBase, "remote-base", "", "Base directory for file:// remotes (offline mode)")
+	cmd.Flags().StringVar(&gitRemote, "git-remote", "", "Base directory for bare git remotes")
+	cmd.MarkFlagsMutuallyExclusive("remote-base", "git-remote")
 
 	return cmd
 }
 
-func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email string) error {
+func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, forkOrg, remoteBase, gitRemote string) error {
 	// Parse upstream path (validate early)
 	_, _, err := federation.ParseUpstream(upstream)
 	if err != nil {
 		return err
-	}
-
-	// Require DoltHub credentials
-	token := commons.DoltHubToken()
-	if token == "" {
-		return fmt.Errorf("DOLTHUB_TOKEN environment variable is required\n\nGet your token from https://www.dolthub.com/settings/tokens")
-	}
-
-	forkOrg := commons.DoltHubOrg()
-	if forkOrg == "" {
-		return fmt.Errorf("DOLTHUB_ORG environment variable is required\n\nSet this to your DoltHub organization name")
 	}
 
 	// Fast path: check if already joined
@@ -82,6 +88,40 @@ func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email stri
 			return nil
 		}
 		return fmt.Errorf("already joined to %s; run wl leave first", existing.Upstream)
+	}
+
+	// Resolve fork org: flag > env var
+	if forkOrg == "" {
+		forkOrg = commons.DoltHubOrg()
+	}
+
+	var provider remote.Provider
+
+	switch {
+	case remoteBase != "":
+		// Offline file mode — file:// dolt remotes, no DoltHub credentials needed.
+		if forkOrg == "" {
+			return fmt.Errorf("--fork-org is required in offline mode (or set DOLTHUB_ORG)")
+		}
+		provider = remote.NewFileProvider(remoteBase)
+
+	case gitRemote != "":
+		// Git remote mode — bare git repos as dolt remotes, no DoltHub credentials needed.
+		if forkOrg == "" {
+			return fmt.Errorf("--fork-org is required in git remote mode (or set DOLTHUB_ORG)")
+		}
+		provider = remote.NewGitProvider(gitRemote)
+
+	default:
+		// DoltHub mode — requires token and org.
+		token := commons.DoltHubToken()
+		if token == "" {
+			return fmt.Errorf("DOLTHUB_TOKEN environment variable is required\n\nGet your token from https://www.dolthub.com/settings/tokens")
+		}
+		if forkOrg == "" {
+			return fmt.Errorf("DOLTHUB_ORG environment variable is required\n\nSet this to your DoltHub organization name")
+		}
+		provider = remote.NewDoltHubProvider(token)
 	}
 
 	// Determine handle
@@ -101,13 +141,14 @@ func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email stri
 
 	wlVersion := "dev"
 
-	svc := federation.NewService()
+	svc := federation.NewService(provider)
 	svc.OnProgress = func(step string) {
 		fmt.Fprintf(stdout, "  %s\n", step)
 	}
 
-	fmt.Fprintf(stdout, "Joining wasteland %s (fork to %s/%s)...\n", upstream, forkOrg, upstream[strings.Index(upstream, "/")+1:])
-	cfg, err := svc.Join(upstream, forkOrg, token, handle, displayName, email, wlVersion)
+	dbName := upstream[strings.Index(upstream, "/")+1:]
+	fmt.Fprintf(stdout, "Joining wasteland %s (fork to %s/%s)...\n", upstream, forkOrg, dbName)
+	cfg, err := svc.Join(upstream, forkOrg, handle, displayName, email, wlVersion)
 	if err != nil {
 		return err
 	}

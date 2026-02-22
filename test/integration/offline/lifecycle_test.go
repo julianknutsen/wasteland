@@ -1,0 +1,388 @@
+//go:build integration
+
+package offline
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+const (
+	upstreamOrg = "test-org"
+	upstreamDB  = "wl-commons"
+	upstream    = upstreamOrg + "/" + upstreamDB
+	forkOrg     = "test-fork"
+)
+
+// joinedEnv creates a test env, sets up an upstream, and runs wl join.
+// Returns the env ready for post/claim/done commands.
+func joinedEnv(t *testing.T, backend backendKind) *testEnv {
+	t.Helper()
+	env := newTestEnv(t, backend)
+	env.createUpstreamStore(t, upstreamOrg, upstreamDB)
+	env.joinWasteland(t, upstream, forkOrg)
+	return env
+}
+
+// wlCommonsDir returns the path to the auto-created wl_commons database
+// used by post/claim/done (separate from the fork clone).
+func wlCommonsDir(env *testEnv) string {
+	return filepath.Join(env.DataDir, "wl_commons")
+}
+
+func TestJoinCreatesConfig(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+
+			cfg := env.loadConfig(t)
+			if cfg["upstream"] != upstream {
+				t.Errorf("upstream = %q, want %q", cfg["upstream"], upstream)
+			}
+			if cfg["fork_org"] != forkOrg {
+				t.Errorf("fork_org = %q, want %q", cfg["fork_org"], forkOrg)
+			}
+			if cfg["rig_handle"] != forkOrg {
+				t.Errorf("rig_handle = %q, want %q (defaults to fork org)", cfg["rig_handle"], forkOrg)
+			}
+			localDir, _ := cfg["local_dir"].(string)
+			if localDir == "" {
+				t.Fatal("local_dir is empty")
+			}
+		})
+	}
+}
+
+func TestJoinAlreadyJoined(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+
+			// Second join to same upstream should succeed (no-op).
+			args := append([]string{"join", upstream}, env.remoteArgs()...)
+			args = append(args, "--fork-org", forkOrg)
+			stdout, _, err := runWL(t, env, args...)
+			if err != nil {
+				t.Fatalf("second join should succeed: %v", err)
+			}
+			if !strings.Contains(stdout, "Already joined") {
+				t.Errorf("expected 'Already joined' message, got: %s", stdout)
+			}
+		})
+	}
+}
+
+func TestSchemaInit(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := wlCommonsDir(env)
+
+			// wl post triggers EnsureWLCommons → auto-creates schema.
+			stdout, stderr, err := runWL(t, env, "post", "--title", "Schema init test", "--type", "feature")
+			if err != nil {
+				t.Fatalf("wl post failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+
+			// Verify all 7 tables exist.
+			raw := doltSQL(t, dbDir, "SHOW TABLES")
+			rows := parseCSV(t, raw)
+
+			tables := make(map[string]bool)
+			for _, row := range rows[1:] {
+				if len(row) > 0 {
+					tables[row[0]] = true
+				}
+			}
+
+			expected := []string{"_meta", "rigs", "wanted", "completions", "stamps", "badges", "chain_meta"}
+			for _, name := range expected {
+				if !tables[name] {
+					t.Errorf("missing table %q; got tables: %v", name, tables)
+				}
+			}
+		})
+	}
+}
+
+func TestPostWanted(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := wlCommonsDir(env)
+
+			stdout, stderr, err := runWL(t, env, "post",
+				"--title", "Test feature request",
+				"--type", "feature",
+				"--priority", "1",
+				"--effort", "large",
+				"--tags", "go,test",
+			)
+			if err != nil {
+				t.Fatalf("wl post failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+
+			wantedID := extractWantedID(t, stdout)
+
+			// Verify the item in the database.
+			raw := doltSQL(t, dbDir, "SELECT id, title, type, priority, status, effort_level, posted_by FROM wanted WHERE id='"+wantedID+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) < 2 {
+				t.Fatalf("wanted item %s not found in database", wantedID)
+			}
+
+			row := rows[1]
+			// row: id, title, type, priority, status, effort_level, posted_by
+			if row[0] != wantedID {
+				t.Errorf("id = %q, want %q", row[0], wantedID)
+			}
+			if row[1] != "Test feature request" {
+				t.Errorf("title = %q, want %q", row[1], "Test feature request")
+			}
+			if row[2] != "feature" {
+				t.Errorf("type = %q, want %q", row[2], "feature")
+			}
+			if row[3] != "1" {
+				t.Errorf("priority = %q, want %q", row[3], "1")
+			}
+			if row[4] != "open" {
+				t.Errorf("status = %q, want %q", row[4], "open")
+			}
+			if row[5] != "large" {
+				t.Errorf("effort_level = %q, want %q", row[5], "large")
+			}
+			if row[6] != forkOrg {
+				t.Errorf("posted_by = %q, want %q", row[6], forkOrg)
+			}
+		})
+	}
+}
+
+func TestClaimWanted(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := wlCommonsDir(env)
+
+			// Post an item first.
+			stdout, _, err := runWL(t, env, "post", "--title", "Claim test item", "--type", "bug")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+
+			// Claim it.
+			stdout, stderr, err := runWL(t, env, "claim", wantedID)
+			if err != nil {
+				t.Fatalf("wl claim failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+
+			// Verify status and claimed_by.
+			raw := doltSQL(t, dbDir, "SELECT status, COALESCE(claimed_by,'') FROM wanted WHERE id='"+wantedID+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) < 2 {
+				t.Fatalf("wanted item %s not found after claim", wantedID)
+			}
+			if rows[1][0] != "claimed" {
+				t.Errorf("status = %q, want %q", rows[1][0], "claimed")
+			}
+			if rows[1][1] != forkOrg {
+				t.Errorf("claimed_by = %q, want %q", rows[1][1], forkOrg)
+			}
+		})
+	}
+}
+
+func TestClaimAlreadyClaimed(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := wlCommonsDir(env)
+
+			// Post and claim.
+			stdout, _, err := runWL(t, env, "post", "--title", "Double claim test", "--type", "feature")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+
+			_, _, err = runWL(t, env, "claim", wantedID)
+			if err != nil {
+				t.Fatalf("first claim failed: %v", err)
+			}
+
+			// Second claim should fail.
+			_, _, err = runWL(t, env, "claim", wantedID)
+			if err == nil {
+				t.Fatal("second claim should have failed")
+			}
+
+			// Status should still be claimed.
+			raw := doltSQL(t, dbDir, "SELECT status FROM wanted WHERE id='"+wantedID+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) < 2 || rows[1][0] != "claimed" {
+				t.Errorf("status should still be 'claimed' after double claim attempt")
+			}
+		})
+	}
+}
+
+func TestDoneFullLifecycle(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := wlCommonsDir(env)
+
+			// Post.
+			stdout, _, err := runWL(t, env, "post", "--title", "Done lifecycle test", "--type", "feature")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+
+			// Claim.
+			_, _, err = runWL(t, env, "claim", wantedID)
+			if err != nil {
+				t.Fatalf("wl claim failed: %v", err)
+			}
+
+			// Done.
+			stdout, stderr, err := runWL(t, env, "done", wantedID, "--evidence", "https://github.com/test/pr/1")
+			if err != nil {
+				t.Fatalf("wl done failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+
+			// Verify status is in_review.
+			raw := doltSQL(t, dbDir, "SELECT status FROM wanted WHERE id='"+wantedID+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) < 2 || rows[1][0] != "in_review" {
+				t.Errorf("status = %q, want %q", rows[1][0], "in_review")
+			}
+
+			// Verify completion record exists.
+			raw = doltSQL(t, dbDir, "SELECT wanted_id, completed_by FROM completions WHERE wanted_id='"+wantedID+"'")
+			rows = parseCSV(t, raw)
+			if len(rows) < 2 {
+				t.Fatal("no completion record found")
+			}
+			if rows[1][0] != wantedID {
+				t.Errorf("completion wanted_id = %q, want %q", rows[1][0], wantedID)
+			}
+			if rows[1][1] != forkOrg {
+				t.Errorf("completion completed_by = %q, want %q", rows[1][1], forkOrg)
+			}
+		})
+	}
+}
+
+func TestDoneWrongClaimer(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := wlCommonsDir(env)
+
+			// Post and claim as the default rig (forkOrg handle).
+			stdout, _, err := runWL(t, env, "post", "--title", "Wrong claimer test", "--type", "bug")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+
+			_, _, err = runWL(t, env, "claim", wantedID)
+			if err != nil {
+				t.Fatalf("wl claim failed: %v", err)
+			}
+
+			// Rewrite config to a different rig handle.
+			writeConfig(t, env, "rig-b")
+
+			// Done as rig-b should fail (claimed by forkOrg).
+			_, _, err = runWL(t, env, "done", wantedID, "--evidence", "fake")
+			if err == nil {
+				t.Fatal("done by wrong claimer should have failed")
+			}
+
+			// Status should still be claimed.
+			raw := doltSQL(t, dbDir, "SELECT status FROM wanted WHERE id='"+wantedID+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) < 2 || rows[1][0] != "claimed" {
+				t.Errorf("status should still be 'claimed' after wrong-claimer done attempt")
+			}
+		})
+	}
+}
+
+func TestDoneUnclaimed(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := wlCommonsDir(env)
+
+			// Post but don't claim.
+			stdout, _, err := runWL(t, env, "post", "--title", "Unclaimed done test", "--type", "feature")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+
+			// Done on open item should fail.
+			_, _, err = runWL(t, env, "done", wantedID, "--evidence", "fake")
+			if err == nil {
+				t.Fatal("done on unclaimed item should have failed")
+			}
+
+			// Verify still open.
+			raw := doltSQL(t, dbDir, "SELECT status FROM wanted WHERE id='"+wantedID+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) < 2 || rows[1][0] != "open" {
+				var got string
+				if len(rows) >= 2 {
+					got = rows[1][0]
+				}
+				t.Errorf("status = %q, want %q", got, "open")
+			}
+		})
+	}
+}
+
+func TestPostOutput(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+
+			stdout, _, err := runWL(t, env, "post", "--title", "Output format test", "--type", "docs")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+
+			if !strings.Contains(stdout, "Posted wanted item") {
+				t.Errorf("output missing 'Posted wanted item': %s", stdout)
+			}
+			if !strings.Contains(stdout, "w-") {
+				t.Errorf("output missing wanted ID: %s", stdout)
+			}
+			if !strings.Contains(stdout, "Output format test") {
+				t.Errorf("output missing title: %s", stdout)
+			}
+		})
+	}
+}
+
+// writeConfig overwrites the wasteland config.json with a different rig handle.
+// Used by TestDoneWrongClaimer to simulate a different rig.
+func writeConfig(t *testing.T, env *testEnv, rigHandle string) {
+	t.Helper()
+	cfg := env.loadConfig(t)
+	cfg["rig_handle"] = rigHandle
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatalf("marshaling config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(env.ConfigDir, "config.json"), append(data, '\n'), 0644); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+}

@@ -20,7 +20,7 @@ LDFLAGS := -X main.version=$(VERSION) \
            -X main.commit=$(COMMIT) \
            -X main.date=$(BUILD_TIME)
 
-.PHONY: build check check-all lint fmt-check fmt vet test test-integration test-cover cover install install-tools setup clean
+.PHONY: build check check-all lint fmt-check fmt vet test test-integration test-integration-offline test-cover cover install install-tools setup clean
 
 ## build: compile wl binary with version metadata
 build:
@@ -66,6 +66,10 @@ test:
 ## test-integration: run all tests including integration
 test-integration:
 	go test -tags integration ./...
+
+## test-integration-offline: run offline integration tests only (no network, requires dolt)
+test-integration-offline:
+	go test -tags integration -v ./internal/remote/ ./test/integration/offline/
 
 ## test-cover: run tests with coverage output
 test-cover:
