@@ -1,0 +1,70 @@
+// wl is the Wasteland CLI — federation protocol for Gas Towns.
+package main
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"os"
+
+	"github.com/spf13/cobra"
+)
+
+// Version metadata injected via ldflags.
+var (
+	version = "dev"
+	commit  = "unknown"
+	date    = "unknown"
+)
+
+func main() {
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// errExit is a sentinel error returned by cobra RunE functions to signal
+// non-zero exit. The command has already written its own error to stderr.
+var errExit = errors.New("exit")
+
+// run executes the wl CLI with the given args.
+func run(args []string, stdout, stderr io.Writer) int {
+	root := newRootCmd(stdout, stderr)
+	if args == nil {
+		args = []string{}
+	}
+	root.SetArgs(args)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	if err := root.Execute(); err != nil {
+		return 1
+	}
+	return 0
+}
+
+// newRootCmd creates the root cobra command with all subcommands.
+func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
+	root := &cobra.Command{
+		Use:           "wl",
+		Short:         "Wasteland — federation protocol for Gas Towns",
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		Args:          cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return cmd.Help()
+			}
+			fmt.Fprintf(stderr, "wl: unknown command %q\n", args[0]) //nolint:errcheck // best-effort stderr
+			return errExit
+		},
+	}
+	root.CompletionOptions.DisableDefaultCmd = true
+	root.AddCommand(
+		newJoinCmd(stdout, stderr),
+		newPostCmd(stdout, stderr),
+		newClaimCmd(stdout, stderr),
+		newDoneCmd(stdout, stderr),
+		newBrowseCmd(stdout, stderr),
+		newSyncCmd(stdout, stderr),
+		newVersionCmd(stdout),
+	)
+	return root
+}
