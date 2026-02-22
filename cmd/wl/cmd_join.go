@@ -36,6 +36,7 @@ This command:
   5. Saves wasteland configuration locally
 
 The upstream argument is an org/database path like 'steveyegge/wl-commons'.
+You can join multiple wastelands simultaneously.
 
 DoltHub mode (default):
   Requires DOLTHUB_TOKEN and DOLTHUB_ORG (or --fork-org).
@@ -78,16 +79,15 @@ func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, for
 		return err
 	}
 
-	// Fast path: check if already joined
-	if existing, loadErr := federation.LoadConfig(); loadErr == nil {
-		if existing.Upstream == upstream {
-			fmt.Fprintf(stdout, "%s Already joined wasteland: %s\n", style.Bold.Render("⚠"), upstream)
-			fmt.Fprintf(stdout, "  Handle: %s\n", existing.RigHandle)
-			fmt.Fprintf(stdout, "  Fork: %s/%s\n", existing.ForkOrg, existing.ForkDB)
-			fmt.Fprintf(stdout, "  Local: %s\n", existing.LocalDir)
-			return nil
-		}
-		return fmt.Errorf("already joined to %s; run wl leave first", existing.Upstream)
+	store := federation.NewConfigStore()
+
+	// Fast path: check if already joined to this specific upstream.
+	if existing, loadErr := store.Load(upstream); loadErr == nil {
+		fmt.Fprintf(stdout, "%s Already joined wasteland: %s\n", style.Bold.Render("⚠"), upstream)
+		fmt.Fprintf(stdout, "  Handle: %s\n", existing.RigHandle)
+		fmt.Fprintf(stdout, "  Fork: %s/%s\n", existing.ForkOrg, existing.ForkDB)
+		fmt.Fprintf(stdout, "  Local: %s\n", existing.LocalDir)
+		return nil
 	}
 
 	// Resolve fork org: flag > env var
@@ -141,7 +141,7 @@ func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, for
 
 	wlVersion := "dev"
 
-	svc := federation.NewService(provider)
+	svc := federation.NewServiceWith(provider, store)
 	svc.OnProgress = func(step string) {
 		fmt.Fprintf(stdout, "  %s\n", step)
 	}

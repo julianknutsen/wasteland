@@ -27,10 +27,9 @@ func joinedEnv(t *testing.T, backend backendKind) *testEnv {
 	return env
 }
 
-// wlCommonsDir returns the path to the auto-created wl_commons database
-// used by post/claim/done (separate from the fork clone).
-func wlCommonsDir(env *testEnv) string {
-	return filepath.Join(env.DataDir, "wl_commons")
+// wlCommonsDir returns the path to the per-wasteland wl_commons database.
+func wlCommonsDir(env *testEnv, org, db string) string {
+	return filepath.Join(env.DataDir, "wl_commons", org, db)
 }
 
 func TestJoinCreatesConfig(t *testing.T) {
@@ -38,7 +37,7 @@ func TestJoinCreatesConfig(t *testing.T) {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
 
-			cfg := env.loadConfig(t)
+			cfg := env.loadConfig(t, upstream)
 			if cfg["upstream"] != upstream {
 				t.Errorf("upstream = %q, want %q", cfg["upstream"], upstream)
 			}
@@ -79,7 +78,7 @@ func TestSchemaInit(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
-			dbDir := wlCommonsDir(env)
+			dbDir := wlCommonsDir(env, upstreamOrg, upstreamDB)
 
 			// wl post triggers EnsureWLCommons → auto-creates schema.
 			stdout, stderr, err := runWL(t, env, "post", "--title", "Schema init test", "--type", "feature")
@@ -112,7 +111,7 @@ func TestPostWanted(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
-			dbDir := wlCommonsDir(env)
+			dbDir := wlCommonsDir(env, upstreamOrg, upstreamDB)
 
 			stdout, stderr, err := runWL(t, env, "post",
 				"--title", "Test feature request",
@@ -165,7 +164,7 @@ func TestClaimWanted(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
-			dbDir := wlCommonsDir(env)
+			dbDir := wlCommonsDir(env, upstreamOrg, upstreamDB)
 
 			// Post an item first.
 			stdout, _, err := runWL(t, env, "post", "--title", "Claim test item", "--type", "bug")
@@ -200,7 +199,7 @@ func TestClaimAlreadyClaimed(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
-			dbDir := wlCommonsDir(env)
+			dbDir := wlCommonsDir(env, upstreamOrg, upstreamDB)
 
 			// Post and claim.
 			stdout, _, err := runWL(t, env, "post", "--title", "Double claim test", "--type", "feature")
@@ -234,7 +233,7 @@ func TestDoneFullLifecycle(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
-			dbDir := wlCommonsDir(env)
+			dbDir := wlCommonsDir(env, upstreamOrg, upstreamDB)
 
 			// Post.
 			stdout, _, err := runWL(t, env, "post", "--title", "Done lifecycle test", "--type", "feature")
@@ -282,7 +281,7 @@ func TestDoneWrongClaimer(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
-			dbDir := wlCommonsDir(env)
+			dbDir := wlCommonsDir(env, upstreamOrg, upstreamDB)
 
 			// Post and claim as the default rig (forkOrg handle).
 			stdout, _, err := runWL(t, env, "post", "--title", "Wrong claimer test", "--type", "bug")
@@ -297,7 +296,7 @@ func TestDoneWrongClaimer(t *testing.T) {
 			}
 
 			// Rewrite config to a different rig handle.
-			writeConfig(t, env, "rig-b")
+			writeConfig(t, env, upstream, "rig-b")
 
 			// Done as rig-b should fail (claimed by forkOrg).
 			_, _, err = runWL(t, env, "done", wantedID, "--evidence", "fake")
@@ -319,7 +318,7 @@ func TestDoneUnclaimed(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
-			dbDir := wlCommonsDir(env)
+			dbDir := wlCommonsDir(env, upstreamOrg, upstreamDB)
 
 			// Post but don't claim.
 			stdout, _, err := runWL(t, env, "post", "--title", "Unclaimed done test", "--type", "feature")
@@ -371,18 +370,117 @@ func TestPostOutput(t *testing.T) {
 	}
 }
 
-// writeConfig overwrites the wasteland config.json with a different rig handle.
+// writeConfig overwrites the wasteland config with a different rig handle.
 // Used by TestDoneWrongClaimer to simulate a different rig.
-func writeConfig(t *testing.T, env *testEnv, rigHandle string) {
+func writeConfig(t *testing.T, env *testEnv, upstreamPath, rigHandle string) {
 	t.Helper()
-	cfg := env.loadConfig(t)
+	cfg := env.loadConfig(t, upstreamPath)
 	cfg["rig_handle"] = rigHandle
+
+	parts := strings.SplitN(upstreamPath, "/", 2)
+	configPath := filepath.Join(env.ConfigDir, "wastelands", parts[0], parts[1]+".json")
 
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		t.Fatalf("marshaling config: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(env.ConfigDir, "config.json"), append(data, '\n'), 0644); err != nil {
+	if err := os.WriteFile(configPath, append(data, '\n'), 0o644); err != nil {
 		t.Fatalf("writing config: %v", err)
+	}
+}
+
+// --- Multi-wasteland tests ---
+
+func TestMultiWastelandJoin(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := newTestEnv(t, backend)
+
+			// Create two upstream stores.
+			env.createUpstreamStore(t, "org-a", "wl-commons")
+			env.createUpstreamStore(t, "org-b", "other-db")
+
+			// Join both.
+			env.joinWasteland(t, "org-a/wl-commons", "fork-a")
+			env.joinWasteland(t, "org-b/other-db", "fork-b")
+
+			// wl list should show both.
+			stdout, stderr, err := runWL(t, env, "list")
+			if err != nil {
+				t.Fatalf("wl list failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "org-a/wl-commons") {
+				t.Errorf("list output missing org-a/wl-commons: %s", stdout)
+			}
+			if !strings.Contains(stdout, "org-b/other-db") {
+				t.Errorf("list output missing org-b/other-db: %s", stdout)
+			}
+			if !strings.Contains(stdout, "2") {
+				t.Errorf("list output should mention count 2: %s", stdout)
+			}
+		})
+	}
+}
+
+func TestMultiWasteland_RequiresFlag(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := newTestEnv(t, backend)
+
+			// Create and join two upstreams.
+			env.createUpstreamStore(t, "org-a", "wl-commons")
+			env.createUpstreamStore(t, "org-b", "other-db")
+			env.joinWasteland(t, "org-a/wl-commons", "fork-a")
+			env.joinWasteland(t, "org-b/other-db", "fork-b")
+
+			// Post without --wasteland should fail (ambiguous).
+			_, _, err := runWL(t, env, "post", "--title", "Test", "--type", "feature")
+			if err == nil {
+				t.Fatal("post without --wasteland should fail with multiple wastelands")
+			}
+
+			// Post with --wasteland should succeed.
+			stdout, stderr, err := runWL(t, env, "post",
+				"--wasteland", "org-a/wl-commons",
+				"--title", "Multi-WL post test",
+				"--type", "feature",
+			)
+			if err != nil {
+				t.Fatalf("post with --wasteland failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "Posted wanted item") {
+				t.Errorf("expected post success, got: %s", stdout)
+			}
+		})
+	}
+}
+
+func TestLeave(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := newTestEnv(t, backend)
+
+			// Create and join.
+			env.createUpstreamStore(t, upstreamOrg, upstreamDB)
+			env.joinWasteland(t, upstream, forkOrg)
+
+			// Leave.
+			stdout, stderr, err := runWL(t, env, "leave")
+			if err != nil {
+				t.Fatalf("wl leave failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "Left wasteland") {
+				t.Errorf("expected 'Left wasteland' message, got: %s", stdout)
+			}
+
+			// List should show empty.
+			stdout, _, err = runWL(t, env, "list")
+			if err != nil {
+				t.Fatalf("wl list failed after leave: %v", err)
+			}
+			if !strings.Contains(stdout, "No wastelands joined") {
+				t.Errorf("expected 'No wastelands joined', got: %s", stdout)
+			}
+		})
 	}
 }

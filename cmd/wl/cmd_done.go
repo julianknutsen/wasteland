@@ -4,13 +4,14 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/wasteland/internal/commons"
 	"github.com/steveyegge/wasteland/internal/federation"
 	"github.com/steveyegge/wasteland/internal/style"
-	"github.com/steveyegge/wasteland/internal/xdg"
 )
 
 func newDoneCmd(stdout, stderr io.Writer) *cobra.Command {
@@ -34,7 +35,7 @@ Examples:
   wl done w-abc123 --evidence 'commit abc123def'`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDone(stdout, stderr, args[0], evidence)
+			return runDone(cmd, stdout, stderr, args[0], evidence)
 		},
 	}
 
@@ -44,19 +45,21 @@ Examples:
 	return cmd
 }
 
-func runDone(stdout, stderr io.Writer, wantedID, evidence string) error {
-	wlCfg, err := federation.LoadConfig()
+func runDone(cmd *cobra.Command, stdout, stderr io.Writer, wantedID, evidence string) error {
+	wlCfg, err := resolveWasteland(cmd)
 	if err != nil {
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
 	rigHandle := wlCfg.RigHandle
 
-	dataDir := xdg.DataDir()
-	if !commons.DatabaseExists(dataDir, commons.WLCommonsDB) {
-		return fmt.Errorf("database %q not found\nJoin a wasteland first with: wl join <org/db>", commons.WLCommonsDB)
+	org, db, _ := federation.ParseUpstream(wlCfg.Upstream)
+	commonsDir := federation.WLCommonsDir(org, db)
+
+	if _, err := os.Stat(filepath.Join(commonsDir, ".dolt")); err != nil {
+		return fmt.Errorf("wl-commons database not found at %s\nRun 'wl post' first to initialize, or join a wasteland with: wl join <org/db>", commonsDir)
 	}
 
-	store := commons.NewWLCommons(dataDir)
+	store := commons.NewWLCommons(commonsDir)
 	completionID := generateCompletionID(wantedID, rigHandle)
 
 	if err := submitDone(store, wantedID, rigHandle, evidence, completionID); err != nil {

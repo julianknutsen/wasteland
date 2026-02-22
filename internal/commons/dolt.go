@@ -30,7 +30,7 @@ func DatabaseExists(dataDir, dbName string) bool {
 func InitDB(dataDir, dbName string) error {
 	dbDir := fmt.Sprintf("%s/%s", dataDir, dbName)
 
-	if err := os.MkdirAll(dbDir, 0755); err != nil {
+	if err := os.MkdirAll(dbDir, 0o755); err != nil {
 		return fmt.Errorf("creating database directory: %w", err)
 	}
 

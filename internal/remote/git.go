@@ -51,7 +51,7 @@ func (g *GitProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	}
 
 	// Initialize a bare git repo as the destination store.
-	if err := os.MkdirAll(destPath, 0755); err != nil {
+	if err := os.MkdirAll(destPath, 0o755); err != nil {
 		return fmt.Errorf("creating fork git repo dir: %w", err)
 	}
 

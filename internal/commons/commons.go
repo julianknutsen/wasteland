@@ -29,27 +29,28 @@ type WLCommonsStore interface {
 }
 
 // WLCommons implements WLCommonsStore using the real Dolt CLI.
-type WLCommons struct{ dataDir string }
+type WLCommons struct{ dbDir string }
 
 // NewWLCommons creates a WLCommonsStore backed by the real Dolt CLI.
-func NewWLCommons(dataDir string) *WLCommons { return &WLCommons{dataDir: dataDir} }
+// dbDir is the actual database directory (e.g., {dataDir}/wl_commons/{org}/{db}).
+func NewWLCommons(dbDir string) *WLCommons { return &WLCommons{dbDir: dbDir} }
 
-func (w *WLCommons) EnsureDB() error              { return EnsureWLCommons(w.dataDir) }
-func (w *WLCommons) DatabaseExists(db string) bool { return DatabaseExists(w.dataDir, db) }
+func (w *WLCommons) EnsureDB() error               { return EnsureWLCommons(w.dbDir) }
+func (w *WLCommons) DatabaseExists(db string) bool { return DatabaseExists(w.dbDir, db) }
 func (w *WLCommons) InsertWanted(item *WantedItem) error {
-	return InsertWanted(w.dataDir, item)
+	return InsertWanted(w.dbDir, item)
 }
 
 func (w *WLCommons) ClaimWanted(wantedID, rigHandle string) error {
-	return ClaimWanted(w.dataDir, wantedID, rigHandle)
+	return ClaimWanted(w.dbDir, wantedID, rigHandle)
 }
 
 func (w *WLCommons) SubmitCompletion(completionID, wantedID, rigHandle, evidence string) error {
-	return SubmitCompletion(w.dataDir, completionID, wantedID, rigHandle, evidence)
+	return SubmitCompletion(w.dbDir, completionID, wantedID, rigHandle, evidence)
 }
 
 func (w *WLCommons) QueryWanted(wantedID string) (*WantedItem, error) {
-	return QueryWanted(w.dataDir, wantedID)
+	return QueryWanted(w.dbDir, wantedID)
 }
 
 // WantedItem represents a row in the wanted table.
@@ -93,26 +94,26 @@ func GenerateWantedID(title string) string {
 }
 
 // EnsureWLCommons ensures the wl-commons database exists and has the correct schema.
-func EnsureWLCommons(dataDir string) error {
-	dbDir := filepath.Join(dataDir, WLCommonsDB)
-
+// dbDir is the actual database directory.
+func EnsureWLCommons(dbDir string) error {
 	if _, err := os.Stat(filepath.Join(dbDir, ".dolt")); err == nil {
 		return nil
 	}
 
-	if err := InitDB(dataDir, WLCommonsDB); err != nil {
+	parentDir := filepath.Dir(dbDir)
+	dbName := filepath.Base(dbDir)
+	if err := InitDB(parentDir, dbName); err != nil {
 		return fmt.Errorf("creating wl-commons database: %w", err)
 	}
 
-	if err := initWLCommonsSchema(dataDir); err != nil {
+	if err := initWLCommonsSchema(dbDir); err != nil {
 		return fmt.Errorf("initializing wl-commons schema: %w", err)
 	}
 
 	return nil
 }
 
-func initWLCommonsSchema(dataDir string) error {
-	dbDir := filepath.Join(dataDir, WLCommonsDB)
+func initWLCommonsSchema(dbDir string) error {
 	schema := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS _meta (
     %s VARCHAR(64) PRIMARY KEY,
     value TEXT
@@ -217,7 +218,8 @@ func backtickKey() string {
 }
 
 // InsertWanted inserts a new wanted item into the wl-commons database.
-func InsertWanted(dataDir string, item *WantedItem) error {
+// dbDir is the actual database directory.
+func InsertWanted(dbDir string, item *WantedItem) error {
 	if item.ID == "" {
 		return fmt.Errorf("wanted item ID cannot be empty")
 	}
@@ -264,7 +266,6 @@ func InsertWanted(dataDir string, item *WantedItem) error {
 		status = fmt.Sprintf("'%s'", EscapeSQL(item.Status))
 	}
 
-	dbDir := filepath.Join(dataDir, WLCommonsDB)
 	script := fmt.Sprintf(`INSERT INTO wanted (id, title, description, project, type, priority, tags, posted_by, status, effort_level, created_at, updated_at)
 VALUES ('%s', '%s', %s, %s, %s, %d, %s, %s, %s, %s, '%s', '%s');
 
@@ -280,8 +281,8 @@ CALL DOLT_COMMIT('-m', 'wl post: %s');
 }
 
 // ClaimWanted updates a wanted item's status to claimed.
-func ClaimWanted(dataDir, wantedID, rigHandle string) error {
-	dbDir := filepath.Join(dataDir, WLCommonsDB)
+// dbDir is the actual database directory.
+func ClaimWanted(dbDir, wantedID, rigHandle string) error {
 	script := fmt.Sprintf(`UPDATE wanted SET claimed_by='%s', status='claimed', updated_at=NOW()
   WHERE id='%s' AND status='open';
 CALL DOLT_ADD('-A');
@@ -299,8 +300,8 @@ CALL DOLT_COMMIT('-m', 'wl claim: %s');
 }
 
 // SubmitCompletion inserts a completion record and updates the wanted status.
-func SubmitCompletion(dataDir, completionID, wantedID, rigHandle, evidence string) error {
-	dbDir := filepath.Join(dataDir, WLCommonsDB)
+// dbDir is the actual database directory.
+func SubmitCompletion(dbDir, completionID, wantedID, rigHandle, evidence string) error {
 	script := fmt.Sprintf(`UPDATE wanted SET status='in_review', evidence_url='%s', updated_at=NOW()
   WHERE id='%s' AND status='claimed' AND claimed_by='%s';
 INSERT IGNORE INTO completions (id, wanted_id, completed_by, evidence, completed_at)
@@ -326,8 +327,8 @@ CALL DOLT_COMMIT('-m', 'wl done: %s');
 }
 
 // QueryWanted fetches a wanted item by ID. Returns an error if not found.
-func QueryWanted(dataDir, wantedID string) (*WantedItem, error) {
-	dbDir := filepath.Join(dataDir, WLCommonsDB)
+// dbDir is the actual database directory.
+func QueryWanted(dbDir, wantedID string) (*WantedItem, error) {
 	query := fmt.Sprintf(`SELECT id, title, status, COALESCE(claimed_by, '') as claimed_by FROM wanted WHERE id='%s';`,
 		EscapeSQL(wantedID))
 

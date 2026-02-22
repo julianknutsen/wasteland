@@ -108,18 +108,18 @@ func newTestEnv(t *testing.T, backend backendKind) *testEnv {
 	remoteBase := filepath.Join(root, "remotes")
 
 	for _, d := range []string{dataHome, configHome, home, remoteBase} {
-		if err := os.MkdirAll(d, 0755); err != nil {
+		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatalf("creating dir %s: %v", d, err)
 		}
 	}
 
 	// Configure dolt globally in the test HOME so dolt init/clone/push works.
 	doltCfgDir := filepath.Join(home, ".dolt")
-	if err := os.MkdirAll(doltCfgDir, 0755); err != nil {
+	if err := os.MkdirAll(doltCfgDir, 0o755); err != nil {
 		t.Fatalf("creating dolt config dir: %v", err)
 	}
 	globalCfg := `{"user.name":"test-user","user.email":"test@example.com","user.creds":""}` + "\n"
-	if err := os.WriteFile(filepath.Join(doltCfgDir, "config_global.json"), []byte(globalCfg), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(doltCfgDir, "config_global.json"), []byte(globalCfg), 0o644); err != nil {
 		t.Fatalf("writing dolt global config: %v", err)
 	}
 
@@ -155,7 +155,7 @@ func (e *testEnv) createUpstreamStore(t *testing.T, org, db string) {
 	t.Helper()
 
 	// Step 1: init a temp working directory with the schema.
-	workDir := filepath.Join(e.Root, "upstream-work")
+	workDir := filepath.Join(e.Root, "upstream-work-"+org+"-"+db)
 	initDoltDB(t, e, workDir)
 	doltSQLScript(t, e, workDir, wlCommonsSchema())
 
@@ -170,7 +170,7 @@ func (e *testEnv) createUpstreamStoreWithData(t *testing.T, org, db string) {
 	t.Helper()
 
 	// Step 1: init a temp working directory with the schema + seed data.
-	workDir := filepath.Join(e.Root, "upstream-work")
+	workDir := filepath.Join(e.Root, "upstream-work-"+org+"-"+db)
 	initDoltDB(t, e, workDir)
 	doltSQLScript(t, e, workDir, wlCommonsSchema())
 
@@ -189,9 +189,9 @@ CALL DOLT_COMMIT('-m', 'Seed upstream data');
 
 // pushToUpstreamStore adds data to the upstream by committing in the work dir
 // and pushing to the store. The workDir must already exist from createUpstreamStore*.
-func (e *testEnv) pushToUpstreamStore(t *testing.T, sql string) {
+func (e *testEnv) pushToUpstreamStore(t *testing.T, org, db, sql string) {
 	t.Helper()
-	workDir := filepath.Join(e.Root, "upstream-work")
+	workDir := filepath.Join(e.Root, "upstream-work-"+org+"-"+db)
 	doltSQLScript(t, e, workDir, sql)
 	doltCmd(t, e, workDir, "push", "store", "main")
 }
@@ -203,14 +203,14 @@ func (e *testEnv) createStoreDir(t *testing.T, org, db string) string {
 	switch e.Backend {
 	case gitBackend:
 		gitDir := filepath.Join(e.RemoteBase, org, db+".git")
-		if err := os.MkdirAll(gitDir, 0755); err != nil {
+		if err := os.MkdirAll(gitDir, 0o755); err != nil {
 			t.Fatalf("creating upstream git dir: %v", err)
 		}
 		gitCmd(t, e, "", "init", "--bare", gitDir)
 		return fmt.Sprintf("file://%s", gitDir)
 	default:
 		storeDir := filepath.Join(e.RemoteBase, org, db)
-		if err := os.MkdirAll(storeDir, 0755); err != nil {
+		if err := os.MkdirAll(storeDir, 0o755); err != nil {
 			t.Fatalf("creating upstream store dir: %v", err)
 		}
 		return fmt.Sprintf("file://%s", storeDir)
@@ -238,12 +238,18 @@ func (e *testEnv) joinWasteland(t *testing.T, upstream, forkOrg string) {
 	}
 }
 
-// loadConfig reads the wasteland config.json that wl join wrote.
-func (e *testEnv) loadConfig(t *testing.T) map[string]interface{} {
+// loadConfig reads the wasteland config that wl join wrote.
+// Looks in the new wastelands/{org}/{db}.json location.
+func (e *testEnv) loadConfig(t *testing.T, upstream string) map[string]interface{} {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(e.ConfigDir, "config.json"))
+	parts := strings.SplitN(upstream, "/", 2)
+	if len(parts) != 2 {
+		t.Fatalf("invalid upstream for loadConfig: %s", upstream)
+	}
+	configPath := filepath.Join(e.ConfigDir, "wastelands", parts[0], parts[1]+".json")
+	data, err := os.ReadFile(configPath)
 	if err != nil {
-		t.Fatalf("reading config: %v", err)
+		t.Fatalf("reading config at %s: %v", configPath, err)
 	}
 	var cfg map[string]interface{}
 	if err := json.Unmarshal(data, &cfg); err != nil {
@@ -332,7 +338,7 @@ func extractWantedID(t *testing.T, stdout string) string {
 // initDoltDB initializes a dolt database in a directory.
 func initDoltDB(t *testing.T, env *testEnv, dbDir string) {
 	t.Helper()
-	if err := os.MkdirAll(dbDir, 0755); err != nil {
+	if err := os.MkdirAll(dbDir, 0o755); err != nil {
 		t.Fatalf("creating db dir: %v", err)
 	}
 

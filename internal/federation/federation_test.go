@@ -50,6 +50,7 @@ func TestConfigSaveLoad(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 
+	store := NewConfigStore()
 	cfg := &Config{
 		Upstream:  "steveyegge/wl-commons",
 		ForkOrg:   "alice-dev",
@@ -58,13 +59,13 @@ func TestConfigSaveLoad(t *testing.T) {
 		RigHandle: "alice-dev",
 	}
 
-	if err := SaveConfig(cfg); err != nil {
-		t.Fatalf("SaveConfig: %v", err)
+	if err := store.Save(cfg); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
-	loaded, err := LoadConfig()
+	loaded, err := store.Load("steveyegge/wl-commons")
 	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
+		t.Fatalf("Load: %v", err)
 	}
 
 	if loaded.Upstream != cfg.Upstream {
@@ -79,14 +80,96 @@ func TestConfigSaveLoad(t *testing.T) {
 	if loaded.RigHandle != cfg.RigHandle {
 		t.Errorf("RigHandle = %q, want %q", loaded.RigHandle, cfg.RigHandle)
 	}
+
+	// Verify file is in wastelands/{org}/{db}.json
+	expectedPath := filepath.Join(tmpDir, "wasteland", "wastelands", "steveyegge", "wl-commons.json")
+	if _, err := os.Stat(expectedPath); err != nil {
+		t.Errorf("config file not at expected path %s: %v", expectedPath, err)
+	}
 }
 
-func TestLoadConfigNotFound(t *testing.T) {
+func TestConfigLoadNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
-	_, err := LoadConfig()
+
+	store := NewConfigStore()
+	_, err := store.Load("nonexistent/db")
 	if err == nil {
-		t.Error("LoadConfig expected error for missing config")
+		t.Error("Load expected error for missing config")
+	}
+}
+
+func TestFileConfigStore_List(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	store := NewConfigStore()
+
+	// Empty at first.
+	upstreams, err := store.List()
+	if err != nil {
+		t.Fatalf("List() error: %v", err)
+	}
+	if len(upstreams) != 0 {
+		t.Errorf("expected 0 upstreams, got %d", len(upstreams))
+	}
+
+	// Save two configs.
+	store.Save(&Config{Upstream: "org1/db1", ForkOrg: "fork1", ForkDB: "db1"})
+	store.Save(&Config{Upstream: "org2/db2", ForkOrg: "fork2", ForkDB: "db2"})
+
+	upstreams, err = store.List()
+	if err != nil {
+		t.Fatalf("List() error: %v", err)
+	}
+	if len(upstreams) != 2 {
+		t.Fatalf("expected 2 upstreams, got %d", len(upstreams))
+	}
+
+	found := map[string]bool{}
+	for _, u := range upstreams {
+		found[u] = true
+	}
+	if !found["org1/db1"] {
+		t.Error("expected org1/db1 in list")
+	}
+	if !found["org2/db2"] {
+		t.Error("expected org2/db2 in list")
+	}
+}
+
+func TestFileConfigStore_Delete(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	store := NewConfigStore()
+
+	// Save then delete.
+	store.Save(&Config{Upstream: "org1/db1", ForkOrg: "fork1", ForkDB: "db1"})
+
+	if err := store.Delete("org1/db1"); err != nil {
+		t.Fatalf("Delete() error: %v", err)
+	}
+
+	// Should no longer be loadable.
+	_, err := store.Load("org1/db1")
+	if err == nil {
+		t.Error("expected error loading deleted config")
+	}
+
+	// List should be empty.
+	upstreams, err := store.List()
+	if err != nil {
+		t.Fatalf("List() error: %v", err)
+	}
+	if len(upstreams) != 0 {
+		t.Errorf("expected 0 upstreams after delete, got %d", len(upstreams))
+	}
+
+	// Delete of nonexistent should error.
+	err = store.Delete("nonexistent/db")
+	if err == nil {
+		t.Error("expected error deleting nonexistent config")
 	}
 }
 
@@ -117,24 +200,11 @@ func TestLocalCloneDir(t *testing.T) {
 	}
 }
 
-func TestConfigPath(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg-test")
-	got := ConfigPath()
-	want := filepath.Join("/tmp/xdg-test", "wasteland", "config.json")
+func TestWLCommonsDir(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "/tmp/xdg-test")
+	got := WLCommonsDir("steveyegge", "wl-commons")
+	want := filepath.Join("/tmp/xdg-test", "wasteland", "wl_commons", "steveyegge", "wl-commons")
 	if got != want {
-		t.Errorf("ConfigPath = %q, want %q", got, want)
-	}
-}
-
-func TestConfigPath_DefaultXDG(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", "")
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Skip("cannot determine home directory")
-	}
-	got := ConfigPath()
-	want := filepath.Join(home, ".config", "wasteland", "config.json")
-	if got != want {
-		t.Errorf("ConfigPath = %q, want %q", got, want)
+		t.Errorf("WLCommonsDir = %q, want %q", got, want)
 	}
 }

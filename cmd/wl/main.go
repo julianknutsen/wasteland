@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/steveyegge/wasteland/internal/federation"
 )
 
 // Version metadata injected via ldflags.
@@ -56,6 +57,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 			return errExit
 		},
 	}
+	root.PersistentFlags().String("wasteland", "", "Upstream wasteland to use (e.g., org/db); required when multiple are joined")
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.AddCommand(
 		newJoinCmd(stdout, stderr),
@@ -64,7 +66,16 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		newDoneCmd(stdout, stderr),
 		newBrowseCmd(stdout, stderr),
 		newSyncCmd(stdout, stderr),
+		newLeaveCmd(stdout, stderr),
+		newListCmd(stdout, stderr),
 		newVersionCmd(stdout),
 	)
 	return root
+}
+
+// resolveWasteland resolves the active wasteland config from --wasteland flag or auto-selection.
+func resolveWasteland(cmd *cobra.Command) (*federation.Config, error) {
+	explicit, _ := cmd.Flags().GetString("wasteland")
+	store := federation.NewConfigStore()
+	return federation.ResolveConfig(store, explicit)
 }

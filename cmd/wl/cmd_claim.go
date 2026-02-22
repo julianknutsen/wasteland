@@ -3,12 +3,13 @@ package main
 import (
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/wasteland/internal/commons"
 	"github.com/steveyegge/wasteland/internal/federation"
 	"github.com/steveyegge/wasteland/internal/style"
-	"github.com/steveyegge/wasteland/internal/xdg"
 )
 
 func newClaimCmd(stdout, stderr io.Writer) *cobra.Command {
@@ -27,24 +28,26 @@ Examples:
   wl claim w-abc123`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runClaim(stdout, stderr, args[0])
+			return runClaim(cmd, stdout, stderr, args[0])
 		},
 	}
 }
 
-func runClaim(stdout, stderr io.Writer, wantedID string) error {
-	wlCfg, err := federation.LoadConfig()
+func runClaim(cmd *cobra.Command, stdout, stderr io.Writer, wantedID string) error {
+	wlCfg, err := resolveWasteland(cmd)
 	if err != nil {
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
 	rigHandle := wlCfg.RigHandle
 
-	dataDir := xdg.DataDir()
-	if !commons.DatabaseExists(dataDir, commons.WLCommonsDB) {
-		return fmt.Errorf("database %q not found\nJoin a wasteland first with: wl join <org/db>", commons.WLCommonsDB)
+	org, db, _ := federation.ParseUpstream(wlCfg.Upstream)
+	commonsDir := federation.WLCommonsDir(org, db)
+
+	if _, err := os.Stat(filepath.Join(commonsDir, ".dolt")); err != nil {
+		return fmt.Errorf("wl-commons database not found at %s\nRun 'wl post' first to initialize, or join a wasteland with: wl join <org/db>", commonsDir)
 	}
 
-	store := commons.NewWLCommons(dataDir)
+	store := commons.NewWLCommons(commonsDir)
 	item, err := claimWanted(store, wantedID, rigHandle)
 	if err != nil {
 		return err

@@ -23,6 +23,9 @@ import (
 // ErrNotJoined indicates the rig has not joined a wasteland.
 var ErrNotJoined = errors.New("rig has not joined a wasteland")
 
+// ErrAmbiguous indicates multiple wastelands are joined and --wasteland is required.
+var ErrAmbiguous = errors.New("multiple wastelands joined; use --wasteland to select one")
+
 // Config holds the wasteland configuration for a rig.
 type Config struct {
 	// Upstream is the DoltHub path of the upstream commons (e.g., "steveyegge/wl-commons").
@@ -44,41 +47,6 @@ type Config struct {
 	JoinedAt time.Time `json:"joined_at"`
 }
 
-// ConfigPath returns the path to the wasteland config file.
-func ConfigPath() string {
-	return filepath.Join(xdg.ConfigDir(), "config.json")
-}
-
-// LoadConfig loads the wasteland configuration from disk.
-func LoadConfig() (*Config, error) {
-	data, err := os.ReadFile(ConfigPath())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%w (run 'wl join <upstream>')", ErrNotJoined)
-		}
-		return nil, fmt.Errorf("reading wasteland config: %w", err)
-	}
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parsing wasteland config: %w", err)
-	}
-	return &cfg, nil
-}
-
-// SaveConfig writes the wasteland configuration to disk.
-func SaveConfig(cfg *Config) error {
-	dir := xdg.ConfigDir()
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("creating config directory: %w", err)
-	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshaling wasteland config: %w", err)
-	}
-	data = append(data, '\n')
-	return os.WriteFile(ConfigPath(), data, 0644)
-}
-
 // ParseUpstream parses an upstream path like "steveyegge/wl-commons" into org and db.
 func ParseUpstream(upstream string) (org, db string, err error) {
 	parts := strings.SplitN(upstream, "/", 2)
@@ -91,6 +59,11 @@ func ParseUpstream(upstream string) (org, db string, err error) {
 // LocalCloneDir returns the local clone directory for a specific wasteland commons.
 func LocalCloneDir(upstreamOrg, upstreamDB string) string {
 	return filepath.Join(xdg.DataDir(), upstreamOrg, upstreamDB)
+}
+
+// WLCommonsDir returns the per-wasteland wl_commons database directory.
+func WLCommonsDir(org, db string) string {
+	return filepath.Join(xdg.DataDir(), "wl_commons", org, db)
 }
 
 // escapeSQLString escapes backslashes and single quotes for SQL string literals.
@@ -109,8 +82,47 @@ type DoltCLI interface {
 
 // ConfigStore abstracts wasteland config persistence.
 type ConfigStore interface {
-	Load() (*Config, error)
+	Load(upstream string) (*Config, error)
 	Save(cfg *Config) error
+	Delete(upstream string) error
+	List() ([]string, error)
+}
+
+// ResolveConfig resolves the active wasteland config.
+// If explicit is non-empty, loads that specific upstream config.
+// If exactly one wasteland is joined, returns it.
+// If zero are joined, returns ErrNotJoined.
+// If multiple are joined, returns ErrAmbiguous.
+func ResolveConfig(store ConfigStore, explicit string) (*Config, error) {
+	if explicit != "" {
+		cfg, err := store.Load(explicit)
+		if err != nil {
+			return nil, fmt.Errorf("loading config for %s: %w", explicit, err)
+		}
+		return cfg, nil
+	}
+
+	upstreams, err := store.List()
+	if err != nil {
+		return nil, fmt.Errorf("listing wastelands: %w", err)
+	}
+
+	switch len(upstreams) {
+	case 0:
+		return nil, fmt.Errorf("%w (run 'wl join <upstream>')", ErrNotJoined)
+	case 1:
+		cfg, err := store.Load(upstreams[0])
+		if err != nil {
+			return nil, fmt.Errorf("loading config for %s: %w", upstreams[0], err)
+		}
+		return cfg, nil
+	default:
+		var list strings.Builder
+		for _, u := range upstreams {
+			fmt.Fprintf(&list, "  - %s\n", u)
+		}
+		return nil, fmt.Errorf("%w:\n%s", ErrAmbiguous, list.String())
+	}
 }
 
 // Service coordinates wasteland operations with injectable dependencies.
@@ -128,14 +140,9 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 		return nil, err
 	}
 
-	// Check if already joined
-	if existing, err := s.Config.Load(); err == nil {
-		if existing.Upstream != upstream {
-			return nil, fmt.Errorf("already joined to %s; run wl leave first", existing.Upstream)
-		}
+	// Check if already joined to this specific upstream (idempotent).
+	if existing, err := s.Config.Load(upstream); err == nil {
 		return existing, nil
-	} else if !errors.Is(err, ErrNotJoined) {
-		return nil, fmt.Errorf("loading wasteland config: %w", err)
 	}
 
 	localDir := LocalCloneDir(upstreamOrg, upstreamDB)
@@ -190,7 +197,7 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 type execDoltCLI struct{}
 
 func (e *execDoltCLI) Clone(remoteURL, targetDir string) error {
-	if err := os.MkdirAll(filepath.Dir(targetDir), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(targetDir), 0o755); err != nil {
 		return fmt.Errorf("creating parent directory: %w", err)
 	}
 
@@ -282,15 +289,109 @@ func (e *execDoltCLI) AddUpstreamRemote(localDir, remoteURL string) error {
 	return nil
 }
 
-// fileConfigStore implements ConfigStore using filesystem persistence.
+// fileConfigStore implements ConfigStore using a directory of per-wasteland JSON files.
+// Config files live at {configDir}/wastelands/{org}/{db}.json.
 type fileConfigStore struct{}
 
-func (f *fileConfigStore) Load() (*Config, error) {
-	return LoadConfig()
+func (f *fileConfigStore) configPath(upstream string) (string, error) {
+	org, db, err := ParseUpstream(upstream)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(xdg.ConfigDir(), "wastelands", org, db+".json"), nil
+}
+
+func (f *fileConfigStore) Load(upstream string) (*Config, error) {
+	path, err := f.configPath(upstream)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrNotJoined
+		}
+		return nil, fmt.Errorf("reading wasteland config: %w", err)
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parsing wasteland config: %w", err)
+	}
+	return &cfg, nil
 }
 
 func (f *fileConfigStore) Save(cfg *Config) error {
-	return SaveConfig(cfg)
+	path, err := f.configPath(cfg.Upstream)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("creating config directory: %w", err)
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling wasteland config: %w", err)
+	}
+	data = append(data, '\n')
+	return os.WriteFile(path, data, 0o644)
+}
+
+func (f *fileConfigStore) Delete(upstream string) error {
+	path, err := f.configPath(upstream)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%w: %s", ErrNotJoined, upstream)
+		}
+		return fmt.Errorf("deleting wasteland config: %w", err)
+	}
+	// Clean up empty parent directory (org dir).
+	orgDir := filepath.Dir(path)
+	entries, err := os.ReadDir(orgDir)
+	if err == nil && len(entries) == 0 {
+		os.Remove(orgDir)
+	}
+	return nil
+}
+
+func (f *fileConfigStore) List() ([]string, error) {
+	wasteDir := filepath.Join(xdg.ConfigDir(), "wastelands")
+	if _, err := os.Stat(wasteDir); os.IsNotExist(err) {
+		return nil, nil
+	}
+
+	var upstreams []string
+	orgEntries, err := os.ReadDir(wasteDir)
+	if err != nil {
+		return nil, fmt.Errorf("reading wastelands directory: %w", err)
+	}
+	for _, orgEntry := range orgEntries {
+		if !orgEntry.IsDir() {
+			continue
+		}
+		orgDir := filepath.Join(wasteDir, orgEntry.Name())
+		dbEntries, err := os.ReadDir(orgDir)
+		if err != nil {
+			continue
+		}
+		for _, dbEntry := range dbEntries {
+			name := dbEntry.Name()
+			if !strings.HasSuffix(name, ".json") {
+				continue
+			}
+			db := strings.TrimSuffix(name, ".json")
+			upstreams = append(upstreams, orgEntry.Name()+"/"+db)
+		}
+	}
+	return upstreams, nil
+}
+
+// NewConfigStore creates a ConfigStore backed by the filesystem.
+func NewConfigStore() ConfigStore {
+	return &fileConfigStore{}
 }
 
 // NewService creates a Service with real (production) dependencies.
@@ -299,5 +400,14 @@ func NewService(provider remote.Provider) *Service {
 		Remote: provider,
 		CLI:    &execDoltCLI{},
 		Config: &fileConfigStore{},
+	}
+}
+
+// NewServiceWith creates a Service with an explicit ConfigStore.
+func NewServiceWith(provider remote.Provider, store ConfigStore) *Service {
+	return &Service{
+		Remote: provider,
+		CLI:    &execDoltCLI{},
+		Config: store,
 	}
 }

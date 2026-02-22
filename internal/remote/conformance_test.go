@@ -38,11 +38,11 @@ func doltHome(t *testing.T) string {
 	t.Helper()
 	home := filepath.Join(t.TempDir(), "home")
 	doltCfg := filepath.Join(home, ".dolt")
-	if err := os.MkdirAll(doltCfg, 0755); err != nil {
+	if err := os.MkdirAll(doltCfg, 0o755); err != nil {
 		t.Fatalf("creating dolt config: %v", err)
 	}
 	cfg := `{"user.name":"conformance-test","user.email":"test@example.com","user.creds":""}` + "\n"
-	if err := os.WriteFile(filepath.Join(doltCfg, "config_global.json"), []byte(cfg), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(doltCfg, "config_global.json"), []byte(cfg), 0o644); err != nil {
 		t.Fatalf("writing dolt config: %v", err)
 	}
 	return home
@@ -74,7 +74,7 @@ func createDoltSource(t *testing.T, baseDir, org, db string) []string {
 
 	// Push to remote store.
 	storeDir := filepath.Join(baseDir, org, db)
-	if err := os.MkdirAll(storeDir, 0755); err != nil {
+	if err := os.MkdirAll(storeDir, 0o755); err != nil {
 		t.Fatalf("creating store dir: %v", err)
 	}
 	storeURL := fmt.Sprintf("file://%s", storeDir)
@@ -101,7 +101,7 @@ func createGitSource(t *testing.T, baseDir, org, db string) []string {
 
 	// Init bare git repo.
 	gitDir := filepath.Join(baseDir, org, db+".git")
-	if err := os.MkdirAll(gitDir, 0755); err != nil {
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
 		t.Fatalf("creating git dir: %v", err)
 	}
 	run(t, env, "", false, "git", "init", "--bare", gitDir)
@@ -118,7 +118,7 @@ func createGitSource(t *testing.T, baseDir, org, db string) []string {
 func run(t *testing.T, env []string, dir string, mkDir bool, name string, args ...string) string {
 	t.Helper()
 	if mkDir && dir != "" {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("creating dir %s: %v", dir, err)
 		}
 	}

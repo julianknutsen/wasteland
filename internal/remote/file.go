@@ -51,7 +51,7 @@ func (f *FileProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	}
 
 	// Create destination remote store directory and push into it.
-	if err := os.MkdirAll(destPath, 0755); err != nil {
+	if err := os.MkdirAll(destPath, 0o755); err != nil {
 		return fmt.Errorf("creating fork remote store: %w", err)
 	}
 

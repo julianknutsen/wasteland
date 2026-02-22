@@ -5,12 +5,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/wasteland/internal/federation"
 	"github.com/steveyegge/wasteland/internal/style"
-	"github.com/steveyegge/wasteland/internal/xdg"
 )
 
 func newSyncCmd(stdout, stderr io.Writer) *cobra.Command {
@@ -29,7 +26,7 @@ EXAMPLES:
   wl sync                # Pull upstream changes
   wl sync --dry-run      # Show what would change`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSync(stdout, stderr, dryRun)
+			return runSync(cmd, stdout, stderr, dryRun)
 		},
 	}
 
@@ -38,22 +35,17 @@ EXAMPLES:
 	return cmd
 }
 
-func runSync(stdout, stderr io.Writer, dryRun bool) error {
+func runSync(cmd *cobra.Command, stdout, stderr io.Writer, dryRun bool) error {
 	doltPath, err := exec.LookPath("dolt")
 	if err != nil {
 		return fmt.Errorf("dolt not found in PATH — install from https://docs.dolthub.com/introduction/installation")
 	}
 
-	// Try loading wasteland config first (set by wl join)
-	forkDir := ""
-	if cfg, err := federation.LoadConfig(); err == nil {
-		forkDir = cfg.LocalDir
+	cfg, err := resolveWasteland(cmd)
+	if err != nil {
+		return fmt.Errorf("loading wasteland config: %w", err)
 	}
-
-	// Fall back to standard locations
-	if forkDir == "" {
-		forkDir = findWLCommonsFork()
-	}
+	forkDir := cfg.LocalDir
 
 	if forkDir == "" {
 		return fmt.Errorf("no local wl-commons fork found\n\nJoin a wasteland first: wl join <org/db>")
@@ -115,21 +107,4 @@ func runSync(stdout, stderr io.Writer, dryRun bool) error {
 	}
 
 	return nil
-}
-
-func findWLCommonsFork() string {
-	dataDir := xdg.DataDir()
-	candidates := []string{
-		filepath.Join(dataDir, "wl-commons"),
-		filepath.Join(os.Getenv("HOME"), "wl-commons"),
-	}
-
-	for _, dir := range candidates {
-		doltDir := filepath.Join(dir, ".dolt")
-		if info, err := os.Stat(doltDir); err == nil && info.IsDir() {
-			return dir
-		}
-	}
-
-	return ""
 }

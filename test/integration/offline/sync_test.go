@@ -15,7 +15,7 @@ func TestSyncFromUpstream(t *testing.T) {
 			env.joinWasteland(t, upstream, forkOrg)
 
 			// Verify seed data is in the fork clone (local_dir from config).
-			cfg := env.loadConfig(t)
+			cfg := env.loadConfig(t, upstream)
 			forkDir := cfg["local_dir"].(string)
 
 			raw := doltSQL(t, forkDir, "SELECT COUNT(*) FROM wanted WHERE id='w-seed001'")
@@ -30,7 +30,7 @@ VALUES ('w-new0001', 'New upstream item', 'open', 'bug', 1, 'small', NOW(), NOW(
 CALL DOLT_ADD('-A');
 CALL DOLT_COMMIT('-m', 'Add new upstream data');
 `
-			env.pushToUpstreamStore(t, newDataSQL)
+			env.pushToUpstreamStore(t, upstreamOrg, upstreamDB, newDataSQL)
 
 			// Verify fork does NOT have the new data yet.
 			raw = doltSQL(t, forkDir, "SELECT COUNT(*) FROM wanted WHERE id='w-new0001'")
@@ -62,7 +62,7 @@ func TestSyncDryRun(t *testing.T) {
 			env.createUpstreamStoreWithData(t, upstreamOrg, upstreamDB)
 			env.joinWasteland(t, upstream, forkOrg)
 
-			cfg := env.loadConfig(t)
+			cfg := env.loadConfig(t, upstream)
 			forkDir := cfg["local_dir"].(string)
 
 			// Push new data to upstream.
@@ -71,7 +71,7 @@ VALUES ('w-dry0001', 'Dry run item', 'open', 'feature', 2, 'medium', NOW(), NOW(
 CALL DOLT_ADD('-A');
 CALL DOLT_COMMIT('-m', 'Add dry run data');
 `
-			env.pushToUpstreamStore(t, newDataSQL)
+			env.pushToUpstreamStore(t, upstreamOrg, upstreamDB, newDataSQL)
 
 			// Run wl sync --dry-run.
 			stdout, stderr, err := runWL(t, env, "sync", "--dry-run")

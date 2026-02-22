@@ -2,6 +2,7 @@ package federation
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -146,27 +147,32 @@ func (f *FakeDoltCLI) AddUpstreamRemote(localDir, remoteURL string) error {
 
 // FakeConfigStore is a test double for ConfigStore.
 type FakeConfigStore struct {
-	mu     sync.Mutex
-	Config *Config // stored config (nil = not joined)
+	mu      sync.Mutex
+	Configs map[string]*Config // upstream path -> Config
 
-	LoadErr error
-	SaveErr error
+	LoadErr   error
+	SaveErr   error
+	DeleteErr error
+	ListErr   error
 }
 
 func NewFakeConfigStore() *FakeConfigStore {
-	return &FakeConfigStore{}
+	return &FakeConfigStore{
+		Configs: make(map[string]*Config),
+	}
 }
 
-func (f *FakeConfigStore) Load() (*Config, error) {
+func (f *FakeConfigStore) Load(upstream string) (*Config, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.LoadErr != nil {
 		return nil, f.LoadErr
 	}
-	if f.Config == nil {
+	cfg, ok := f.Configs[upstream]
+	if !ok {
 		return nil, ErrNotJoined
 	}
-	return f.Config, nil
+	return cfg, nil
 }
 
 func (f *FakeConfigStore) Save(cfg *Config) error {
@@ -175,6 +181,33 @@ func (f *FakeConfigStore) Save(cfg *Config) error {
 	if f.SaveErr != nil {
 		return f.SaveErr
 	}
-	f.Config = cfg
+	f.Configs[cfg.Upstream] = cfg
 	return nil
+}
+
+func (f *FakeConfigStore) Delete(upstream string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.DeleteErr != nil {
+		return f.DeleteErr
+	}
+	if _, ok := f.Configs[upstream]; !ok {
+		return fmt.Errorf("%w: %s", ErrNotJoined, upstream)
+	}
+	delete(f.Configs, upstream)
+	return nil
+}
+
+func (f *FakeConfigStore) List() ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ListErr != nil {
+		return nil, f.ListErr
+	}
+	var upstreams []string
+	for k := range f.Configs {
+		upstreams = append(upstreams, k)
+	}
+	sort.Strings(upstreams)
+	return upstreams, nil
 }

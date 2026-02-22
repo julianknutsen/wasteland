@@ -9,7 +9,6 @@ import (
 	"github.com/steveyegge/wasteland/internal/commons"
 	"github.com/steveyegge/wasteland/internal/federation"
 	"github.com/steveyegge/wasteland/internal/style"
-	"github.com/steveyegge/wasteland/internal/xdg"
 )
 
 func newPostCmd(stdout, stderr io.Writer) *cobra.Command {
@@ -39,7 +38,7 @@ Examples:
   wl post --title "Add federation sync" --type feature --priority 1 --effort large
   wl post --title "Update docs" --tags "docs,federation" --effort small`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runPost(stdout, stderr, title, description, project, itemType, priority, effort, tags)
+			return runPost(cmd, stdout, stderr, title, description, project, itemType, priority, effort, tags)
 		},
 	}
 
@@ -56,7 +55,7 @@ Examples:
 	return cmd
 }
 
-func runPost(stdout, stderr io.Writer, title, description, project, itemType string, priority int, effort, tags string) error {
+func runPost(cmd *cobra.Command, stdout, stderr io.Writer, title, description, project, itemType string, priority int, effort, tags string) error {
 	var tagList []string
 	if tags != "" {
 		for _, t := range strings.Split(tags, ",") {
@@ -71,13 +70,14 @@ func runPost(stdout, stderr io.Writer, title, description, project, itemType str
 		return err
 	}
 
-	dataDir := xdg.DataDir()
-	store := commons.NewWLCommons(dataDir)
-
-	wlCfg, err := federation.LoadConfig()
+	wlCfg, err := resolveWasteland(cmd)
 	if err != nil {
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
+
+	org, db, _ := federation.ParseUpstream(wlCfg.Upstream)
+	commonsDir := federation.WLCommonsDir(org, db)
+	store := commons.NewWLCommons(commonsDir)
 
 	item := &commons.WantedItem{
 		ID:          commons.GenerateWantedID(title),
