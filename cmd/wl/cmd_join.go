@@ -150,7 +150,8 @@ func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, for
 	fmt.Fprintf(stdout, "Joining wasteland %s (fork to %s/%s)...\n", upstream, forkOrg, dbName)
 	cfg, err := svc.Join(upstream, forkOrg, handle, displayName, email, wlVersion)
 	if err != nil {
-		return err
+		fmt.Fprintf(stderr, "wl join: %v\n", err)
+		return errExit
 	}
 
 	fmt.Fprintf(stdout, "\n%s Joined wasteland: %s\n", style.Bold.Render("✓"), upstream)

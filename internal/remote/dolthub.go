@@ -68,6 +68,7 @@ func (d *DoltHubProvider) Fork(fromOrg, fromDB, toOrg string) error {
 		return fmt.Errorf("creating fork request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("authorization", "token "+d.token)
 	req.Header.Set("Cookie", "dolthubToken="+d.token)
 
 	client := &http.Client{Timeout: 60 * time.Second}

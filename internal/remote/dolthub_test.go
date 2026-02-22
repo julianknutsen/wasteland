@@ -27,10 +27,9 @@ func TestDoltHubProvider_Fork(t *testing.T) {
 					t.Errorf("expected POST, got %s", r.Method)
 				}
 
-				// Verify cookie auth.
-				cookie := r.Header.Get("Cookie")
-				if !strings.Contains(cookie, "dolthubToken=test-token") {
-					t.Errorf("expected dolthubToken cookie, got %q", cookie)
+				// Verify auth header.
+				if r.Header.Get("authorization") != "token test-token" {
+					t.Errorf("expected auth header, got %q", r.Header.Get("authorization"))
 				}
 
 				// Verify GraphQL request body.
