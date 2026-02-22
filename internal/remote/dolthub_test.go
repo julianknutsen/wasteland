@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -14,9 +15,9 @@ func TestDoltHubProvider_Fork(t *testing.T) {
 		body       string
 		wantError  bool
 	}{
-		{"success", 200, `{"status":"ok"}`, false},
-		{"already exists", 409, `{"message":"already exists"}`, false},
-		{"forbidden", 403, `{"message":"forbidden"}`, true},
+		{"success", 200, `{"data":{"createFork":{"forkOperationName":"op-123"}}}`, false},
+		{"already exists", 200, `{"errors":[{"message":"database has already been forked"}]}`, false},
+		{"forbidden", 200, `{"errors":[{"message":"forbidden"}]}`, true},
 	}
 
 	for _, tt := range tests {
@@ -25,19 +26,30 @@ func TestDoltHubProvider_Fork(t *testing.T) {
 				if r.Method != "POST" {
 					t.Errorf("expected POST, got %s", r.Method)
 				}
-				if r.URL.Path != "/database/fork" {
-					t.Errorf("expected /database/fork, got %s", r.URL.Path)
-				}
-				if r.Header.Get("authorization") != "token test-token" {
-					t.Errorf("expected auth header, got %q", r.Header.Get("authorization"))
+
+				// Verify cookie auth.
+				cookie := r.Header.Get("Cookie")
+				if !strings.Contains(cookie, "dolthubToken=test-token") {
+					t.Errorf("expected dolthubToken cookie, got %q", cookie)
 				}
 
-				var body map[string]string
-				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				// Verify GraphQL request body.
+				var gqlReq graphqlRequest
+				if err := json.NewDecoder(r.Body).Decode(&gqlReq); err != nil {
 					t.Errorf("decoding request body: %v", err)
 				}
-				if body["from_owner"] != "steveyegge" {
-					t.Errorf("from_owner = %q, want %q", body["from_owner"], "steveyegge")
+				if !strings.Contains(gqlReq.Query, "createFork") {
+					t.Errorf("query should contain createFork, got %q", gqlReq.Query)
+				}
+				vars := gqlReq.Variables
+				if vars["parentOwnerName"] != "steveyegge" {
+					t.Errorf("parentOwnerName = %q, want %q", vars["parentOwnerName"], "steveyegge")
+				}
+				if vars["parentRepoName"] != "wl-commons" {
+					t.Errorf("parentRepoName = %q, want %q", vars["parentRepoName"], "wl-commons")
+				}
+				if vars["ownerName"] != "alice-dev" {
+					t.Errorf("ownerName = %q, want %q", vars["ownerName"], "alice-dev")
 				}
 
 				w.WriteHeader(tt.statusCode)
@@ -45,9 +57,9 @@ func TestDoltHubProvider_Fork(t *testing.T) {
 			}))
 			defer server.Close()
 
-			oldBase := dolthubAPIBase
-			dolthubAPIBase = server.URL
-			defer func() { dolthubAPIBase = oldBase }()
+			oldURL := dolthubGraphQLURL
+			dolthubGraphQLURL = server.URL
+			defer func() { dolthubGraphQLURL = oldURL }()
 
 			provider := NewDoltHubProvider("test-token")
 			err := provider.Fork("steveyegge", "wl-commons", "alice-dev")
@@ -58,6 +70,24 @@ func TestDoltHubProvider_Fork(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+func TestDoltHubProvider_Fork_HTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(500)
+		_, _ = w.Write([]byte("internal server error"))
+	}))
+	defer server.Close()
+
+	oldURL := dolthubGraphQLURL
+	dolthubGraphQLURL = server.URL
+	defer func() { dolthubGraphQLURL = oldURL }()
+
+	provider := NewDoltHubProvider("test-token")
+	err := provider.Fork("org", "db", "fork-org")
+	if err == nil {
+		t.Error("expected error for HTTP 500")
 	}
 }
 
