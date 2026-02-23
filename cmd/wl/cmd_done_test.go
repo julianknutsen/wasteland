@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -56,6 +57,25 @@ func TestSubmitDone_Success(t *testing.T) {
 	item, _ := store.QueryWanted("w-abc")
 	if item.Status != "in_review" {
 		t.Errorf("Status = %q, want %q", item.Status, "in_review")
+	}
+}
+
+func TestSubmitDone_StoreError(t *testing.T) {
+	t.Parallel()
+	store := newFakeWLCommonsStore()
+	store.SubmitCompletionErr = fmt.Errorf("completion store error")
+	_ = store.InsertWanted(&commons.WantedItem{
+		ID:    "w-abc",
+		Title: "Fix bug",
+	})
+	_ = store.ClaimWanted("w-abc", "my-rig")
+
+	err := submitDone(store, "w-abc", "my-rig", "https://github.com/pr/1", "c-test")
+	if err == nil {
+		t.Fatal("submitDone() expected error when SubmitCompletion fails")
+	}
+	if !strings.Contains(err.Error(), "completion store error") {
+		t.Errorf("error = %q, want to contain 'completion store error'", err.Error())
 	}
 }
 

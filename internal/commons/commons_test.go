@@ -1,6 +1,7 @@
 package commons
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -148,6 +149,29 @@ func TestGenerateWantedID_Format(t *testing.T) {
 		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Errorf("GenerateWantedID() contains non-hex char %q in %q", string(c), id)
 		}
+	}
+}
+
+func TestIsNothingToCommit_MatchingError(t *testing.T) {
+	t.Parallel()
+	err := fmt.Errorf("error: Nothing to commit")
+	if !isNothingToCommit(err) {
+		t.Error("isNothingToCommit should return true for matching error")
+	}
+}
+
+func TestIsNothingToCommit_NonMatchingError(t *testing.T) {
+	t.Parallel()
+	err := fmt.Errorf("some other database error")
+	if isNothingToCommit(err) {
+		t.Error("isNothingToCommit should return false for non-matching error")
+	}
+}
+
+func TestIsNothingToCommit_Nil(t *testing.T) {
+	t.Parallel()
+	if isNothingToCommit(nil) {
+		t.Error("isNothingToCommit should return false for nil error")
 	}
 }
 

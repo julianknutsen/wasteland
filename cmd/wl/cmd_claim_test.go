@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/steveyegge/wasteland/internal/commons"
@@ -29,6 +31,24 @@ func TestClaimWanted_Success(t *testing.T) {
 	}
 	if updated.ClaimedBy != "my-rig" {
 		t.Errorf("ClaimedBy = %q, want %q", updated.ClaimedBy, "my-rig")
+	}
+}
+
+func TestClaimWanted_StoreError(t *testing.T) {
+	t.Parallel()
+	store := newFakeWLCommonsStore()
+	store.ClaimWantedErr = fmt.Errorf("claim store error")
+	_ = store.InsertWanted(&commons.WantedItem{
+		ID:    "w-abc123",
+		Title: "Fix auth bug",
+	})
+
+	_, err := claimWanted(store, "w-abc123", "my-rig")
+	if err == nil {
+		t.Fatal("claimWanted() expected error when ClaimWanted fails")
+	}
+	if !strings.Contains(err.Error(), "claim store error") {
+		t.Errorf("error = %q, want to contain 'claim store error'", err.Error())
 	}
 }
 

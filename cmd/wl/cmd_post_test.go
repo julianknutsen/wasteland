@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/steveyegge/wasteland/internal/commons"
@@ -65,6 +67,25 @@ func TestPostWanted_EmptyTitle(t *testing.T) {
 	err := postWanted(store, item)
 	if err == nil {
 		t.Fatal("postWanted() expected error for empty title")
+	}
+}
+
+func TestPostWanted_InsertFails(t *testing.T) {
+	t.Parallel()
+	store := newFakeWLCommonsStore()
+	store.InsertWantedErr = fmt.Errorf("database write error")
+
+	item := &commons.WantedItem{
+		ID:    "w-test",
+		Title: "Test item",
+	}
+
+	err := postWanted(store, item)
+	if err == nil {
+		t.Fatal("postWanted() expected error when InsertWanted fails")
+	}
+	if !strings.Contains(err.Error(), "database write error") {
+		t.Errorf("error = %q, want to contain 'database write error'", err.Error())
 	}
 }
 
