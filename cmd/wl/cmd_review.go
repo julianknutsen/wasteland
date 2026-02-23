@@ -231,7 +231,8 @@ func runGitHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch stri
 	prTitle := fmt.Sprintf("[wl] %s", title)
 
 	// Create git-native branch on fork + cross-fork PR to upstream.
-	prURL, err := createGitHubPR(ghPath, cfg.GitHubRepo, cfg.ForkOrg, cfg.ForkDB, branch, prTitle, mdBuf.String(), stdout)
+	client := newGHClient(ghPath)
+	prURL, err := createGitHubPR(client, cfg.GitHubRepo, cfg.ForkOrg, cfg.ForkDB, branch, prTitle, mdBuf.String(), stdout)
 	if err != nil {
 		return err
 	}
@@ -240,113 +241,54 @@ func runGitHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch stri
 	return nil
 }
 
-func createGitHubPR(ghPath, upstreamRepo, forkOrg, forkDB, wlBranch, title, mdBody string, stdout io.Writer) (string, error) {
+func createGitHubPR(client GitHubPRClient, upstreamRepo, forkOrg, forkDB, wlBranch, title, mdBody string, stdout io.Writer) (string, error) {
 	forkRepo := forkOrg + "/" + forkDB
 	wantedID := extractWantedID(wlBranch)
 	markerPath := ".wasteland/" + wantedID + ".md"
 
 	// 1. Get fork's default branch SHA.
 	fmt.Fprintln(stdout, "  Getting fork HEAD...")
-	refData, err := ghAPICall(ghPath, "GET", fmt.Sprintf("repos/%s/git/ref/heads/main", forkRepo), "")
+	headSHA, err := client.GetRef(forkRepo, "heads/main")
 	if err != nil {
 		return "", fmt.Errorf("getting fork HEAD: %w", err)
 	}
-	var ref struct {
-		Object struct {
-			SHA string `json:"sha"`
-		} `json:"object"`
-	}
-	if err := json.Unmarshal(refData, &ref); err != nil {
-		return "", fmt.Errorf("parsing fork HEAD: %w", err)
-	}
-	headSHA := ref.Object.SHA
 
 	// 2. Get base tree SHA from the commit.
-	commitData, err := ghAPICall(ghPath, "GET", fmt.Sprintf("repos/%s/git/commits/%s", forkRepo, headSHA), "")
+	baseTreeSHA, err := client.GetCommitTree(forkRepo, headSHA)
 	if err != nil {
 		return "", fmt.Errorf("getting base commit: %w", err)
 	}
-	var commitObj struct {
-		Tree struct {
-			SHA string `json:"sha"`
-		} `json:"tree"`
-	}
-	if err := json.Unmarshal(commitData, &commitObj); err != nil {
-		return "", fmt.Errorf("parsing base commit: %w", err)
-	}
-	baseTreeSHA := commitObj.Tree.SHA
 
 	// 3. Create blob with marker file content.
 	fmt.Fprintln(stdout, "  Creating marker file...")
-	blobBody, _ := json.Marshal(map[string]string{
-		"content":  mdBody,
-		"encoding": "utf-8",
-	})
-	blobData, err := ghAPICall(ghPath, "POST", fmt.Sprintf("repos/%s/git/blobs", forkRepo), string(blobBody))
+	blobSHA, err := client.CreateBlob(forkRepo, mdBody, "utf-8")
 	if err != nil {
 		return "", fmt.Errorf("creating blob: %w", err)
 	}
-	var blob struct {
-		SHA string `json:"sha"`
-	}
-	if err := json.Unmarshal(blobData, &blob); err != nil {
-		return "", fmt.Errorf("parsing blob response: %w", err)
-	}
 
 	// 4. Create tree with marker file.
-	treeBody, _ := json.Marshal(map[string]interface{}{
-		"base_tree": baseTreeSHA,
-		"tree": []map[string]string{{
-			"path": markerPath,
-			"mode": "100644",
-			"type": "blob",
-			"sha":  blob.SHA,
-		}},
-	})
-	treeData, err := ghAPICall(ghPath, "POST", fmt.Sprintf("repos/%s/git/trees", forkRepo), string(treeBody))
+	treeSHA, err := client.CreateTree(forkRepo, baseTreeSHA, []TreeEntry{{
+		Path: markerPath,
+		Mode: "100644",
+		Type: "blob",
+		SHA:  blobSHA,
+	}})
 	if err != nil {
 		return "", fmt.Errorf("creating tree: %w", err)
-	}
-	var tree struct {
-		SHA string `json:"sha"`
-	}
-	if err := json.Unmarshal(treeData, &tree); err != nil {
-		return "", fmt.Errorf("parsing tree response: %w", err)
 	}
 
 	// 5. Create commit on fork.
 	fmt.Fprintln(stdout, "  Creating commit...")
-	newCommitBody, _ := json.Marshal(map[string]interface{}{
-		"message": fmt.Sprintf("wl review: %s", wlBranch),
-		"tree":    tree.SHA,
-		"parents": []string{headSHA},
-	})
-	newCommitData, err := ghAPICall(ghPath, "POST", fmt.Sprintf("repos/%s/git/commits", forkRepo), string(newCommitBody))
+	commitSHA, err := client.CreateCommit(forkRepo, fmt.Sprintf("wl review: %s", wlBranch), treeSHA, []string{headSHA})
 	if err != nil {
 		return "", fmt.Errorf("creating commit: %w", err)
-	}
-	var newCommit struct {
-		SHA string `json:"sha"`
-	}
-	if err := json.Unmarshal(newCommitData, &newCommit); err != nil {
-		return "", fmt.Errorf("parsing commit response: %w", err)
 	}
 
 	// 6. Create or update ref on fork.
 	fmt.Fprintln(stdout, "  Pushing branch to fork...")
-	refBody, _ := json.Marshal(map[string]string{
-		"ref": "refs/heads/" + wlBranch,
-		"sha": newCommit.SHA,
-	})
-	_, err = ghAPICall(ghPath, "POST", fmt.Sprintf("repos/%s/git/refs", forkRepo), string(refBody))
-	if err != nil {
+	if err := client.CreateRef(forkRepo, "refs/heads/"+wlBranch, commitSHA); err != nil {
 		// Ref may already exist — force-update it.
-		updateBody, _ := json.Marshal(map[string]interface{}{
-			"sha":   newCommit.SHA,
-			"force": true,
-		})
-		_, err = ghAPICall(ghPath, "PATCH", fmt.Sprintf("repos/%s/git/refs/heads/%s", forkRepo, wlBranch), string(updateBody))
-		if err != nil {
+		if err := client.UpdateRef(forkRepo, "heads/"+wlBranch, commitSHA, true); err != nil {
 			return "", fmt.Errorf("creating/updating ref: %w", err)
 		}
 	}
@@ -355,33 +297,17 @@ func createGitHubPR(ghPath, upstreamRepo, forkOrg, forkDB, wlBranch, title, mdBo
 	fmt.Fprintln(stdout, "  Opening PR...")
 	head := forkOrg + ":" + wlBranch
 
-	existingURL, existingNumber := findExistingPR(ghPath, upstreamRepo, head)
+	existingURL, existingNumber := client.FindPR(upstreamRepo, head)
 	if existingNumber != "" {
-		// Update existing PR body.
-		updateBody, _ := json.Marshal(map[string]string{
-			"body": mdBody,
-		})
-		_, _ = ghAPICall(ghPath, "PATCH", fmt.Sprintf("repos/%s/pulls/%s", upstreamRepo, existingNumber), string(updateBody))
+		_ = client.UpdatePR(upstreamRepo, existingNumber, map[string]string{"body": mdBody})
 		return existingURL, nil
 	}
 
-	prBody, _ := json.Marshal(map[string]string{
-		"title": title,
-		"body":  mdBody,
-		"head":  head,
-		"base":  "main",
-	})
-	prData, err := ghAPICall(ghPath, "POST", fmt.Sprintf("repos/%s/pulls", upstreamRepo), string(prBody))
+	prURL, err := client.CreatePR(upstreamRepo, title, mdBody, head, "main")
 	if err != nil {
 		return "", fmt.Errorf("creating PR: %w", err)
 	}
-	var pr struct {
-		HTMLURL string `json:"html_url"`
-	}
-	if err := json.Unmarshal(prData, &pr); err != nil {
-		return "", fmt.Errorf("parsing PR response: %w", err)
-	}
-	return pr.HTMLURL, nil
+	return prURL, nil
 }
 
 // findExistingPR checks for an open PR on upstream with the given head ref.

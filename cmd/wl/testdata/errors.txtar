@@ -197,6 +197,30 @@ stderr 'requires a branch'
 ! exec wl review wl/rig/w-abc --gh-pr --md
 stderr 'mutually exclusive'
 
+# review --gh-pr with --json (mutually exclusive).
+! exec wl review wl/rig/w-abc --gh-pr --json
+stderr 'mutually exclusive'
+
+# review --gh-pr with --stat (mutually exclusive).
+! exec wl review wl/rig/w-abc --gh-pr --stat
+stderr 'mutually exclusive'
+
+# review --json with --stat (mutually exclusive).
+! exec wl review wl/rig/w-abc --json --stat
+stderr 'mutually exclusive'
+
+# review too many args.
+! exec wl review a b
+stderr 'at most 1 arg'
+
+# browse with extra args.
+! exec wl browse extra
+stderr 'unknown command "extra"'
+
+# sync with extra args.
+! exec wl sync extra
+stderr 'unknown command "extra"'
+
 # leave not joined (no arg).
 ! exec wl leave
 stderr 'not joined'

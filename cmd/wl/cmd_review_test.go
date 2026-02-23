@@ -332,6 +332,132 @@ func TestCloseGitHubPR(t *testing.T) {
 	}
 }
 
+func TestCreateGitHubPR(t *testing.T) {
+	baseFake := func() *fakeGitHubPRClient {
+		return &fakeGitHubPRClient{
+			prs:              map[string]fakePR{},
+			GetRefSHA:        "abc123",
+			GetCommitTreeSHA: "tree456",
+			CreateBlobSHA:    "blob789",
+			CreateTreeSHA:    "newtree",
+			CreateCommitSHA:  "newcommit",
+			CreatePRURL:      "https://github.com/upstream/repo/pull/42",
+		}
+	}
+
+	tests := []struct {
+		name          string
+		setup         func(*fakeGitHubPRClient)
+		existingPR    *fakePR // if set, FindPR returns this
+		wantURL       string
+		wantErr       string
+		wantCreateRef int
+		wantUpdateRef int
+		wantCreatePR  int
+		wantUpdatePR  int
+	}{
+		{
+			name:          "new PR success",
+			wantURL:       "https://github.com/upstream/repo/pull/42",
+			wantCreateRef: 1,
+			wantCreatePR:  1,
+		},
+		{
+			name:          "existing PR updates body",
+			existingPR:    &fakePR{URL: "https://github.com/upstream/repo/pull/7", Number: "7"},
+			wantURL:       "https://github.com/upstream/repo/pull/7",
+			wantCreateRef: 1,
+			wantUpdatePR:  1,
+		},
+		{
+			name: "ref exists falls back to UpdateRef",
+			setup: func(f *fakeGitHubPRClient) {
+				f.CreateRefErr = fmt.Errorf("ref already exists")
+			},
+			wantURL:       "https://github.com/upstream/repo/pull/42",
+			wantCreateRef: 1,
+			wantUpdateRef: 1,
+			wantCreatePR:  1,
+		},
+		{
+			name: "GetRef fails",
+			setup: func(f *fakeGitHubPRClient) {
+				f.GetRefErr = fmt.Errorf("not found")
+			},
+			wantErr: "getting fork HEAD",
+		},
+		{
+			name: "CreateBlob fails",
+			setup: func(f *fakeGitHubPRClient) {
+				f.CreateBlobErr = fmt.Errorf("quota exceeded")
+			},
+			wantErr: "creating blob",
+		},
+		{
+			name: "CreateRef and UpdateRef both fail",
+			setup: func(f *fakeGitHubPRClient) {
+				f.CreateRefErr = fmt.Errorf("ref exists")
+				f.UpdateRefErr = fmt.Errorf("permission denied")
+			},
+			wantErr:       "creating/updating ref",
+			wantCreateRef: 1,
+			wantUpdateRef: 1,
+		},
+		{
+			name: "CreatePR fails",
+			setup: func(f *fakeGitHubPRClient) {
+				f.CreatePRErr = fmt.Errorf("validation failed")
+			},
+			wantErr:       "creating PR",
+			wantCreateRef: 1,
+			wantCreatePR:  1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client := baseFake()
+			if tc.existingPR != nil {
+				client.prs["myfork:wl/rig/w-123"] = *tc.existingPR
+			}
+			if tc.setup != nil {
+				tc.setup(client)
+			}
+
+			var buf bytes.Buffer
+			url, err := createGitHubPR(client, "upstream/repo", "myfork", "forkdb", "wl/rig/w-123", "[wl] Test", "## diff", &buf)
+
+			if tc.wantErr != "" {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("error %q should contain %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if url != tc.wantURL {
+				t.Errorf("got URL %q, want %q", url, tc.wantURL)
+			}
+			if len(client.CreateRefCalls) != tc.wantCreateRef {
+				t.Errorf("CreateRef calls = %d, want %d", len(client.CreateRefCalls), tc.wantCreateRef)
+			}
+			if len(client.UpdateRefCalls) != tc.wantUpdateRef {
+				t.Errorf("UpdateRef calls = %d, want %d", len(client.UpdateRefCalls), tc.wantUpdateRef)
+			}
+			if len(client.CreatePRCalls) != tc.wantCreatePR {
+				t.Errorf("CreatePR calls = %d, want %d", len(client.CreatePRCalls), tc.wantCreatePR)
+			}
+			if len(client.UpdatePRCalls) != tc.wantUpdatePR {
+				t.Errorf("UpdatePR calls = %d, want %d", len(client.UpdatePRCalls), tc.wantUpdatePR)
+			}
+		})
+	}
+}
+
 func TestExtractWantedID(t *testing.T) {
 	tests := []struct {
 		branch, want string
