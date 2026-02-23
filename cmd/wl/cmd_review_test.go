@@ -72,6 +72,76 @@ func TestReviewGhPRRequiresBranch(t *testing.T) {
 	}
 }
 
+func TestParseReviewStatus(t *testing.T) {
+	tests := []struct {
+		name                         string
+		json                         string
+		wantApproval, wantChangesReq bool
+	}{
+		{
+			name:         "empty reviews",
+			json:         `[]`,
+			wantApproval: false, wantChangesReq: false,
+		},
+		{
+			name:         "single approval",
+			json:         `[{"user":{"login":"alice"},"state":"APPROVED"}]`,
+			wantApproval: true, wantChangesReq: false,
+		},
+		{
+			name:         "single changes requested",
+			json:         `[{"user":{"login":"alice"},"state":"CHANGES_REQUESTED"}]`,
+			wantApproval: false, wantChangesReq: true,
+		},
+		{
+			name: "changes then approval same user",
+			json: `[
+				{"user":{"login":"alice"},"state":"CHANGES_REQUESTED"},
+				{"user":{"login":"alice"},"state":"APPROVED"}
+			]`,
+			wantApproval: true, wantChangesReq: false,
+		},
+		{
+			name: "approval then changes same user",
+			json: `[
+				{"user":{"login":"alice"},"state":"APPROVED"},
+				{"user":{"login":"alice"},"state":"CHANGES_REQUESTED"}
+			]`,
+			wantApproval: false, wantChangesReq: true,
+		},
+		{
+			name: "mixed users",
+			json: `[
+				{"user":{"login":"alice"},"state":"APPROVED"},
+				{"user":{"login":"bob"},"state":"CHANGES_REQUESTED"}
+			]`,
+			wantApproval: true, wantChangesReq: true,
+		},
+		{
+			name:         "comment only ignored",
+			json:         `[{"user":{"login":"alice"},"state":"COMMENTED"}]`,
+			wantApproval: false, wantChangesReq: false,
+		},
+		{
+			name:         "invalid JSON",
+			json:         `not json`,
+			wantApproval: false, wantChangesReq: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotApproval, gotChangesReq := parseReviewStatus([]byte(tc.json))
+			if gotApproval != tc.wantApproval {
+				t.Errorf("hasApproval = %v, want %v", gotApproval, tc.wantApproval)
+			}
+			if gotChangesReq != tc.wantChangesReq {
+				t.Errorf("hasChangesRequested = %v, want %v", gotChangesReq, tc.wantChangesReq)
+			}
+		})
+	}
+}
+
 func TestExtractWantedID(t *testing.T) {
 	tests := []struct {
 		branch, want string

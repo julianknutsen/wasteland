@@ -138,6 +138,26 @@ stderr 'accepts 1 arg'
 ! exec wl status w-abc
 stderr 'not joined'
 
+# approve with no args.
+! exec wl approve
+stderr 'accepts 1 arg'
+
+# approve not joined.
+! exec wl approve wl/some/branch
+stderr 'not joined'
+
+# request-changes with no args.
+! exec wl request-changes
+stderr 'accepts 1 arg'
+
+# request-changes missing --comment.
+! exec wl request-changes wl/some/branch
+stderr 'required flag.*"comment"'
+
+# request-changes not joined.
+! exec wl request-changes wl/some/branch --comment needs-work
+stderr 'not joined'
+
 # review not joined.
 ! exec wl review
 stderr 'not joined'

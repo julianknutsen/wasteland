@@ -453,6 +453,72 @@ func wantedTitleFromBranch(doltPath, dbDir, branch string) string {
 	return strings.TrimSpace(lines[1])
 }
 
+// submitPRReview submits a review on the GitHub PR for the given branch.
+// event must be "APPROVE" or "REQUEST_CHANGES".
+func submitPRReview(ghPath, upstreamRepo, forkOrg, branch, event, comment string) (string, error) {
+	head := forkOrg + ":" + branch
+	prURL, number := findExistingPR(ghPath, upstreamRepo, head)
+	if number == "" {
+		return "", fmt.Errorf("no open PR found for branch %s", branch)
+	}
+
+	reviewBody, _ := json.Marshal(map[string]string{
+		"event": event,
+		"body":  comment,
+	})
+	_, err := ghAPICall(ghPath, "POST", fmt.Sprintf("repos/%s/pulls/%s/reviews", upstreamRepo, number), string(reviewBody))
+	if err != nil {
+		return "", fmt.Errorf("submitting review: %w", err)
+	}
+	return prURL, nil
+}
+
+// parseReviewStatus parses GitHub review list JSON into approval state.
+// It tracks the latest review state per user and returns two independent bools.
+func parseReviewStatus(data []byte) (hasApproval, hasChangesRequested bool) {
+	var reviews []struct {
+		User  struct{ Login string } `json:"user"`
+		State string                 `json:"state"`
+	}
+	if err := json.Unmarshal(data, &reviews); err != nil {
+		return false, false
+	}
+
+	latest := map[string]string{}
+	for _, r := range reviews {
+		switch r.State {
+		case "APPROVED", "CHANGES_REQUESTED":
+			latest[r.User.Login] = r.State
+		}
+	}
+
+	for _, state := range latest {
+		switch state {
+		case "APPROVED":
+			hasApproval = true
+		case "CHANGES_REQUESTED":
+			hasChangesRequested = true
+		}
+	}
+	return hasApproval, hasChangesRequested
+}
+
+// prApprovalStatus checks the review status of a GitHub PR. Best-effort.
+// Silently returns (false, false) on any error.
+func prApprovalStatus(ghPath, upstreamRepo, forkOrg, branch string) (hasApproval, hasChangesRequested bool) {
+	head := forkOrg + ":" + branch
+	_, number := findExistingPR(ghPath, upstreamRepo, head)
+	if number == "" {
+		return false, false
+	}
+
+	data, err := ghAPICall(ghPath, "GET", fmt.Sprintf("repos/%s/pulls/%s/reviews", upstreamRepo, number), "")
+	if err != nil {
+		return false, false
+	}
+	return parseReviewStatus(data)
+}
+
 // closeGitHubPR finds and closes an open GitHub PR for the given branch.
 // Best-effort: failures print warnings but don't block the merge.
 func closeGitHubPR(ghPath, upstreamRepo, forkOrg, forkDB, branch string, stdout io.Writer) {

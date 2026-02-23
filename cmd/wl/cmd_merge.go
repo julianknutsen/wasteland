@@ -54,6 +54,18 @@ func runMerge(cmd *cobra.Command, stdout, _ io.Writer, branch string, noPush, ke
 		return fmt.Errorf("branch %q does not exist", branch)
 	}
 
+	// Best-effort: check PR approval status before merging.
+	if cfg.GitHubRepo != "" {
+		if ghPath, err := exec.LookPath("gh"); err == nil {
+			hasApproval, hasChangesRequested := prApprovalStatus(ghPath, cfg.GitHubRepo, cfg.ForkOrg, branch)
+			if hasChangesRequested {
+				fmt.Fprintf(stdout, "  %s PR has outstanding change requests\n", style.Warning.Render("⚠"))
+			} else if !hasApproval {
+				fmt.Fprintf(stdout, "  %s PR has no approvals\n", style.Warning.Render("⚠"))
+			}
+		}
+	}
+
 	if err := commons.MergeBranch(cfg.LocalDir, branch); err != nil {
 		return err
 	}
