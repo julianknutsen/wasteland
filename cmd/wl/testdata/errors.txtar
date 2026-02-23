@@ -146,6 +146,14 @@ stderr 'not joined'
 ! exec wl review wl/some/branch
 stderr 'not joined'
 
+# merge with no args.
+! exec wl merge
+stderr 'accepts 1 arg'
+
+# merge not joined.
+! exec wl merge wl/some/branch
+stderr 'not joined'
+
 # config get not joined.
 ! exec wl config get mode
 stderr 'not joined'

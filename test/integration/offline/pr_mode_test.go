@@ -242,6 +242,158 @@ func TestReviewShowsDiff(t *testing.T) {
 	}
 }
 
+func TestMergeBasic(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := forkCloneDir(t, env)
+
+			// Switch to PR mode and post.
+			setMode(t, env, upstream, "pr")
+
+			stdout, _, err := runWL(t, env, "post",
+				"--title", "Merge test item",
+				"--type", "feature",
+				"--no-push",
+			)
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+			branch := "wl/" + forkOrg + "/" + wantedID
+
+			// Item should NOT be on main yet.
+			raw := doltSQL(t, dbDir, "SELECT COUNT(*) FROM wanted WHERE id='"+wantedID+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) >= 2 && strings.TrimSpace(rows[1][0]) != "0" {
+				t.Errorf("item should not be on main before merge, got count: %s", rows[1][0])
+			}
+
+			// Merge.
+			stdout, stderr, err := runWL(t, env, "merge", branch, "--no-push")
+			if err != nil {
+				t.Fatalf("wl merge failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "Merged") {
+				t.Errorf("expected 'Merged' message, got: %s", stdout)
+			}
+			if !strings.Contains(stdout, "deleted") {
+				t.Errorf("expected branch deletion message, got: %s", stdout)
+			}
+
+			// Item should now be on main.
+			raw = doltSQL(t, dbDir, "SELECT id, title FROM wanted WHERE id='"+wantedID+"'")
+			rows = parseCSV(t, raw)
+			if len(rows) < 2 {
+				t.Fatalf("wanted item %s not found on main after merge", wantedID)
+			}
+			if rows[1][1] != "Merge test item" {
+				t.Errorf("title = %q, want %q", rows[1][1], "Merge test item")
+			}
+
+			// Branch should be gone.
+			raw = doltSQL(t, dbDir, "SELECT COUNT(*) FROM dolt_branches WHERE name='"+branch+"'")
+			rows = parseCSV(t, raw)
+			if len(rows) >= 2 && strings.TrimSpace(rows[1][0]) != "0" {
+				t.Errorf("branch %s should be deleted after merge", branch)
+			}
+		})
+	}
+}
+
+func TestMergeKeepBranch(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := forkCloneDir(t, env)
+
+			setMode(t, env, upstream, "pr")
+
+			stdout, _, err := runWL(t, env, "post",
+				"--title", "Keep branch test",
+				"--type", "bug",
+				"--no-push",
+			)
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+			branch := "wl/" + forkOrg + "/" + wantedID
+
+			// Merge with --keep-branch.
+			stdout, stderr, err := runWL(t, env, "merge", branch, "--keep-branch", "--no-push")
+			if err != nil {
+				t.Fatalf("wl merge failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+
+			// Branch should still exist.
+			raw := doltSQL(t, dbDir, "SELECT COUNT(*) FROM dolt_branches WHERE name='"+branch+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) < 2 || strings.TrimSpace(rows[1][0]) != "1" {
+				t.Errorf("branch %s should still exist with --keep-branch", branch)
+			}
+		})
+	}
+}
+
+func TestMergeNonExistentBranch(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+
+			_, _, err := runWL(t, env, "merge", "wl/fake/w-nonexistent", "--no-push")
+			if err == nil {
+				t.Fatal("merge of non-existent branch should fail")
+			}
+		})
+	}
+}
+
+func TestMergeFullLifecycle(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := forkCloneDir(t, env)
+
+			// PR mode: post → review --stat → merge → verify on main.
+			setMode(t, env, upstream, "pr")
+
+			stdout, _, err := runWL(t, env, "post",
+				"--title", "Full lifecycle PR",
+				"--type", "feature",
+				"--no-push",
+			)
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+			branch := "wl/" + forkOrg + "/" + wantedID
+
+			// Review should show diff.
+			stdout, stderr, err := runWL(t, env, "review", branch, "--stat")
+			if err != nil {
+				t.Fatalf("wl review --stat failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "wanted") {
+				t.Errorf("review stat should mention 'wanted', got: %s", stdout)
+			}
+
+			// Merge.
+			stdout, stderr, err = runWL(t, env, "merge", branch, "--no-push")
+			if err != nil {
+				t.Fatalf("wl merge failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+
+			// Verify on main.
+			raw := doltSQL(t, dbDir, "SELECT title FROM wanted WHERE id='"+wantedID+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) < 2 || rows[1][0] != "Full lifecycle PR" {
+				t.Errorf("item not found on main after merge")
+			}
+		})
+	}
+}
+
 func TestConfigSetGetMode(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {

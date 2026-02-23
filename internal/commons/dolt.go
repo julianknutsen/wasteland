@@ -174,6 +174,29 @@ func ListBranches(dbDir, prefix string) ([]string, error) {
 	return branches, nil
 }
 
+// MergeBranch merges a branch into main. If the merge produces conflicts
+// it aborts and returns an error. The caller must already be on main.
+func MergeBranch(dbDir, branch string) error {
+	escaped := strings.ReplaceAll(branch, "'", "''")
+	err := doltSQLScript(dbDir, fmt.Sprintf(
+		"CALL DOLT_CHECKOUT('main');\nCALL DOLT_MERGE('%s');", escaped,
+	))
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "conflict") {
+			_ = doltSQLScript(dbDir, "CALL DOLT_MERGE('--abort');")
+			return fmt.Errorf("merge conflict on branch %s: resolve manually or delete the branch", branch)
+		}
+		return fmt.Errorf("merging branch %s: %w", branch, err)
+	}
+	return nil
+}
+
+// DeleteBranch deletes a local branch.
+func DeleteBranch(dbDir, branch string) error {
+	escaped := strings.ReplaceAll(branch, "'", "''")
+	return doltSQLScript(dbDir, fmt.Sprintf("CALL DOLT_BRANCH('-D', '%s');", escaped))
+}
+
 // doltSQLQuery executes a SQL query and returns the raw CSV output.
 func doltSQLQuery(dbDir, query string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
