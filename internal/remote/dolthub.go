@@ -57,20 +57,137 @@ func (d *DoltHubProvider) DatabaseURL(org, db string) string {
 //
 // If DOLTHUB_SESSION_TOKEN is set (browser session cookie), uses the GraphQL
 // createFork mutation which preserves DoltHub fork metadata (parent link, PR
-// support). Otherwise checks if the fork already exists on DoltHub — if it
-// does, continues silently; if not, returns a ForkRequiredError with
-// instructions for the user to fork manually on dolthub.com.
+// support). Otherwise attempts the REST API fork endpoint using the standard
+// DOLTHUB_TOKEN. If the REST API fails due to auth/permission errors, falls
+// back to checking if the fork already exists and returns a ForkRequiredError
+// if not.
 func (d *DoltHubProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	sessionToken := os.Getenv("DOLTHUB_SESSION_TOKEN")
 	if sessionToken != "" {
 		return d.forkGraphQL(fromOrg, fromDB, toOrg, sessionToken)
 	}
+	return d.forkREST(fromOrg, fromDB, toOrg)
+}
 
-	// No session token — check if fork already exists.
-	if d.databaseExists(toOrg, fromDB) {
+// forkREST uses the DoltHub REST API to create a fork. It POSTs to the fork
+// endpoint and polls until the operation completes. Falls back to an
+// exists-check with ForkRequiredError if the API returns an auth error.
+func (d *DoltHubProvider) forkREST(fromOrg, fromDB, toOrg string) error {
+	reqBody, err := json.Marshal(map[string]string{
+		"ownerName":          toOrg,
+		"parentOwnerName":    fromOrg,
+		"parentDatabaseName": fromDB,
+	})
+	if err != nil {
+		return fmt.Errorf("marshaling REST fork request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", dolthubAPIBase+"/fork", bytes.NewReader(reqBody))
+	if err != nil {
+		return fmt.Errorf("creating REST fork request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("authorization", "token "+d.token)
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return d.forkRESTFallback(fromOrg, fromDB, toOrg,
+			fmt.Errorf("REST fork request failed: %w", err))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("reading REST fork response: %w", err)
+	}
+
+	if resp.StatusCode == 401 || resp.StatusCode == 403 {
+		return d.forkRESTFallback(fromOrg, fromDB, toOrg,
+			fmt.Errorf("REST fork auth error (HTTP %d): %s", resp.StatusCode, string(body)))
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// Check for "already exists" in error responses.
+		if strings.Contains(strings.ToLower(string(body)), "already exists") {
+			return nil
+		}
+		return d.forkRESTFallback(fromOrg, fromDB, toOrg,
+			fmt.Errorf("REST fork error (HTTP %d): %s", resp.StatusCode, string(body)))
+	}
+
+	var forkResp struct {
+		Status        string `json:"status"`
+		OperationName string `json:"operation_name"`
+	}
+	if err := json.Unmarshal(body, &forkResp); err != nil {
+		return fmt.Errorf("parsing REST fork response: %w", err)
+	}
+
+	// If the response already has a success status with no operation to poll, we're done.
+	if forkResp.OperationName == "" {
 		return nil
 	}
 
+	// Poll until the fork operation completes.
+	return d.pollForkOperation(forkResp.OperationName)
+}
+
+// pollForkOperation polls the fork endpoint until the operation completes.
+func (d *DoltHubProvider) pollForkOperation(operationName string) error {
+	client := &http.Client{Timeout: 30 * time.Second}
+	backoff := 500 * time.Millisecond
+	deadline := time.Now().Add(60 * time.Second)
+
+	for time.Now().Before(deadline) {
+		time.Sleep(backoff)
+
+		url := fmt.Sprintf("%s/fork?operationName=%s", dolthubAPIBase, operationName)
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return fmt.Errorf("creating fork poll request: %w", err)
+		}
+		req.Header.Set("authorization", "token "+d.token)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			if backoff < 8*time.Second {
+				backoff *= 2
+			}
+			continue
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			if backoff < 8*time.Second {
+				backoff *= 2
+			}
+			continue
+		}
+
+		var pollResp struct {
+			OwnerName    string `json:"owner_name"`
+			DatabaseName string `json:"database_name"`
+		}
+		if err := json.Unmarshal(body, &pollResp); err == nil &&
+			pollResp.OwnerName != "" && pollResp.DatabaseName != "" {
+			return nil
+		}
+
+		if backoff < 8*time.Second {
+			backoff *= 2
+		}
+	}
+
+	return fmt.Errorf("timed out waiting for fork operation %q to complete", operationName)
+}
+
+// forkRESTFallback falls back to the exists-check when the REST API fork fails.
+func (d *DoltHubProvider) forkRESTFallback(fromOrg, fromDB, toOrg string, _ error) error {
+	if d.databaseExists(toOrg, fromDB) {
+		return nil
+	}
 	return &ForkRequiredError{
 		UpstreamOrg: fromOrg,
 		UpstreamDB:  fromDB,

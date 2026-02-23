@@ -112,9 +112,148 @@ func TestDoltHubProvider_ForkDispatch_WithSessionToken(t *testing.T) {
 	}
 }
 
-func TestDoltHubProvider_Fork_NoSession_ForkExists(t *testing.T) {
-	// When fork database already exists on DoltHub, Fork returns nil.
+func TestDoltHubProvider_ForkREST_Success(t *testing.T) {
+	// REST fork: POST returns operation_name, poll returns success.
+	pollCount := 0
 	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("authorization") != "token api-token" {
+			t.Errorf("expected auth header, got %q", r.Header.Get("authorization"))
+		}
+		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/fork") {
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decoding request: %v", err)
+			}
+			if body["ownerName"] != "alice-dev" {
+				t.Errorf("ownerName = %q, want %q", body["ownerName"], "alice-dev")
+			}
+			if body["parentOwnerName"] != "steveyegge" {
+				t.Errorf("parentOwnerName = %q, want %q", body["parentOwnerName"], "steveyegge")
+			}
+			if body["parentDatabaseName"] != "wl-commons" {
+				t.Errorf("parentDatabaseName = %q, want %q", body["parentDatabaseName"], "wl-commons")
+			}
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(`{"status":"Success","operation_name":"fork-op-123"}`))
+			return
+		}
+		if r.Method == "GET" && r.URL.Query().Get("operationName") == "fork-op-123" {
+			pollCount++
+			if pollCount < 2 {
+				w.WriteHeader(200)
+				_, _ = w.Write([]byte(`{"status":"Pending"}`))
+				return
+			}
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(`{"owner_name":"alice-dev","database_name":"wl-commons"}`))
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer apiServer.Close()
+
+	oldAPI := dolthubAPIBase
+	dolthubAPIBase = apiServer.URL
+	defer func() { dolthubAPIBase = oldAPI }()
+
+	provider := NewDoltHubProvider("api-token")
+	err := provider.forkREST("steveyegge", "wl-commons", "alice-dev")
+	if err != nil {
+		t.Errorf("forkREST should succeed: %v", err)
+	}
+}
+
+func TestDoltHubProvider_ForkREST_AlreadyExists(t *testing.T) {
+	// REST fork: POST returns "already exists" error → treated as success.
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/fork") {
+			w.WriteHeader(400)
+			_, _ = w.Write([]byte(`{"status":"Error","message":"database already exists"}`))
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer apiServer.Close()
+
+	oldAPI := dolthubAPIBase
+	dolthubAPIBase = apiServer.URL
+	defer func() { dolthubAPIBase = oldAPI }()
+
+	provider := NewDoltHubProvider("api-token")
+	err := provider.forkREST("steveyegge", "wl-commons", "alice-dev")
+	if err != nil {
+		t.Errorf("forkREST should succeed for already-exists: %v", err)
+	}
+}
+
+func TestDoltHubProvider_ForkREST_AuthError(t *testing.T) {
+	// REST fork: auth error → falls back to exists-check → ForkRequiredError.
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/fork") {
+			w.WriteHeader(401)
+			_, _ = w.Write([]byte(`{"status":"Error","message":"unauthorized"}`))
+			return
+		}
+		// Exists-check for fallback: fork doesn't exist.
+		w.WriteHeader(400)
+		_, _ = w.Write([]byte(`{"query_execution_status":"Error"}`))
+	}))
+	defer apiServer.Close()
+
+	oldAPI := dolthubAPIBase
+	dolthubAPIBase = apiServer.URL
+	defer func() { dolthubAPIBase = oldAPI }()
+
+	provider := NewDoltHubProvider("bad-token")
+	err := provider.forkREST("steveyegge", "wl-commons", "alice-dev")
+	if err == nil {
+		t.Fatal("expected ForkRequiredError, got nil")
+	}
+	var forkErr *ForkRequiredError
+	if !errors.As(err, &forkErr) {
+		t.Fatalf("expected ForkRequiredError, got %T: %v", err, err)
+	}
+}
+
+func TestDoltHubProvider_Fork_NoSession_UsesREST(t *testing.T) {
+	// When no session token, Fork dispatches to forkREST (not ForkRequiredError).
+	gotRESTFork := false
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/fork") {
+			gotRESTFork = true
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(`{"status":"Success","operation_name":""}`))
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer apiServer.Close()
+
+	oldAPI := dolthubAPIBase
+	dolthubAPIBase = apiServer.URL
+	defer func() { dolthubAPIBase = oldAPI }()
+
+	t.Setenv("DOLTHUB_SESSION_TOKEN", "")
+
+	provider := NewDoltHubProvider("api-token")
+	err := provider.Fork("steveyegge", "wl-commons", "alice-dev")
+	if err != nil {
+		t.Errorf("Fork should succeed via REST: %v", err)
+	}
+	if !gotRESTFork {
+		t.Error("expected Fork to use REST API, but no POST /fork was received")
+	}
+}
+
+func TestDoltHubProvider_Fork_NoSession_ForkExists(t *testing.T) {
+	// REST fork fails with auth error, but fork already exists → success.
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/fork") {
+			w.WriteHeader(403)
+			_, _ = w.Write([]byte(`{"status":"Error","message":"forbidden"}`))
+			return
+		}
+		// Exists-check fallback: fork exists.
 		if r.Header.Get("authorization") != "token api-token" {
 			t.Errorf("expected auth header, got %q", r.Header.Get("authorization"))
 		}
@@ -137,8 +276,14 @@ func TestDoltHubProvider_Fork_NoSession_ForkExists(t *testing.T) {
 }
 
 func TestDoltHubProvider_Fork_NoSession_ForkNotFound(t *testing.T) {
-	// When fork database does not exist, Fork returns ForkRequiredError.
-	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	// REST fork fails, fork doesn't exist → ForkRequiredError.
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/fork") {
+			w.WriteHeader(403)
+			_, _ = w.Write([]byte(`{"status":"Error","message":"forbidden"}`))
+			return
+		}
+		// Exists-check fallback: fork not found.
 		w.WriteHeader(400)
 		_, _ = w.Write([]byte(`{"query_execution_status":"Error","query_execution_message":"no such repository"}`))
 	}))
