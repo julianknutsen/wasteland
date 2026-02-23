@@ -108,7 +108,7 @@ func (f *fakeWLCommonsStore) AcceptCompletion(_, _, _ string, _ *Stamp) error {
 	return fmt.Errorf("not implemented in commons fake")
 }
 
-func (f *fakeWLCommonsStore) UpdateWanted(_ string, _ map[string]string) error {
+func (f *fakeWLCommonsStore) UpdateWanted(_ string, _ *WantedUpdate) error {
 	return fmt.Errorf("not implemented in commons fake")
 }
 

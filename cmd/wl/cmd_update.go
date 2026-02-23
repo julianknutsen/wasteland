@@ -57,26 +57,20 @@ Examples:
 }
 
 func runUpdate(cmd *cobra.Command, stdout, _ io.Writer, wantedID, title, description, project, itemType string, priority int, effort, tags string, noPush bool) error {
-	fields := make(map[string]string)
+	// Validate before building the update struct.
+	if err := validateUpdateInputs(itemType, effort, priority); err != nil {
+		return err
+	}
 
-	if title != "" {
-		fields["title"] = fmt.Sprintf("'%s'", commons.EscapeSQL(title))
+	fields := &commons.WantedUpdate{
+		Title:       title,
+		Description: description,
+		Project:     project,
+		Type:        itemType,
+		Priority:    priority,
+		EffortLevel: effort,
 	}
-	if description != "" {
-		fields["description"] = fmt.Sprintf("'%s'", commons.EscapeSQL(description))
-	}
-	if project != "" {
-		fields["project"] = fmt.Sprintf("'%s'", commons.EscapeSQL(project))
-	}
-	if itemType != "" {
-		fields["type"] = fmt.Sprintf("'%s'", commons.EscapeSQL(itemType))
-	}
-	if priority >= 0 {
-		fields["priority"] = fmt.Sprintf("%d", priority)
-	}
-	if effort != "" {
-		fields["effort_level"] = fmt.Sprintf("'%s'", commons.EscapeSQL(effort))
-	}
+
 	if tags != "" {
 		var tagList []string
 		for _, t := range strings.Split(tags, ",") {
@@ -85,24 +79,12 @@ func runUpdate(cmd *cobra.Command, stdout, _ io.Writer, wantedID, title, descrip
 				tagList = append(tagList, t)
 			}
 		}
-		if len(tagList) > 0 {
-			escaped := make([]string, len(tagList))
-			for i, t := range tagList {
-				t = strings.ReplaceAll(t, `\`, `\\`)
-				t = strings.ReplaceAll(t, `"`, `\"`)
-				t = strings.ReplaceAll(t, "'", "''")
-				escaped[i] = t
-			}
-			fields["tags"] = fmt.Sprintf("'[\"%s\"]'", strings.Join(escaped, `","`))
-		}
+		fields.Tags = tagList
+		fields.TagsSet = true
 	}
 
-	if len(fields) == 0 {
+	if !hasUpdateFields(fields) {
 		return fmt.Errorf("at least one field must be provided to update")
-	}
-
-	if err := validateUpdateInputs(itemType, effort, priority); err != nil {
-		return err
 	}
 
 	wlCfg, err := resolveWasteland(cmd)
@@ -117,15 +99,18 @@ func runUpdate(cmd *cobra.Command, stdout, _ io.Writer, wantedID, title, descrip
 	}
 
 	fmt.Fprintf(stdout, "%s Updated %s\n", style.Bold.Render("✓"), wantedID)
-	for col := range fields {
-		fmt.Fprintf(stdout, "  %s: updated\n", col)
-	}
 
 	if !noPush {
 		_ = commons.PushWithSync(wlCfg.LocalDir, stdout)
 	}
 
 	return nil
+}
+
+// hasUpdateFields returns true if at least one field is set.
+func hasUpdateFields(f *commons.WantedUpdate) bool {
+	return f.Title != "" || f.Description != "" || f.Project != "" ||
+		f.Type != "" || f.Priority >= 0 || f.EffortLevel != "" || f.TagsSet
 }
 
 // validateUpdateInputs validates type, effort, and priority if provided.
@@ -144,7 +129,7 @@ func validateUpdateInputs(itemType, effort string, priority int) error {
 		return fmt.Errorf("invalid effort %q: must be one of trivial, small, medium, large, epic", effort)
 	}
 
-	if priority >= 0 && (priority > 4) {
+	if priority != -1 && (priority < 0 || priority > 4) {
 		return fmt.Errorf("invalid priority %d: must be 0-4", priority)
 	}
 
@@ -152,7 +137,7 @@ func validateUpdateInputs(itemType, effort string, priority int) error {
 }
 
 // updateWanted contains the testable business logic for updating a wanted item.
-func updateWanted(store commons.WLCommonsStore, wantedID string, fields map[string]string) error {
+func updateWanted(store commons.WLCommonsStore, wantedID string, fields *commons.WantedUpdate) error {
 	item, err := store.QueryWanted(wantedID)
 	if err != nil {
 		return fmt.Errorf("querying wanted item: %w", err)

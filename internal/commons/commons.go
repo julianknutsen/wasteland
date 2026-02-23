@@ -21,7 +21,7 @@ type WLCommonsStore interface {
 	QueryWanted(wantedID string) (*WantedItem, error)
 	QueryCompletion(wantedID string) (*CompletionRecord, error)
 	AcceptCompletion(wantedID, completionID, rigHandle string, stamp *Stamp) error
-	UpdateWanted(wantedID string, fields map[string]string) error
+	UpdateWanted(wantedID string, fields *WantedUpdate) error
 	DeleteWanted(wantedID string) error
 }
 
@@ -63,7 +63,7 @@ func (w *WLCommons) AcceptCompletion(wantedID, completionID, rigHandle string, s
 }
 
 // UpdateWanted updates mutable fields on an open wanted item.
-func (w *WLCommons) UpdateWanted(wantedID string, fields map[string]string) error {
+func (w *WLCommons) UpdateWanted(wantedID string, fields *WantedUpdate) error {
 	return UpdateWanted(w.dbDir, wantedID, fields)
 }
 
@@ -110,6 +110,20 @@ type Stamp struct {
 	Message     string
 }
 
+// WantedUpdate holds the mutable fields for updating a wanted item.
+// Zero-value fields are treated as "not set" and will not be updated.
+// Priority uses -1 as "not set" since 0 is a valid priority.
+type WantedUpdate struct {
+	Title       string
+	Description string
+	Project     string
+	Type        string
+	Priority    int
+	EffortLevel string
+	Tags        []string
+	TagsSet     bool // true if Tags was explicitly provided (even if empty)
+}
+
 // isNothingToCommit returns true if the error indicates DOLT_COMMIT found no
 // changes to commit.
 func isNothingToCommit(err error) bool {
@@ -134,6 +148,15 @@ func GenerateWantedID(title string) string {
 	return fmt.Sprintf("w-%s", hashStr)
 }
 
+// GeneratePrefixedID generates a unique ID in the format <prefix>-<16 hex chars>
+// from a SHA-256 hash of the inputs joined by "|" plus a timestamp.
+func GeneratePrefixedID(prefix string, inputs ...string) string {
+	now := time.Now().UTC().Format(time.RFC3339)
+	data := strings.Join(inputs, "|") + "|" + now
+	h := sha256.Sum256([]byte(data))
+	return fmt.Sprintf("%s-%x", prefix, h[:8])
+}
+
 // InsertWanted inserts a new wanted item into the wl-commons database.
 // dbDir is the actual database directory.
 func InsertWanted(dbDir string, item *WantedItem) error {
@@ -146,17 +169,7 @@ func InsertWanted(dbDir string, item *WantedItem) error {
 
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 
-	tagsJSON := "NULL"
-	if len(item.Tags) > 0 {
-		escaped := make([]string, len(item.Tags))
-		for i, t := range item.Tags {
-			t = strings.ReplaceAll(t, `\`, `\\`)
-			t = strings.ReplaceAll(t, `"`, `\"`)
-			t = strings.ReplaceAll(t, "'", "''")
-			escaped[i] = t
-		}
-		tagsJSON = fmt.Sprintf("'[\"%s\"]'", strings.Join(escaped, `","`))
-	}
+	tagsJSON := formatTagsJSON(item.Tags)
 
 	descField := "NULL"
 	if item.Description != "" {
@@ -352,17 +365,7 @@ func QueryCompletion(dbDir, wantedID string) (*CompletionRecord, error) {
 // AcceptCompletion validates a completion, creates a stamp, and marks the item completed.
 // dbDir is the actual database directory.
 func AcceptCompletion(dbDir, wantedID, completionID, rigHandle string, stamp *Stamp) error {
-	tagsField := "NULL"
-	if len(stamp.SkillTags) > 0 {
-		escaped := make([]string, len(stamp.SkillTags))
-		for i, t := range stamp.SkillTags {
-			t = strings.ReplaceAll(t, `\`, `\\`)
-			t = strings.ReplaceAll(t, `"`, `\"`)
-			t = strings.ReplaceAll(t, "'", "''")
-			escaped[i] = t
-		}
-		tagsField = fmt.Sprintf("'[\"%s\"]'", strings.Join(escaped, `","`))
-	}
+	tagsField := formatTagsJSON(stamp.SkillTags)
 
 	msgField := "NULL"
 	if stamp.Message != "" {
@@ -397,11 +400,35 @@ CALL DOLT_COMMIT('-m', 'wl accept: %s');
 
 // UpdateWanted updates mutable fields on an open wanted item.
 // dbDir is the actual database directory.
-func UpdateWanted(dbDir, wantedID string, fields map[string]string) error {
+func UpdateWanted(dbDir, wantedID string, fields *WantedUpdate) error {
 	var setClauses []string
-	for col, val := range fields {
-		setClauses = append(setClauses, fmt.Sprintf("%s=%s", col, val))
+
+	if fields.Title != "" {
+		setClauses = append(setClauses, fmt.Sprintf("title='%s'", EscapeSQL(fields.Title)))
 	}
+	if fields.Description != "" {
+		setClauses = append(setClauses, fmt.Sprintf("description='%s'", EscapeSQL(fields.Description)))
+	}
+	if fields.Project != "" {
+		setClauses = append(setClauses, fmt.Sprintf("project='%s'", EscapeSQL(fields.Project)))
+	}
+	if fields.Type != "" {
+		setClauses = append(setClauses, fmt.Sprintf("type='%s'", EscapeSQL(fields.Type)))
+	}
+	if fields.Priority >= 0 {
+		setClauses = append(setClauses, fmt.Sprintf("priority=%d", fields.Priority))
+	}
+	if fields.EffortLevel != "" {
+		setClauses = append(setClauses, fmt.Sprintf("effort_level='%s'", EscapeSQL(fields.EffortLevel)))
+	}
+	if fields.TagsSet {
+		setClauses = append(setClauses, fmt.Sprintf("tags=%s", formatTagsJSON(fields.Tags)))
+	}
+
+	if len(setClauses) == 0 {
+		return fmt.Errorf("no fields to update")
+	}
+
 	setClauses = append(setClauses, "updated_at=NOW()")
 
 	script := fmt.Sprintf("UPDATE wanted SET %s WHERE id='%s' AND status='open';\nCALL DOLT_ADD('-A');\nCALL DOLT_COMMIT('-m', 'wl update: %s');\n",
@@ -415,6 +442,21 @@ func UpdateWanted(dbDir, wantedID string, fields map[string]string) error {
 		return fmt.Errorf("wanted item %q is not open or does not exist", wantedID)
 	}
 	return fmt.Errorf("update failed: %w", err)
+}
+
+// formatTagsJSON formats a string slice as a JSON array SQL literal.
+func formatTagsJSON(tags []string) string {
+	if len(tags) == 0 {
+		return "NULL"
+	}
+	escaped := make([]string, len(tags))
+	for i, t := range tags {
+		t = strings.ReplaceAll(t, `\`, `\\`)
+		t = strings.ReplaceAll(t, `"`, `\"`)
+		t = strings.ReplaceAll(t, "'", "''")
+		escaped[i] = t
+	}
+	return fmt.Sprintf("'[\"%s\"]'", strings.Join(escaped, `","`))
 }
 
 // DeleteWanted soft-deletes a wanted item by setting status=withdrawn.

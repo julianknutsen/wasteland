@@ -162,7 +162,7 @@ func (f *fakeWLCommonsStore) AcceptCompletion(wantedID, _, _ string, stamp *comm
 	return nil
 }
 
-func (f *fakeWLCommonsStore) UpdateWanted(wantedID string, _ /* fields */ map[string]string) error {
+func (f *fakeWLCommonsStore) UpdateWanted(wantedID string, fields *commons.WantedUpdate) error {
 	if f.UpdateWantedErr != nil {
 		return f.UpdateWantedErr
 	}
@@ -176,6 +176,29 @@ func (f *fakeWLCommonsStore) UpdateWanted(wantedID string, _ /* fields */ map[st
 	}
 	if item.Status != "open" {
 		return fmt.Errorf("wanted item %q is not open (status: %s)", wantedID, item.Status)
+	}
+
+	// Apply updates to the in-memory item.
+	if fields.Title != "" {
+		item.Title = fields.Title
+	}
+	if fields.Description != "" {
+		item.Description = fields.Description
+	}
+	if fields.Project != "" {
+		item.Project = fields.Project
+	}
+	if fields.Type != "" {
+		item.Type = fields.Type
+	}
+	if fields.Priority >= 0 {
+		item.Priority = fields.Priority
+	}
+	if fields.EffortLevel != "" {
+		item.EffortLevel = fields.EffortLevel
+	}
+	if fields.TagsSet {
+		item.Tags = fields.Tags
 	}
 	return nil
 }

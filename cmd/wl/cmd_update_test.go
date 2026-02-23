@@ -22,8 +22,10 @@ func TestValidateUpdateInputs(t *testing.T) {
 		{"invalid type", "bad", "", -1, "invalid type"},
 		{"valid effort", "", "small", -1, ""},
 		{"invalid effort", "", "huge", -1, "invalid effort"},
-		{"valid priority", "", "", 3, ""},
-		{"invalid priority", "", "", 9, "invalid priority"},
+		{"valid priority 0", "", "", 0, ""},
+		{"valid priority 4", "", "", 4, ""},
+		{"invalid priority too high", "", "", 9, "invalid priority"},
+		{"invalid priority negative", "", "", -5, "invalid priority"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -45,15 +47,44 @@ func TestValidateUpdateInputs(t *testing.T) {
 	}
 }
 
+func TestHasUpdateFields(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		fields *commons.WantedUpdate
+		want   bool
+	}{
+		{"empty", &commons.WantedUpdate{Priority: -1}, false},
+		{"title set", &commons.WantedUpdate{Title: "new", Priority: -1}, true},
+		{"priority set", &commons.WantedUpdate{Priority: 0}, true},
+		{"tags set", &commons.WantedUpdate{Priority: -1, TagsSet: true}, true},
+		{"effort set", &commons.WantedUpdate{Priority: -1, EffortLevel: "small"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := hasUpdateFields(tt.fields)
+			if got != tt.want {
+				t.Errorf("hasUpdateFields() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestUpdateWanted_Success(t *testing.T) {
 	t.Parallel()
 	store := newFakeWLCommonsStore()
 	_ = store.InsertWanted(&commons.WantedItem{ID: "w-abc", Title: "Fix bug"})
 
-	fields := map[string]string{"title": "'New title'"}
+	fields := &commons.WantedUpdate{Title: "New title", Priority: -1}
 	err := updateWanted(store, "w-abc", fields)
 	if err != nil {
 		t.Fatalf("updateWanted() error: %v", err)
+	}
+
+	item, _ := store.QueryWanted("w-abc")
+	if item.Title != "New title" {
+		t.Errorf("Title = %q, want %q", item.Title, "New title")
 	}
 }
 
@@ -61,7 +92,7 @@ func TestUpdateWanted_NotFound(t *testing.T) {
 	t.Parallel()
 	store := newFakeWLCommonsStore()
 
-	fields := map[string]string{"title": "'New title'"}
+	fields := &commons.WantedUpdate{Title: "New title", Priority: -1}
 	err := updateWanted(store, "w-nonexistent", fields)
 	if err == nil {
 		t.Fatal("updateWanted() expected error for missing item")
@@ -73,7 +104,7 @@ func TestUpdateWanted_NotOpen(t *testing.T) {
 	store := newFakeWLCommonsStore()
 	_ = store.InsertWanted(&commons.WantedItem{ID: "w-abc", Title: "Fix bug", Status: "claimed"})
 
-	fields := map[string]string{"title": "'New title'"}
+	fields := &commons.WantedUpdate{Title: "New title", Priority: -1}
 	err := updateWanted(store, "w-abc", fields)
 	if err == nil {
 		t.Fatal("updateWanted() expected error for non-open item")
@@ -89,7 +120,7 @@ func TestUpdateWanted_StoreError(t *testing.T) {
 	_ = store.InsertWanted(&commons.WantedItem{ID: "w-abc", Title: "Fix bug"})
 	store.UpdateWantedErr = fmt.Errorf("update store error")
 
-	fields := map[string]string{"title": "'New title'"}
+	fields := &commons.WantedUpdate{Title: "New title", Priority: -1}
 	err := updateWanted(store, "w-abc", fields)
 	if err == nil {
 		t.Fatal("updateWanted() expected error when UpdateWanted fails")

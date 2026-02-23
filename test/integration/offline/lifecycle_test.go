@@ -371,8 +371,238 @@ func TestPostOutput(t *testing.T) {
 	}
 }
 
+func TestAcceptFullLifecycle(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := forkCloneDir(t, env)
+
+			// Post.
+			stdout, _, err := runWL(t, env, "post", "--title", "Accept lifecycle test", "--type", "feature", "--no-push")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+
+			// Claim.
+			_, _, err = runWL(t, env, "claim", wantedID, "--no-push")
+			if err != nil {
+				t.Fatalf("wl claim failed: %v", err)
+			}
+
+			// Done.
+			_, _, err = runWL(t, env, "done", wantedID, "--evidence", "https://github.com/test/pr/1", "--no-push")
+			if err != nil {
+				t.Fatalf("wl done failed: %v", err)
+			}
+
+			// Switch to a different rig for accept (can't accept your own).
+			writeConfig(t, env, upstream, "reviewer-rig")
+
+			// Accept.
+			stdout, stderr, err := runWL(t, env, "accept", wantedID, "--quality", "4", "--reliability", "3", "--severity", "branch", "--skills", "go,test", "--message", "great work", "--no-push")
+			if err != nil {
+				t.Fatalf("wl accept failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "Accepted") {
+				t.Errorf("expected 'Accepted' message, got: %s", stdout)
+			}
+
+			// Verify wanted status is completed.
+			raw := doltSQL(t, dbDir, "SELECT status FROM wanted WHERE id='"+wantedID+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) < 2 || rows[1][0] != "completed" {
+				t.Errorf("status = %q, want %q", rows[1][0], "completed")
+			}
+
+			// Verify stamp was created.
+			raw = doltSQL(t, dbDir, "SELECT author, subject, severity FROM stamps WHERE context_id IN (SELECT id FROM completions WHERE wanted_id='"+wantedID+"')")
+			rows = parseCSV(t, raw)
+			if len(rows) < 2 {
+				t.Fatal("no stamp record found")
+			}
+			if rows[1][0] != "reviewer-rig" {
+				t.Errorf("stamp author = %q, want %q", rows[1][0], "reviewer-rig")
+			}
+			if rows[1][1] != forkOrg {
+				t.Errorf("stamp subject = %q, want %q", rows[1][1], forkOrg)
+			}
+			if rows[1][2] != "branch" {
+				t.Errorf("stamp severity = %q, want %q", rows[1][2], "branch")
+			}
+
+			// Verify completion was validated.
+			raw = doltSQL(t, dbDir, "SELECT COALESCE(validated_by, '') FROM completions WHERE wanted_id='"+wantedID+"'")
+			rows = parseCSV(t, raw)
+			if len(rows) < 2 || rows[1][0] != "reviewer-rig" {
+				var got string
+				if len(rows) >= 2 {
+					got = rows[1][0]
+				}
+				t.Errorf("completion validated_by = %q, want %q", got, "reviewer-rig")
+			}
+		})
+	}
+}
+
+func TestAcceptSelfReject(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+
+			// Post → claim → done as forkOrg.
+			stdout, _, err := runWL(t, env, "post", "--title", "Self accept test", "--type", "bug", "--no-push")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+
+			_, _, err = runWL(t, env, "claim", wantedID, "--no-push")
+			if err != nil {
+				t.Fatalf("wl claim failed: %v", err)
+			}
+
+			_, _, err = runWL(t, env, "done", wantedID, "--evidence", "evidence", "--no-push")
+			if err != nil {
+				t.Fatalf("wl done failed: %v", err)
+			}
+
+			// Accept as same rig should fail.
+			_, _, err = runWL(t, env, "accept", wantedID, "--quality", "3", "--no-push")
+			if err == nil {
+				t.Fatal("accept by same rig should have failed")
+			}
+		})
+	}
+}
+
+func TestUpdateWanted(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := forkCloneDir(t, env)
+
+			// Post.
+			stdout, _, err := runWL(t, env, "post", "--title", "Update test item", "--type", "feature", "--priority", "2", "--no-push")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+
+			// Update title and priority.
+			stdout, stderr, err := runWL(t, env, "update", wantedID, "--title", "Updated title", "--priority", "1", "--effort", "large", "--no-push")
+			if err != nil {
+				t.Fatalf("wl update failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "Updated") {
+				t.Errorf("expected 'Updated' message, got: %s", stdout)
+			}
+
+			// Verify fields changed in database.
+			raw := doltSQL(t, dbDir, "SELECT title, priority, effort_level FROM wanted WHERE id='"+wantedID+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) < 2 {
+				t.Fatalf("wanted item %s not found", wantedID)
+			}
+			if rows[1][0] != "Updated title" {
+				t.Errorf("title = %q, want %q", rows[1][0], "Updated title")
+			}
+			if rows[1][1] != "1" {
+				t.Errorf("priority = %q, want %q", rows[1][1], "1")
+			}
+			if rows[1][2] != "large" {
+				t.Errorf("effort_level = %q, want %q", rows[1][2], "large")
+			}
+		})
+	}
+}
+
+func TestUpdateClaimedFails(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+
+			// Post and claim.
+			stdout, _, err := runWL(t, env, "post", "--title", "Claimed update test", "--type", "bug", "--no-push")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+
+			_, _, err = runWL(t, env, "claim", wantedID, "--no-push")
+			if err != nil {
+				t.Fatalf("wl claim failed: %v", err)
+			}
+
+			// Update on claimed item should fail.
+			_, _, err = runWL(t, env, "update", wantedID, "--title", "New title", "--no-push")
+			if err == nil {
+				t.Fatal("update on claimed item should have failed")
+			}
+		})
+	}
+}
+
+func TestDeleteWanted(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := forkCloneDir(t, env)
+
+			// Post.
+			stdout, _, err := runWL(t, env, "post", "--title", "Delete test item", "--type", "docs", "--no-push")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+
+			// Delete.
+			stdout, stderr, err := runWL(t, env, "delete", wantedID, "--no-push")
+			if err != nil {
+				t.Fatalf("wl delete failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "Withdrawn") {
+				t.Errorf("expected 'Withdrawn' message, got: %s", stdout)
+			}
+
+			// Verify status is withdrawn.
+			raw := doltSQL(t, dbDir, "SELECT status FROM wanted WHERE id='"+wantedID+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) < 2 || rows[1][0] != "withdrawn" {
+				t.Errorf("status = %q, want %q", rows[1][0], "withdrawn")
+			}
+		})
+	}
+}
+
+func TestDeleteClaimedFails(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+
+			// Post and claim.
+			stdout, _, err := runWL(t, env, "post", "--title", "Claimed delete test", "--type", "feature", "--no-push")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+
+			_, _, err = runWL(t, env, "claim", wantedID, "--no-push")
+			if err != nil {
+				t.Fatalf("wl claim failed: %v", err)
+			}
+
+			// Delete on claimed item should fail.
+			_, _, err = runWL(t, env, "delete", wantedID, "--no-push")
+			if err == nil {
+				t.Fatal("delete on claimed item should have failed")
+			}
+		})
+	}
+}
+
 // writeConfig overwrites the wasteland config with a different rig handle.
-// Used by TestDoneWrongClaimer to simulate a different rig.
+// Used by TestDoneWrongClaimer and TestAcceptFullLifecycle to simulate a different rig.
 func writeConfig(t *testing.T, env *testEnv, upstreamPath, rigHandle string) {
 	t.Helper()
 	cfg := env.loadConfig(t, upstreamPath)

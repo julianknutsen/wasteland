@@ -1,10 +1,8 @@
 package main
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/wasteland/internal/commons"
@@ -58,7 +56,7 @@ func runDone(cmd *cobra.Command, stdout, _ io.Writer, wantedID, evidence string,
 	rigHandle := wlCfg.RigHandle
 
 	store := commons.NewWLCommons(wlCfg.LocalDir)
-	completionID := generateCompletionID(wantedID, rigHandle)
+	completionID := commons.GeneratePrefixedID("c", wantedID, rigHandle)
 
 	if err := submitDone(store, wantedID, rigHandle, evidence, completionID); err != nil {
 		return err
@@ -97,10 +95,4 @@ func submitDone(store commons.WLCommonsStore, wantedID, rigHandle, evidence, com
 	}
 
 	return nil
-}
-
-func generateCompletionID(wantedID, rigHandle string) string {
-	now := time.Now().UTC().Format(time.RFC3339)
-	h := sha256.Sum256([]byte(wantedID + "|" + rigHandle + "|" + now))
-	return fmt.Sprintf("c-%x", h[:8])
 }

@@ -1,11 +1,9 @@
 package main
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/wasteland/internal/commons"
@@ -144,7 +142,7 @@ func acceptCompletion(store commons.WLCommonsStore, wantedID, rigHandle string, 
 		return nil, fmt.Errorf("cannot accept your own completion")
 	}
 
-	stampID := generateStampID(wantedID, rigHandle)
+	stampID := commons.GeneratePrefixedID("s", wantedID, rigHandle)
 	stamp := &commons.Stamp{
 		ID:          stampID,
 		Author:      rigHandle,
@@ -163,10 +161,4 @@ func acceptCompletion(store commons.WLCommonsStore, wantedID, rigHandle string, 
 	}
 
 	return stamp, nil
-}
-
-func generateStampID(wantedID, rigHandle string) string {
-	now := time.Now().UTC().Format(time.RFC3339)
-	h := sha256.Sum256([]byte(wantedID + "|" + rigHandle + "|" + now))
-	return fmt.Sprintf("s-%x", h[:8])
 }

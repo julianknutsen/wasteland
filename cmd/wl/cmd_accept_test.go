@@ -10,18 +10,18 @@ import (
 
 func TestGenerateStampID_Format(t *testing.T) {
 	t.Parallel()
-	id := generateStampID("w-abc123", "my-rig")
+	id := commons.GeneratePrefixedID("s", "w-abc123", "my-rig")
 	if !strings.HasPrefix(id, "s-") {
-		t.Errorf("generateStampID() = %q, want prefix 's-'", id)
+		t.Errorf("GeneratePrefixedID(s) = %q, want prefix 's-'", id)
 	}
 	// "s-" + 16 hex chars = 18 chars total
 	if len(id) != 18 {
-		t.Errorf("generateStampID() length = %d, want 18", len(id))
+		t.Errorf("GeneratePrefixedID(s) length = %d, want 18", len(id))
 	}
 	hexPart := id[2:]
 	for _, c := range hexPart {
 		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			t.Errorf("generateStampID() contains non-hex char %q in %q", string(c), id)
+			t.Errorf("GeneratePrefixedID(s) contains non-hex char %q in %q", string(c), id)
 		}
 	}
 }
