@@ -265,7 +265,7 @@ func TestJoinSetsProviderTypeAndUpstreamURL(t *testing.T) {
 	cli := &noopDoltCLI{}
 
 	svc := &Service{Remote: provider, CLI: cli, Config: store}
-	cfg, err := svc.Join("org/db", "myfork", "rig", "Display", "e@e.com", "dev", false)
+	cfg, err := svc.Join("org/db", "myfork", "rig", "Display", "e@e.com", "dev", false, false)
 	if err != nil {
 		t.Fatalf("Join() error: %v", err)
 	}

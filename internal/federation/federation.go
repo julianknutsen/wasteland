@@ -175,7 +175,9 @@ type Service struct {
 }
 
 // Join orchestrates the wasteland join workflow: fork -> clone -> add upstream -> register -> push -> save config.
-func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, version string, signed bool) (*Config, error) {
+// When direct is true, skips forking and clones upstream directly — useful for maintainers
+// with write access to the upstream commons.
+func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, version string, signed, direct bool) (*Config, error) {
 	upstreamOrg, upstreamDB, err := ParseUpstream(upstream)
 	if err != nil {
 		return nil, err
@@ -192,21 +194,30 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 		progress = func(string) {}
 	}
 
-	progress("Forking commons...")
-	if err := s.Remote.Fork(upstreamOrg, upstreamDB, forkOrg); err != nil {
-		return nil, fmt.Errorf("forking commons: %w", err)
-	}
-
-	progress("Cloning fork locally...")
-	forkURL := s.Remote.DatabaseURL(forkOrg, upstreamDB)
-	if err := s.CLI.Clone(forkURL, localDir); err != nil {
-		return nil, fmt.Errorf("cloning fork: %w", err)
-	}
-
-	progress("Adding upstream remote...")
 	upstreamURL := s.Remote.DatabaseURL(upstreamOrg, upstreamDB)
-	if err := s.CLI.AddUpstreamRemote(localDir, upstreamURL); err != nil {
-		return nil, fmt.Errorf("adding upstream remote: %w", err)
+
+	if direct {
+		// Direct mode: clone upstream as origin, no fork or upstream remote.
+		progress("Cloning upstream directly...")
+		if err := s.CLI.Clone(upstreamURL, localDir); err != nil {
+			return nil, fmt.Errorf("cloning upstream: %w", err)
+		}
+	} else {
+		progress("Forking commons...")
+		if err := s.Remote.Fork(upstreamOrg, upstreamDB, forkOrg); err != nil {
+			return nil, fmt.Errorf("forking commons: %w", err)
+		}
+
+		progress("Cloning fork locally...")
+		forkURL := s.Remote.DatabaseURL(forkOrg, upstreamDB)
+		if err := s.CLI.Clone(forkURL, localDir); err != nil {
+			return nil, fmt.Errorf("cloning fork: %w", err)
+		}
+
+		progress("Adding upstream remote...")
+		if err := s.CLI.AddUpstreamRemote(localDir, upstreamURL); err != nil {
+			return nil, fmt.Errorf("adding upstream remote: %w", err)
+		}
 	}
 
 	progress("Registering rig...")
@@ -214,9 +225,9 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 		return nil, fmt.Errorf("registering rig: %w", err)
 	}
 
-	progress("Pushing to fork...")
+	progress("Pushing to " + map[bool]string{true: "upstream", false: "fork"}[direct] + "...")
 	if err := s.CLI.Push(localDir); err != nil {
-		return nil, fmt.Errorf("pushing to fork: %w", err)
+		return nil, fmt.Errorf("pushing: %w", err)
 	}
 
 	cfg := &Config{
