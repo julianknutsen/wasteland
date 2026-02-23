@@ -8,7 +8,9 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -19,7 +21,9 @@ type WLCommonsStore interface {
 	ClaimWanted(wantedID, rigHandle string) error
 	SubmitCompletion(completionID, wantedID, rigHandle, evidence string) error
 	QueryWanted(wantedID string) (*WantedItem, error)
+	QueryWantedDetail(wantedID string) (*WantedItem, error)
 	QueryCompletion(wantedID string) (*CompletionRecord, error)
+	QueryStamp(stampID string) (*Stamp, error)
 	AcceptCompletion(wantedID, completionID, rigHandle string, stamp *Stamp) error
 	UpdateWanted(wantedID string, fields *WantedUpdate) error
 	DeleteWanted(wantedID string) error
@@ -52,9 +56,19 @@ func (w *WLCommons) QueryWanted(wantedID string) (*WantedItem, error) {
 	return QueryWanted(w.dbDir, wantedID)
 }
 
+// QueryWantedDetail fetches a wanted item with all display fields.
+func (w *WLCommons) QueryWantedDetail(wantedID string) (*WantedItem, error) {
+	return QueryWantedDetail(w.dbDir, wantedID)
+}
+
 // QueryCompletion fetches the completion record for a wanted item.
 func (w *WLCommons) QueryCompletion(wantedID string) (*CompletionRecord, error) {
 	return QueryCompletion(w.dbDir, wantedID)
+}
+
+// QueryStamp fetches a stamp by ID.
+func (w *WLCommons) QueryStamp(stampID string) (*Stamp, error) {
+	return QueryStamp(w.dbDir, stampID)
 }
 
 // AcceptCompletion validates a completion and creates a stamp.
@@ -86,6 +100,8 @@ type WantedItem struct {
 	Status          string
 	EffortLevel     string
 	SandboxRequired bool
+	CreatedAt       string
+	UpdatedAt       string
 }
 
 // CompletionRecord represents a row in the completions table.
@@ -94,6 +110,8 @@ type CompletionRecord struct {
 	WantedID    string
 	CompletedBy string
 	Evidence    string
+	StampID     string
+	ValidatedBy string
 }
 
 // Stamp represents a reputation stamp issued when accepting a completion.
@@ -340,7 +358,7 @@ func parseCSVLine(line string) []string {
 // QueryCompletion fetches the completion record for a wanted item.
 // dbDir is the actual database directory.
 func QueryCompletion(dbDir, wantedID string) (*CompletionRecord, error) {
-	query := fmt.Sprintf(`SELECT id, wanted_id, completed_by, COALESCE(evidence, '') as evidence FROM completions WHERE wanted_id='%s';`,
+	query := fmt.Sprintf(`SELECT id, wanted_id, completed_by, COALESCE(evidence, '') as evidence, COALESCE(stamp_id, '') as stamp_id, COALESCE(validated_by, '') as validated_by FROM completions WHERE wanted_id='%s';`,
 		EscapeSQL(wantedID))
 
 	output, err := doltSQLQuery(dbDir, query)
@@ -359,7 +377,96 @@ func QueryCompletion(dbDir, wantedID string) (*CompletionRecord, error) {
 		WantedID:    row["wanted_id"],
 		CompletedBy: row["completed_by"],
 		Evidence:    row["evidence"],
+		StampID:     row["stamp_id"],
+		ValidatedBy: row["validated_by"],
 	}, nil
+}
+
+// QueryWantedDetail fetches a wanted item with all display fields.
+// dbDir is the actual database directory.
+func QueryWantedDetail(dbDir, wantedID string) (*WantedItem, error) {
+	query := fmt.Sprintf(`SELECT id, title, COALESCE(description,'') as description, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(tags,'') as tags, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level, COALESCE(created_at,'') as created_at, COALESCE(updated_at,'') as updated_at FROM wanted WHERE id='%s';`,
+		EscapeSQL(wantedID))
+
+	output, err := doltSQLQuery(dbDir, query)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := parseSimpleCSV(output)
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("wanted item %q not found", wantedID)
+	}
+
+	row := rows[0]
+	priority, _ := strconv.Atoi(row["priority"])
+
+	return &WantedItem{
+		ID:          row["id"],
+		Title:       row["title"],
+		Description: row["description"],
+		Project:     row["project"],
+		Type:        row["type"],
+		Priority:    priority,
+		Tags:        parseTagsJSON(row["tags"]),
+		PostedBy:    row["posted_by"],
+		ClaimedBy:   row["claimed_by"],
+		Status:      row["status"],
+		EffortLevel: row["effort_level"],
+		CreatedAt:   row["created_at"],
+		UpdatedAt:   row["updated_at"],
+	}, nil
+}
+
+// QueryStamp fetches a stamp by ID.
+// dbDir is the actual database directory.
+func QueryStamp(dbDir, stampID string) (*Stamp, error) {
+	query := fmt.Sprintf(`SELECT id, author, subject, valence, severity, COALESCE(skill_tags,'') as skill_tags, COALESCE(message,'') as message FROM stamps WHERE id='%s';`,
+		EscapeSQL(stampID))
+
+	output, err := doltSQLQuery(dbDir, query)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := parseSimpleCSV(output)
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("stamp %q not found", stampID)
+	}
+
+	row := rows[0]
+
+	var valence struct {
+		Quality     int `json:"quality"`
+		Reliability int `json:"reliability"`
+	}
+	if v := row["valence"]; v != "" {
+		_ = json.Unmarshal([]byte(v), &valence)
+	}
+
+	return &Stamp{
+		ID:          row["id"],
+		Author:      row["author"],
+		Subject:     row["subject"],
+		Quality:     valence.Quality,
+		Reliability: valence.Reliability,
+		Severity:    row["severity"],
+		SkillTags:   parseTagsJSON(row["skill_tags"]),
+		Message:     row["message"],
+	}, nil
+}
+
+// parseTagsJSON parses a JSON array string like `["go","auth"]` into a string slice.
+func parseTagsJSON(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "NULL" {
+		return nil
+	}
+	var tags []string
+	if err := json.Unmarshal([]byte(s), &tags); err != nil {
+		return nil
+	}
+	return tags
 }
 
 // AcceptCompletion validates a completion, creates a stamp, and marks the item completed.

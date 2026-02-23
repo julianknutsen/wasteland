@@ -114,6 +114,14 @@ stderr 'accepts 1 arg'
 ! exec wl delete w-abc
 stderr 'not joined'
 
+# status with no args.
+! exec wl status
+stderr 'accepts 1 arg'
+
+# status not joined.
+! exec wl status w-abc
+stderr 'not joined'
+
 # leave not joined (no arg).
 ! exec wl leave
 stderr 'not joined'

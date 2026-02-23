@@ -71,6 +71,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		newUpdateCmd(stdout, stderr),
 		newDeleteCmd(stdout, stderr),
 		newBrowseCmd(stdout, stderr),
+		newStatusCmd(stdout, stderr),
 		newSyncCmd(stdout, stderr),
 		newLeaveCmd(stdout, stderr),
 		newListCmd(stdout, stderr),

@@ -15,14 +15,16 @@ type fakeWLCommonsStore struct {
 	stamps      map[string]*commons.Stamp
 
 	// Error injection fields
-	InsertWantedErr     error
-	ClaimWantedErr      error
-	SubmitCompletionErr error
-	QueryWantedErr      error
-	QueryCompletionErr  error
-	AcceptCompletionErr error
-	UpdateWantedErr     error
-	DeleteWantedErr     error
+	InsertWantedErr      error
+	ClaimWantedErr       error
+	SubmitCompletionErr  error
+	QueryWantedErr       error
+	QueryWantedDetailErr error
+	QueryCompletionErr   error
+	QueryStampErr        error
+	AcceptCompletionErr  error
+	UpdateWantedErr      error
+	DeleteWantedErr      error
 }
 
 func newFakeWLCommonsStore() *fakeWLCommonsStore {
@@ -124,6 +126,29 @@ func (f *fakeWLCommonsStore) QueryWanted(wantedID string) (*commons.WantedItem, 
 	return &cp, nil
 }
 
+func (f *fakeWLCommonsStore) QueryWantedDetail(wantedID string) (*commons.WantedItem, error) {
+	if f.QueryWantedDetailErr != nil {
+		return nil, f.QueryWantedDetailErr
+	}
+	return f.QueryWanted(wantedID)
+}
+
+func (f *fakeWLCommonsStore) QueryStamp(stampID string) (*commons.Stamp, error) {
+	if f.QueryStampErr != nil {
+		return nil, f.QueryStampErr
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	stamp, ok := f.stamps[stampID]
+	if !ok {
+		return nil, fmt.Errorf("stamp %q not found", stampID)
+	}
+	cp := *stamp
+	return &cp, nil
+}
+
 func (f *fakeWLCommonsStore) QueryCompletion(wantedID string) (*commons.CompletionRecord, error) {
 	if f.QueryCompletionErr != nil {
 		return nil, f.QueryCompletionErr
@@ -140,7 +165,7 @@ func (f *fakeWLCommonsStore) QueryCompletion(wantedID string) (*commons.Completi
 	return &cp, nil
 }
 
-func (f *fakeWLCommonsStore) AcceptCompletion(wantedID, _, _ string, stamp *commons.Stamp) error {
+func (f *fakeWLCommonsStore) AcceptCompletion(wantedID, _, rigHandle string, stamp *commons.Stamp) error {
 	if f.AcceptCompletionErr != nil {
 		return f.AcceptCompletionErr
 	}
@@ -159,6 +184,11 @@ func (f *fakeWLCommonsStore) AcceptCompletion(wantedID, _, _ string, stamp *comm
 
 	stored := *stamp
 	f.stamps[stamp.ID] = &stored
+
+	if rec, ok := f.completions[wantedID]; ok {
+		rec.StampID = stamp.ID
+		rec.ValidatedBy = rigHandle
+	}
 	return nil
 }
 
