@@ -100,5 +100,21 @@ func (f *fakeWLCommonsStore) QueryWanted(wantedID string) (*WantedItem, error) {
 	return &cp, nil
 }
 
+func (f *fakeWLCommonsStore) QueryCompletion(_ string) (*CompletionRecord, error) {
+	return nil, fmt.Errorf("not implemented in commons fake")
+}
+
+func (f *fakeWLCommonsStore) AcceptCompletion(_, _, _ string, _ *Stamp) error {
+	return fmt.Errorf("not implemented in commons fake")
+}
+
+func (f *fakeWLCommonsStore) UpdateWanted(_ string, _ map[string]string) error {
+	return fmt.Errorf("not implemented in commons fake")
+}
+
+func (f *fakeWLCommonsStore) DeleteWanted(_ string) error {
+	return fmt.Errorf("not implemented in commons fake")
+}
+
 // compile-time check
 var _ WLCommonsStore = (*fakeWLCommonsStore)(nil)

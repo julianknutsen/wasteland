@@ -19,6 +19,10 @@ type WLCommonsStore interface {
 	ClaimWanted(wantedID, rigHandle string) error
 	SubmitCompletion(completionID, wantedID, rigHandle, evidence string) error
 	QueryWanted(wantedID string) (*WantedItem, error)
+	QueryCompletion(wantedID string) (*CompletionRecord, error)
+	AcceptCompletion(wantedID, completionID, rigHandle string, stamp *Stamp) error
+	UpdateWanted(wantedID string, fields map[string]string) error
+	DeleteWanted(wantedID string) error
 }
 
 // WLCommons implements WLCommonsStore using the real Dolt CLI.
@@ -48,6 +52,26 @@ func (w *WLCommons) QueryWanted(wantedID string) (*WantedItem, error) {
 	return QueryWanted(w.dbDir, wantedID)
 }
 
+// QueryCompletion fetches the completion record for a wanted item.
+func (w *WLCommons) QueryCompletion(wantedID string) (*CompletionRecord, error) {
+	return QueryCompletion(w.dbDir, wantedID)
+}
+
+// AcceptCompletion validates a completion and creates a stamp.
+func (w *WLCommons) AcceptCompletion(wantedID, completionID, rigHandle string, stamp *Stamp) error {
+	return AcceptCompletion(w.dbDir, wantedID, completionID, rigHandle, stamp)
+}
+
+// UpdateWanted updates mutable fields on an open wanted item.
+func (w *WLCommons) UpdateWanted(wantedID string, fields map[string]string) error {
+	return UpdateWanted(w.dbDir, wantedID, fields)
+}
+
+// DeleteWanted soft-deletes a wanted item by setting status=withdrawn.
+func (w *WLCommons) DeleteWanted(wantedID string) error {
+	return DeleteWanted(w.dbDir, wantedID)
+}
+
 // WantedItem represents a row in the wanted table.
 type WantedItem struct {
 	ID              string
@@ -62,6 +86,28 @@ type WantedItem struct {
 	Status          string
 	EffortLevel     string
 	SandboxRequired bool
+}
+
+// CompletionRecord represents a row in the completions table.
+type CompletionRecord struct {
+	ID          string
+	WantedID    string
+	CompletedBy string
+	Evidence    string
+}
+
+// Stamp represents a reputation stamp issued when accepting a completion.
+type Stamp struct {
+	ID          string
+	Author      string
+	Subject     string
+	Quality     int
+	Reliability int
+	Severity    string
+	ContextID   string
+	ContextType string
+	SkillTags   []string
+	Message     string
 }
 
 // isNothingToCommit returns true if the error indicates DOLT_COMMIT found no
@@ -276,4 +322,115 @@ func parseCSVLine(line string) []string {
 	}
 	fields = append(fields, field.String())
 	return fields
+}
+
+// QueryCompletion fetches the completion record for a wanted item.
+// dbDir is the actual database directory.
+func QueryCompletion(dbDir, wantedID string) (*CompletionRecord, error) {
+	query := fmt.Sprintf(`SELECT id, wanted_id, completed_by, COALESCE(evidence, '') as evidence FROM completions WHERE wanted_id='%s';`,
+		EscapeSQL(wantedID))
+
+	output, err := doltSQLQuery(dbDir, query)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := parseSimpleCSV(output)
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("no completion found for wanted item %q", wantedID)
+	}
+
+	row := rows[0]
+	return &CompletionRecord{
+		ID:          row["id"],
+		WantedID:    row["wanted_id"],
+		CompletedBy: row["completed_by"],
+		Evidence:    row["evidence"],
+	}, nil
+}
+
+// AcceptCompletion validates a completion, creates a stamp, and marks the item completed.
+// dbDir is the actual database directory.
+func AcceptCompletion(dbDir, wantedID, completionID, rigHandle string, stamp *Stamp) error {
+	tagsField := "NULL"
+	if len(stamp.SkillTags) > 0 {
+		escaped := make([]string, len(stamp.SkillTags))
+		for i, t := range stamp.SkillTags {
+			t = strings.ReplaceAll(t, `\`, `\\`)
+			t = strings.ReplaceAll(t, `"`, `\"`)
+			t = strings.ReplaceAll(t, "'", "''")
+			escaped[i] = t
+		}
+		tagsField = fmt.Sprintf("'[\"%s\"]'", strings.Join(escaped, `","`))
+	}
+
+	msgField := "NULL"
+	if stamp.Message != "" {
+		msgField = fmt.Sprintf("'%s'", EscapeSQL(stamp.Message))
+	}
+
+	valence := fmt.Sprintf(`{"quality": %d, "reliability": %d}`, stamp.Quality, stamp.Reliability)
+
+	script := fmt.Sprintf(`INSERT INTO stamps (id, author, subject, valence, confidence, severity, context_id, context_type, skill_tags, message, created_at)
+VALUES ('%s', '%s', '%s', '%s', 1.0, '%s', '%s', 'completion', %s, %s, NOW());
+UPDATE completions SET validated_by='%s', stamp_id='%s', validated_at=NOW() WHERE id='%s';
+UPDATE wanted SET status='completed', updated_at=NOW() WHERE id='%s' AND status='in_review';
+CALL DOLT_ADD('-A');
+CALL DOLT_COMMIT('-m', 'wl accept: %s');
+`,
+		EscapeSQL(stamp.ID), EscapeSQL(rigHandle), EscapeSQL(stamp.Subject),
+		EscapeSQL(valence), EscapeSQL(stamp.Severity),
+		EscapeSQL(completionID), tagsField, msgField,
+		EscapeSQL(rigHandle), EscapeSQL(stamp.ID), EscapeSQL(completionID),
+		EscapeSQL(wantedID),
+		EscapeSQL(wantedID))
+
+	err := doltSQLScript(dbDir, script)
+	if err == nil {
+		return nil
+	}
+	if isNothingToCommit(err) {
+		return fmt.Errorf("wanted item %q is not in_review or does not exist", wantedID)
+	}
+	return fmt.Errorf("accept failed: %w", err)
+}
+
+// UpdateWanted updates mutable fields on an open wanted item.
+// dbDir is the actual database directory.
+func UpdateWanted(dbDir, wantedID string, fields map[string]string) error {
+	var setClauses []string
+	for col, val := range fields {
+		setClauses = append(setClauses, fmt.Sprintf("%s=%s", col, val))
+	}
+	setClauses = append(setClauses, "updated_at=NOW()")
+
+	script := fmt.Sprintf("UPDATE wanted SET %s WHERE id='%s' AND status='open';\nCALL DOLT_ADD('-A');\nCALL DOLT_COMMIT('-m', 'wl update: %s');\n",
+		strings.Join(setClauses, ", "), EscapeSQL(wantedID), EscapeSQL(wantedID))
+
+	err := doltSQLScript(dbDir, script)
+	if err == nil {
+		return nil
+	}
+	if isNothingToCommit(err) {
+		return fmt.Errorf("wanted item %q is not open or does not exist", wantedID)
+	}
+	return fmt.Errorf("update failed: %w", err)
+}
+
+// DeleteWanted soft-deletes a wanted item by setting status=withdrawn.
+// dbDir is the actual database directory.
+func DeleteWanted(dbDir, wantedID string) error {
+	script := fmt.Sprintf(`UPDATE wanted SET status='withdrawn', updated_at=NOW() WHERE id='%s' AND status='open';
+CALL DOLT_ADD('-A');
+CALL DOLT_COMMIT('-m', 'wl delete: %s');
+`, EscapeSQL(wantedID), EscapeSQL(wantedID))
+
+	err := doltSQLScript(dbDir, script)
+	if err == nil {
+		return nil
+	}
+	if isNothingToCommit(err) {
+		return fmt.Errorf("wanted item %q is not open or does not exist", wantedID)
+	}
+	return fmt.Errorf("delete failed: %w", err)
 }

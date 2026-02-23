@@ -1,0 +1,80 @@
+package main
+
+import (
+	"fmt"
+	"io"
+
+	"github.com/spf13/cobra"
+	"github.com/steveyegge/wasteland/internal/commons"
+	"github.com/steveyegge/wasteland/internal/style"
+)
+
+func newDeleteCmd(stdout, stderr io.Writer) *cobra.Command {
+	var noPush bool
+
+	cmd := &cobra.Command{
+		Use:   "delete <wanted-id>",
+		Short: "Withdraw a wanted item",
+		Long: `Withdraw a wanted item by setting its status to 'withdrawn'.
+
+Only items with status 'open' can be withdrawn — claimed or in-review items
+have active workers. The row stays in the table for audit trail.
+
+In wild-west mode any joined rig can delete.
+
+In wild-west mode the commit is auto-pushed to upstream and origin.
+Use --no-push to skip pushing (offline work).
+
+Examples:
+  wl delete w-abc123
+  wl delete w-abc123 --no-push`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runDelete(cmd, stdout, stderr, args[0], noPush)
+		},
+	}
+
+	cmd.Flags().BoolVar(&noPush, "no-push", false, "Skip pushing to remotes (offline work)")
+
+	return cmd
+}
+
+func runDelete(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush bool) error {
+	wlCfg, err := resolveWasteland(cmd)
+	if err != nil {
+		return fmt.Errorf("loading wasteland config: %w", err)
+	}
+
+	store := commons.NewWLCommons(wlCfg.LocalDir)
+
+	if err := deleteWanted(store, wantedID); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(stdout, "%s Withdrawn %s\n", style.Bold.Render("✓"), wantedID)
+	fmt.Fprintf(stdout, "  Status: withdrawn\n")
+
+	if !noPush {
+		_ = commons.PushWithSync(wlCfg.LocalDir, stdout)
+	}
+
+	return nil
+}
+
+// deleteWanted contains the testable business logic for withdrawing a wanted item.
+func deleteWanted(store commons.WLCommonsStore, wantedID string) error {
+	item, err := store.QueryWanted(wantedID)
+	if err != nil {
+		return fmt.Errorf("querying wanted item: %w", err)
+	}
+
+	if item.Status != "open" {
+		return fmt.Errorf("wanted item %s is not open (status: %s)", wantedID, item.Status)
+	}
+
+	if err := store.DeleteWanted(wantedID); err != nil {
+		return fmt.Errorf("deleting wanted item: %w", err)
+	}
+
+	return nil
+}

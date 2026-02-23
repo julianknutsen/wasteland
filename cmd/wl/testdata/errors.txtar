@@ -58,6 +58,62 @@ stderr 'required flag.*"evidence"'
 ! exec wl done w-abc --evidence x
 stderr 'not joined'
 
+# accept with no args.
+! exec wl accept
+stderr 'accepts 1 arg'
+
+# accept missing --quality.
+! exec wl accept w-abc
+stderr 'required flag.*"quality"'
+
+# accept with invalid quality (too low).
+! exec wl accept w-abc --quality 0
+stderr 'invalid quality'
+
+# accept with invalid quality (too high).
+! exec wl accept w-abc --quality 6
+stderr 'invalid quality'
+
+# accept with invalid severity.
+! exec wl accept w-abc --quality 3 --severity bad
+stderr 'invalid severity'
+
+# accept not joined.
+! exec wl accept w-abc --quality 3
+stderr 'not joined'
+
+# update with no args.
+! exec wl update
+stderr 'accepts 1 arg'
+
+# update with no fields.
+! exec wl update w-abc
+stderr 'at least one field'
+
+# update with invalid type.
+! exec wl update w-abc --type bad
+stderr 'invalid type'
+
+# update with invalid effort.
+! exec wl update w-abc --effort huge
+stderr 'invalid effort'
+
+# update with invalid priority.
+! exec wl update w-abc --priority 9
+stderr 'invalid priority'
+
+# update not joined.
+! exec wl update w-abc --title new
+stderr 'not joined'
+
+# delete with no args.
+! exec wl delete
+stderr 'accepts 1 arg'
+
+# delete not joined.
+! exec wl delete w-abc
+stderr 'not joined'
+
 # leave not joined (no arg).
 ! exec wl leave
 stderr 'not joined'
