@@ -24,6 +24,7 @@ func newJoinCmd(stdout, stderr io.Writer) *cobra.Command {
 		forkOrg     string
 		remoteBase  string
 		gitRemote   string
+		github      bool
 	)
 
 	cmd := &cobra.Command{
@@ -59,7 +60,7 @@ Examples:
 			if len(args) > 0 {
 				upstream = args[0]
 			}
-			return runJoin(stdout, stderr, upstream, handle, displayName, email, forkOrg, remoteBase, gitRemote)
+			return runJoin(stdout, stderr, upstream, handle, displayName, email, forkOrg, remoteBase, gitRemote, github)
 		},
 	}
 
@@ -69,12 +70,13 @@ Examples:
 	cmd.Flags().StringVar(&forkOrg, "fork-org", "", "Fork organization (default: DOLTHUB_ORG)")
 	cmd.Flags().StringVar(&remoteBase, "remote-base", "", "Base directory for file:// remotes (offline mode)")
 	cmd.Flags().StringVar(&gitRemote, "git-remote", "", "Base directory for bare git remotes")
-	cmd.MarkFlagsMutuallyExclusive("remote-base", "git-remote")
+	cmd.Flags().BoolVar(&github, "github", false, "Use GitHub as the upstream provider")
+	cmd.MarkFlagsMutuallyExclusive("remote-base", "git-remote", "github")
 
 	return cmd
 }
 
-func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, forkOrg, remoteBase, gitRemote string) error {
+func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, forkOrg, remoteBase, gitRemote string, github bool) error {
 	// Parse upstream path (validate early)
 	_, _, err := federation.ParseUpstream(upstream)
 	if err != nil {
@@ -113,6 +115,13 @@ func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, for
 			return fmt.Errorf("--fork-org is required in git remote mode (or set DOLTHUB_ORG)")
 		}
 		provider = remote.NewGitProvider(gitRemote)
+
+	case github:
+		// GitHub mode — uses gh CLI for forking, GitHub HTTPS URLs as dolt remotes.
+		if forkOrg == "" {
+			return fmt.Errorf("--fork-org is required in GitHub mode (or set DOLTHUB_ORG)")
+		}
+		provider = remote.NewGitHubProvider()
 
 	default:
 		// DoltHub mode — requires token and org.

@@ -39,8 +39,8 @@ func runApprove(cmd *cobra.Command, stdout, _ io.Writer, branch, comment string)
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
 
-	if cfg.GitHubRepo == "" {
-		return fmt.Errorf("github-repo not configured (run 'wl config set github-repo owner/repo')")
+	if !cfg.IsGitHub() {
+		return fmt.Errorf("approve requires GitHub provider (joined with --github)")
 	}
 
 	ghPath, err := exec.LookPath("gh")
@@ -49,7 +49,7 @@ func runApprove(cmd *cobra.Command, stdout, _ io.Writer, branch, comment string)
 	}
 
 	client := newGHClient(ghPath)
-	prURL, err := submitPRReview(client, cfg.GitHubRepo, cfg.ForkOrg, branch, "APPROVE", comment)
+	prURL, err := submitPRReview(client, cfg.Upstream, cfg.ForkOrg, branch, "APPROVE", comment)
 	if err != nil {
 		return err
 	}

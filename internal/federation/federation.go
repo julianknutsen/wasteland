@@ -37,6 +37,13 @@ type Config struct {
 	// Upstream is the DoltHub path of the upstream commons (e.g., "steveyegge/wl-commons").
 	Upstream string `json:"upstream"`
 
+	// ProviderType is the upstream provider ("dolthub", "file", "git", "github").
+	ProviderType string `json:"provider_type,omitempty"`
+
+	// UpstreamURL is the resolved dolt-compatible remote URL for the upstream.
+	// Used by browse for ephemeral clones.
+	UpstreamURL string `json:"upstream_url,omitempty"`
+
 	// ForkOrg is the DoltHub org where the fork lives (e.g., "alice-dev").
 	ForkOrg string `json:"fork_org"`
 
@@ -56,6 +63,8 @@ type Config struct {
 	Mode string `json:"mode,omitempty"`
 
 	// GitHubRepo is the upstream GitHub repo for PR shells (e.g., "steveyegge/wl-commons").
+	//
+	// Deprecated: use ProviderType == "github" instead.
 	GitHubRepo string `json:"github_repo,omitempty"`
 }
 
@@ -65,6 +74,20 @@ func (c *Config) ResolveMode() string {
 		return ModeWildWest
 	}
 	return c.Mode
+}
+
+// ResolveProviderType returns the effective provider type.
+// Falls back to "dolthub" for backward compatibility with old configs.
+func (c *Config) ResolveProviderType() string {
+	if c.ProviderType != "" {
+		return c.ProviderType
+	}
+	return "dolthub"
+}
+
+// IsGitHub returns true if the provider type is "github".
+func (c *Config) IsGitHub() bool {
+	return c.ResolveProviderType() == "github"
 }
 
 // ParseUpstream parses an upstream path like "steveyegge/wl-commons" into org and db.
@@ -194,12 +217,14 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 	}
 
 	cfg := &Config{
-		Upstream:  upstream,
-		ForkOrg:   forkOrg,
-		ForkDB:    upstreamDB,
-		LocalDir:  localDir,
-		RigHandle: handle,
-		JoinedAt:  time.Now(),
+		Upstream:     upstream,
+		ProviderType: s.Remote.Type(),
+		UpstreamURL:  upstreamURL,
+		ForkOrg:      forkOrg,
+		ForkDB:       upstreamDB,
+		LocalDir:     localDir,
+		RigHandle:    handle,
+		JoinedAt:     time.Now(),
 	}
 	if err := s.Config.Save(cfg); err != nil {
 		return nil, fmt.Errorf("saving wasteland config: %w", err)

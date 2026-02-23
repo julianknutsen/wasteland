@@ -200,8 +200,8 @@ func renderMarkdownDiff(stdout io.Writer, dbDir, doltPath, branch string) error 
 // --- GitHub PR shell ---
 
 func runGitHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch string) error {
-	if cfg.GitHubRepo == "" {
-		return fmt.Errorf("github-repo not configured (run 'wl config set github-repo owner/repo')")
+	if !cfg.IsGitHub() {
+		return fmt.Errorf("--gh-pr requires GitHub provider (joined with --github)")
 	}
 
 	ghPath, err := exec.LookPath("gh")
@@ -209,14 +209,8 @@ func runGitHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch stri
 		return fmt.Errorf("gh not found in PATH — install from https://cli.github.com")
 	}
 
-	// Ensure "github" Dolt remote exists.
-	fmt.Fprintln(stdout, "  Configuring GitHub remote...")
-	if err := commons.EnsureGitHubRemote(cfg.LocalDir, cfg.ForkOrg, cfg.ForkDB); err != nil {
-		return fmt.Errorf("setting up GitHub remote: %w", err)
-	}
-
-	// Push Dolt branch to fork on GitHub.
-	if err := commons.PushBranchToRemote(cfg.LocalDir, "github", branch, stdout); err != nil {
+	// In GitHub mode, origin is already GitHub; push dolt branch there.
+	if err := commons.PushBranchToRemote(cfg.LocalDir, "origin", branch, stdout); err != nil {
 		return fmt.Errorf("pushing to GitHub fork: %w", err)
 	}
 
@@ -232,7 +226,7 @@ func runGitHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch stri
 
 	// Create git-native branch on fork + cross-fork PR to upstream.
 	client := newGHClient(ghPath)
-	prURL, err := createGitHubPR(client, cfg.GitHubRepo, cfg.ForkOrg, cfg.ForkDB, branch, prTitle, mdBuf.String(), stdout)
+	prURL, err := createGitHubPR(client, cfg.Upstream, cfg.ForkOrg, cfg.ForkDB, branch, prTitle, mdBuf.String(), stdout)
 	if err != nil {
 		return err
 	}

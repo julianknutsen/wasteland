@@ -19,8 +19,9 @@ Use 'wl config get <key>' to read a setting.
 Use 'wl config set <key> <value>' to change a setting.
 
 Supported keys:
-  mode          Workflow mode: wild-west (default) or pr
-  github-repo   Upstream GitHub repo for PR shells (owner/repo)`,
+  mode            Workflow mode: wild-west (default) or pr
+  provider-type   Upstream provider type (read-only, set during 'wl join')
+  github-repo     (deprecated) Upstream GitHub repo for PR shells`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
@@ -59,13 +60,14 @@ func newConfigSetCmd(stdout, stderr io.Writer) *cobra.Command {
 
 // validConfigKeys lists the keys that can be read/written via wl config.
 var validConfigKeys = map[string]bool{
-	"mode":        true,
-	"github-repo": true,
+	"mode":          true,
+	"github-repo":   true,
+	"provider-type": true,
 }
 
 func runConfigGet(cmd *cobra.Command, stdout, _ io.Writer, key string) error {
 	if !validConfigKeys[key] {
-		return fmt.Errorf("unknown config key %q (supported: mode, github-repo)", key)
+		return fmt.Errorf("unknown config key %q (supported: mode, provider-type, github-repo)", key)
 	}
 
 	cfg, err := resolveWasteland(cmd)
@@ -76,18 +78,22 @@ func runConfigGet(cmd *cobra.Command, stdout, _ io.Writer, key string) error {
 	switch key {
 	case "mode":
 		fmt.Fprintln(stdout, cfg.ResolveMode())
+	case "provider-type":
+		fmt.Fprintln(stdout, cfg.ResolveProviderType())
 	case "github-repo":
-		fmt.Fprintln(stdout, cfg.GitHubRepo)
+		fmt.Fprintln(stdout, cfg.GitHubRepo) //nolint:staticcheck // backward compat
 	}
 	return nil
 }
 
 func runConfigSet(cmd *cobra.Command, stdout, _ io.Writer, key, value string) error {
 	if !validConfigKeys[key] {
-		return fmt.Errorf("unknown config key %q (supported: mode, github-repo)", key)
+		return fmt.Errorf("unknown config key %q (supported: mode, provider-type, github-repo)", key)
 	}
 
 	switch key {
+	case "provider-type":
+		return fmt.Errorf("provider-type is read-only (set during 'wl join')")
 	case "mode":
 		if err := validateMode(value); err != nil {
 			return err
@@ -109,7 +115,7 @@ func runConfigSet(cmd *cobra.Command, stdout, _ io.Writer, key, value string) er
 	case "mode":
 		cfg.Mode = value
 	case "github-repo":
-		cfg.GitHubRepo = value
+		cfg.GitHubRepo = value //nolint:staticcheck // backward compat
 	}
 
 	if err := store.Save(cfg); err != nil {

@@ -40,8 +40,8 @@ func runRequestChanges(cmd *cobra.Command, stdout, _ io.Writer, branch, comment 
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
 
-	if cfg.GitHubRepo == "" {
-		return fmt.Errorf("github-repo not configured (run 'wl config set github-repo owner/repo')")
+	if !cfg.IsGitHub() {
+		return fmt.Errorf("request-changes requires GitHub provider (joined with --github)")
 	}
 
 	ghPath, err := exec.LookPath("gh")
@@ -50,7 +50,7 @@ func runRequestChanges(cmd *cobra.Command, stdout, _ io.Writer, branch, comment 
 	}
 
 	client := newGHClient(ghPath)
-	prURL, err := submitPRReview(client, cfg.GitHubRepo, cfg.ForkOrg, branch, "REQUEST_CHANGES", comment)
+	prURL, err := submitPRReview(client, cfg.Upstream, cfg.ForkOrg, branch, "REQUEST_CHANGES", comment)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,7 @@
 package federation
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -205,3 +206,105 @@ func TestLocalCloneDir(t *testing.T) {
 		t.Errorf("LocalCloneDir = %q, want %q", got, want)
 	}
 }
+
+func TestResolveProviderType(t *testing.T) {
+	tests := []struct {
+		name         string
+		providerType string
+		want         string
+	}{
+		{"explicit dolthub", "dolthub", "dolthub"},
+		{"explicit github", "github", "github"},
+		{"explicit file", "file", "file"},
+		{"explicit git", "git", "git"},
+		{"empty defaults to dolthub", "", "dolthub"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{ProviderType: tc.providerType}
+			got := cfg.ResolveProviderType()
+			if got != tc.want {
+				t.Errorf("ResolveProviderType() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsGitHub(t *testing.T) {
+	tests := []struct {
+		name         string
+		providerType string
+		want         bool
+	}{
+		{"github provider", "github", true},
+		{"dolthub provider", "dolthub", false},
+		{"file provider", "file", false},
+		{"empty defaults to dolthub", "", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{ProviderType: tc.providerType}
+			got := cfg.IsGitHub()
+			if got != tc.want {
+				t.Errorf("IsGitHub() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestJoinSetsProviderTypeAndUpstreamURL(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("XDG_DATA_HOME", tmpDir)
+
+	store := NewConfigStore()
+	provider := &fakeProviderForConfig{
+		typeStr: "github",
+		urlFmt:  "https://github.com/%s/%s.git",
+	}
+	cli := &noopDoltCLI{}
+
+	svc := &Service{Remote: provider, CLI: cli, Config: store}
+	cfg, err := svc.Join("org/db", "myfork", "rig", "Display", "e@e.com", "dev")
+	if err != nil {
+		t.Fatalf("Join() error: %v", err)
+	}
+	if cfg.ProviderType != "github" {
+		t.Errorf("ProviderType = %q, want %q", cfg.ProviderType, "github")
+	}
+	if cfg.UpstreamURL != "https://github.com/org/db.git" {
+		t.Errorf("UpstreamURL = %q, want %q", cfg.UpstreamURL, "https://github.com/org/db.git")
+	}
+
+	// Verify it round-trips through config store.
+	loaded, err := store.Load("org/db")
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if loaded.ProviderType != "github" {
+		t.Errorf("loaded ProviderType = %q, want %q", loaded.ProviderType, "github")
+	}
+	if loaded.UpstreamURL != "https://github.com/org/db.git" {
+		t.Errorf("loaded UpstreamURL = %q, want %q", loaded.UpstreamURL, "https://github.com/org/db.git")
+	}
+}
+
+// fakeProviderForConfig is a minimal remote.Provider for testing config fields.
+type fakeProviderForConfig struct {
+	typeStr string
+	urlFmt  string
+}
+
+func (f *fakeProviderForConfig) DatabaseURL(org, db string) string {
+	return fmt.Sprintf(f.urlFmt, org, db)
+}
+func (f *fakeProviderForConfig) Fork(_, _, _ string) error { return nil }
+func (f *fakeProviderForConfig) Type() string              { return f.typeStr }
+
+// noopDoltCLI is a DoltCLI that does nothing (for config-focused tests).
+type noopDoltCLI struct{}
+
+func (n *noopDoltCLI) Clone(_, _ string) error                   { return nil }
+func (n *noopDoltCLI) RegisterRig(_, _, _, _, _, _ string) error { return nil }
+func (n *noopDoltCLI) Push(_ string) error                       { return nil }
+func (n *noopDoltCLI) AddUpstreamRemote(_, _ string) error       { return nil }

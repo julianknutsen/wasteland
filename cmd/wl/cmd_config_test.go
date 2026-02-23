@@ -52,3 +52,9 @@ func TestValidateGitHubRepo_Invalid(t *testing.T) {
 		}
 	}
 }
+
+func TestValidConfigKeys_ProviderType(t *testing.T) {
+	if !validConfigKeys["provider-type"] {
+		t.Error("expected 'provider-type' to be a valid config key")
+	}
+}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/wasteland/internal/commons"
+	"github.com/steveyegge/wasteland/internal/federation"
 	"github.com/steveyegge/wasteland/internal/style"
 )
 
@@ -28,10 +29,11 @@ func newBrowseCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "browse",
 		Short: "Browse wanted items on the commons board",
 		Args:  cobra.NoArgs,
-		Long: `Browse the Wasteland wanted board (hop/wl-commons).
+		Long: `Browse the Wasteland wanted board.
 
-Uses the clone-then-discard pattern: clones the commons database to a
-temporary directory, queries it, then deletes the clone.
+Clones the upstream commons database to a temporary directory, queries it,
+then deletes the clone. Works with all provider types (DoltHub, GitHub,
+file, git).
 
 EXAMPLES:
   wl browse                          # All open wanted items
@@ -41,8 +43,8 @@ EXAMPLES:
   wl browse --priority 0             # Critical priority only
   wl browse --limit 5               # Show 5 items
   wl browse --json                   # JSON output`,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return runBrowse(stdout, stderr, project, status, itemType, priority, limit, jsonOut)
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runBrowse(cmd, stdout, stderr, project, status, itemType, priority, limit, jsonOut)
 		},
 	}
 
@@ -56,10 +58,22 @@ EXAMPLES:
 	return cmd
 }
 
-func runBrowse(stdout, _ io.Writer, project, status, itemType string, priority, limit int, jsonOut bool) error {
+func runBrowse(cmd *cobra.Command, stdout, _ io.Writer, project, status, itemType string, priority, limit int, jsonOut bool) error {
+	cfg, err := resolveWasteland(cmd)
+	if err != nil {
+		return fmt.Errorf("loading wasteland config: %w", err)
+	}
+
 	doltPath, err := exec.LookPath("dolt")
 	if err != nil {
 		return fmt.Errorf("dolt not found in PATH — install from https://docs.dolthub.com/introduction/installation")
+	}
+
+	_, commonsDB, _ := federation.ParseUpstream(cfg.Upstream)
+	cloneURL := cfg.UpstreamURL
+	if cloneURL == "" {
+		// Backward compat: old configs without UpstreamURL.
+		cloneURL = cfg.Upstream
 	}
 
 	tmpDir, err := os.MkdirTemp("", "wl-browse-*")
@@ -68,17 +82,14 @@ func runBrowse(stdout, _ io.Writer, project, status, itemType string, priority, 
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	commonsOrg := "hop"
-	commonsDB := "wl-commons"
 	cloneDir := filepath.Join(tmpDir, commonsDB)
 
-	remote := fmt.Sprintf("%s/%s", commonsOrg, commonsDB)
-	fmt.Fprintf(stdout, "Cloning %s...\n", style.Bold.Render(remote))
+	fmt.Fprintf(stdout, "Cloning %s...\n", style.Bold.Render(cfg.Upstream))
 
-	cloneCmd := exec.Command(doltPath, "clone", remote, cloneDir)
+	cloneCmd := exec.Command(doltPath, "clone", cloneURL, cloneDir)
 	cloneCmd.Stderr = os.Stderr
 	if err := cloneCmd.Run(); err != nil {
-		return fmt.Errorf("cloning %s: %w\nEnsure the database exists on DoltHub: https://www.dolthub.com/%s", remote, err, remote)
+		return fmt.Errorf("cloning %s: %w", cfg.Upstream, err)
 	}
 	fmt.Fprintf(stdout, "%s Cloned successfully\n\n", style.Bold.Render("✓"))
 

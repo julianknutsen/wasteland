@@ -189,6 +189,10 @@ stderr 'not joined'
 ! exec wl config set badkey value
 stderr 'unknown config key'
 
+# config set provider-type is read-only.
+! exec wl config set provider-type github
+stderr 'read-only'
+
 # review --gh-pr without branch.
 ! exec wl review --gh-pr
 stderr 'requires a branch'
