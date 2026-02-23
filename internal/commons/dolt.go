@@ -114,26 +114,37 @@ func BranchExists(dbDir, branch string) (bool, error) {
 }
 
 // CheckoutBranch creates the branch if it doesn't exist, then checks it out.
+// Uses dolt CLI commands (not SQL DOLT_CHECKOUT) because the SQL stored
+// procedure is session-scoped and does not persist across dolt sql invocations.
 func CheckoutBranch(dbDir, branch string) error {
 	exists, err := BranchExists(dbDir, branch)
 	if err != nil {
 		return fmt.Errorf("checking branch %s: %w", branch, err)
 	}
 	if !exists {
-		if err := doltSQLScript(dbDir, fmt.Sprintf(
-			"CALL DOLT_BRANCH('%s');", strings.ReplaceAll(branch, "'", "''"),
-		)); err != nil {
+		if err := doltExec(dbDir, "branch", branch); err != nil {
 			return fmt.Errorf("creating branch %s: %w", branch, err)
 		}
 	}
-	return doltSQLScript(dbDir, fmt.Sprintf(
-		"CALL DOLT_CHECKOUT('%s');", strings.ReplaceAll(branch, "'", "''"),
-	))
+	return doltExec(dbDir, "checkout", branch)
 }
 
 // CheckoutMain switches the working directory back to the main branch.
 func CheckoutMain(dbDir string) error {
-	return doltSQLScript(dbDir, "CALL DOLT_CHECKOUT('main');")
+	return doltExec(dbDir, "checkout", "main")
+}
+
+// doltExec runs a dolt CLI command in the given database directory.
+func doltExec(dbDir string, args ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "dolt", args...)
+	cmd.Dir = dbDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dolt %s: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+	}
+	return nil
 }
 
 // PushBranch pushes a named branch to origin.
