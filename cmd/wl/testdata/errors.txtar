@@ -169,6 +169,14 @@ stderr 'not joined'
 ! exec wl config set badkey value
 stderr 'unknown config key'
 
+# review --gh-pr without branch.
+! exec wl review --gh-pr
+stderr 'requires a branch'
+
+# review --gh-pr with --md (mutually exclusive).
+! exec wl review wl/rig/w-abc --gh-pr --md
+stderr 'mutually exclusive'
+
 # leave not joined (no arg).
 ! exec wl leave
 stderr 'not joined'

@@ -197,6 +197,52 @@ func DeleteBranch(dbDir, branch string) error {
 	return doltSQLScript(dbDir, fmt.Sprintf("CALL DOLT_BRANCH('-D', '%s');", escaped))
 }
 
+// EnsureGitHubRemote adds a "github" Dolt remote pointing to the rig's
+// GitHub fork (e.g. https://github.com/alice-dev/wl-commons.git).
+// Idempotent: if "github" remote already exists, no-op.
+func EnsureGitHubRemote(dbDir, forkOrg, forkDB string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	checkCmd := exec.CommandContext(ctx, "dolt", "remote", "-v")
+	checkCmd.Dir = dbDir
+	output, err := checkCmd.CombinedOutput()
+	if err == nil {
+		for _, line := range strings.Split(string(output), "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "github") {
+				return nil
+			}
+		}
+	}
+
+	remoteURL := fmt.Sprintf("https://github.com/%s/%s.git", forkOrg, forkDB)
+	addCmd := exec.CommandContext(ctx, "dolt", "remote", "add", "github", remoteURL)
+	addCmd.Dir = dbDir
+	output, err = addCmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(output))
+		if strings.Contains(strings.ToLower(msg), "already exists") {
+			return nil
+		}
+		return fmt.Errorf("dolt remote add github: %w (%s)", err, msg)
+	}
+	return nil
+}
+
+// PushBranchToRemote pushes a branch to a named remote.
+func PushBranchToRemote(dbDir, remote, branch string, stdout io.Writer) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "dolt", "push", remote, branch)
+	cmd.Dir = dbDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dolt push %s %s: %w (%s)", remote, branch, err, strings.TrimSpace(string(output)))
+	}
+	fmt.Fprintf(stdout, "  Pushed branch %s to %s\n", branch, remote)
+	return nil
+}
+
 // doltSQLQuery executes a SQL query and returns the raw CSV output.
 func doltSQLQuery(dbDir, query string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

@@ -30,3 +30,25 @@ func TestValidConfigKeys(t *testing.T) {
 		t.Error("'nonexistent' should not be a valid config key")
 	}
 }
+
+func TestValidConfigKeys_GitHubRepo(t *testing.T) {
+	if !validConfigKeys["github-repo"] {
+		t.Error("expected 'github-repo' to be a valid config key")
+	}
+}
+
+func TestValidateGitHubRepo_Valid(t *testing.T) {
+	for _, repo := range []string{"owner/repo", "steveyegge/wl-commons", "a/b"} {
+		if err := validateGitHubRepo(repo); err != nil {
+			t.Errorf("validateGitHubRepo(%q) = %v, want nil", repo, err)
+		}
+	}
+}
+
+func TestValidateGitHubRepo_Invalid(t *testing.T) {
+	for _, repo := range []string{"", "noslash", "/bad", "bad/", "/"} {
+		if err := validateGitHubRepo(repo); err == nil {
+			t.Errorf("validateGitHubRepo(%q) = nil, want error", repo)
+		}
+	}
+}

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"os/exec"
 
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/wasteland/internal/commons"
@@ -69,6 +70,13 @@ func runMerge(cmd *cobra.Command, stdout, _ io.Writer, branch string, noPush, ke
 
 	if !noPush {
 		_ = commons.PushWithSync(cfg.LocalDir, stdout)
+	}
+
+	// Best-effort: auto-close the corresponding GitHub PR shell.
+	if cfg.GitHubRepo != "" {
+		if ghPath, err := exec.LookPath("gh"); err == nil {
+			closeGitHubPR(ghPath, cfg.GitHubRepo, cfg.ForkOrg, cfg.ForkDB, branch, stdout)
+		}
 	}
 
 	return nil

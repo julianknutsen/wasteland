@@ -54,6 +54,9 @@ type Config struct {
 
 	// Mode is the workflow mode: "" or "wild-west" (default) or "pr".
 	Mode string `json:"mode,omitempty"`
+
+	// GitHubRepo is the upstream GitHub repo for PR shells (e.g., "steveyegge/wl-commons").
+	GitHubRepo string `json:"github_repo,omitempty"`
 }
 
 // ResolveMode returns the effective mode, defaulting to wild-west.
