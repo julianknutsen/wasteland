@@ -10,6 +10,98 @@ import (
 	"testing"
 )
 
+func TestConfigGetProviderType(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+
+			stdout, stderr, err := runWL(t, env, "config", "get", "provider-type")
+			if err != nil {
+				t.Fatalf("wl config get provider-type failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+
+			got := strings.TrimSpace(stdout)
+			want := string(backend)
+			if got != want {
+				t.Errorf("provider-type = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestReviewMarkdown(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+
+			// Switch to PR mode and post.
+			setMode(t, env, upstream, "pr")
+
+			stdout, _, err := runWL(t, env, "post",
+				"--title", "Markdown review test",
+				"--type", "feature",
+				"--no-push",
+			)
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+			branch := "wl/" + forkOrg + "/" + wantedID
+
+			// Review with --md.
+			stdout, stderr, err := runWL(t, env, "review", branch, "--md")
+			if err != nil {
+				t.Fatalf("wl review --md failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+
+			if !strings.Contains(stdout, "## wl review") {
+				t.Errorf("expected '## wl review' header, got: %s", stdout)
+			}
+			if !strings.Contains(stdout, "### Summary") {
+				t.Errorf("expected '### Summary' section, got: %s", stdout)
+			}
+			if !strings.Contains(stdout, "### Changes") {
+				t.Errorf("expected '### Changes' section, got: %s", stdout)
+			}
+		})
+	}
+}
+
+func TestReviewJSON(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+
+			// Switch to PR mode and post.
+			setMode(t, env, upstream, "pr")
+
+			stdout, _, err := runWL(t, env, "post",
+				"--title", "JSON review test",
+				"--type", "feature",
+				"--no-push",
+			)
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+			branch := "wl/" + forkOrg + "/" + wantedID
+
+			// Review with --json.
+			stdout, stderr, err := runWL(t, env, "review", branch, "--json")
+			if err != nil {
+				t.Fatalf("wl review --json failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+
+			// If there's output, it should be valid JSON.
+			// (dolt diff -r json may produce empty output on some versions.)
+			trimmed := strings.TrimSpace(stdout)
+			if trimmed != "" && !json.Valid([]byte(trimmed)) {
+				t.Errorf("review --json output is not valid JSON: %s", trimmed)
+			}
+		})
+	}
+}
+
 // setMode updates the wasteland config to the given mode.
 func setMode(t *testing.T, env *testEnv, upstreamPath, mode string) {
 	t.Helper()

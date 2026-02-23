@@ -57,6 +57,42 @@ func TestJoinCreatesConfig(t *testing.T) {
 			if localDir == "" {
 				t.Fatal("local_dir is empty")
 			}
+
+			// Verify provider_type matches the backend.
+			providerType, _ := cfg["provider_type"].(string)
+			switch backend {
+			case fileBackend:
+				if providerType != "file" {
+					t.Errorf("provider_type = %q, want %q", providerType, "file")
+				}
+			case gitBackend:
+				if providerType != "git" {
+					t.Errorf("provider_type = %q, want %q", providerType, "git")
+				}
+			case githubBackend:
+				if providerType != "github" {
+					t.Errorf("provider_type = %q, want %q", providerType, "github")
+				}
+			}
+
+			// Verify upstream_url is set and has expected format.
+			upstreamURL, _ := cfg["upstream_url"].(string)
+			if upstreamURL == "" {
+				t.Fatal("upstream_url is empty")
+			}
+			if !strings.HasPrefix(upstreamURL, "file://") {
+				t.Errorf("upstream_url should start with file://, got %q", upstreamURL)
+			}
+			switch backend {
+			case gitBackend, githubBackend:
+				if !strings.HasSuffix(upstreamURL, ".git") {
+					t.Errorf("upstream_url for %s should end with .git, got %q", backend, upstreamURL)
+				}
+			case fileBackend:
+				if strings.HasSuffix(upstreamURL, ".git") {
+					t.Errorf("upstream_url for file should not end with .git, got %q", upstreamURL)
+				}
+			}
 		})
 	}
 }

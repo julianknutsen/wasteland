@@ -18,6 +18,10 @@ env DOLTHUB_TOKEN=fake-token
 stderr 'DOLTHUB_ORG'
 env DOLTHUB_TOKEN=
 
+# join --github-local with --remote-base (mutually exclusive).
+! exec wl join hop/wl-commons --github-local /tmp --remote-base /tmp
+stderr 'none of the others can be'
+
 # post missing --title.
 ! exec wl post
 stderr 'required flag.*"title"'

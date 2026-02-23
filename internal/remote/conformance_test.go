@@ -173,6 +173,21 @@ func providers() []providerFactory {
 				}
 			},
 		},
+		{
+			name: "FakeGitHubProvider",
+			setup: func(t *testing.T, baseDir string) remote.Provider {
+				createGitSource(t, baseDir, "src-org", "testdb")
+				return remote.NewFakeGitHubProvider(baseDir)
+			},
+			urlTest: func(t *testing.T, url string) {
+				if !strings.HasPrefix(url, "file://") {
+					t.Errorf("FakeGitHubProvider URL should start with file://, got %q", url)
+				}
+				if !strings.HasSuffix(url, ".git") {
+					t.Errorf("FakeGitHubProvider URL should end with .git, got %q", url)
+				}
+			},
+		},
 	}
 }
 

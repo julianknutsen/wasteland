@@ -3,9 +3,10 @@
 // Package offline contains integration tests that exercise the wl binary
 // against real dolt databases using local remotes. No network required.
 //
-// Every test is parameterized over two backends:
+// Every test is parameterized over three backends:
 //   - file: dolt remote stores via --remote-base (file:// URLs)
 //   - git: bare git repos via --git-remote (file:// URLs to .git dirs)
+//   - github: bare git repos via --github-local (provider_type="github")
 //
 // Every test goes through the front door: "wl join" sets up the fork and
 // config, then post/claim/done/sync operate on the result.
@@ -80,12 +81,13 @@ func findRepoRoot() string {
 type backendKind string
 
 const (
-	fileBackend backendKind = "file"
-	gitBackend  backendKind = "git"
+	fileBackend   backendKind = "file"
+	gitBackend    backendKind = "git"
+	githubBackend backendKind = "github"
 )
 
 // backends lists all backends that every test runs against.
-var backends = []backendKind{fileBackend, gitBackend}
+var backends = []backendKind{fileBackend, gitBackend, githubBackend}
 
 // testEnv provides an isolated filesystem environment for each test.
 type testEnv struct {
@@ -201,7 +203,7 @@ func (e *testEnv) pushToUpstreamStore(t *testing.T, org, db, sql string) {
 func (e *testEnv) createStoreDir(t *testing.T, org, db string) string {
 	t.Helper()
 	switch e.Backend {
-	case gitBackend:
+	case gitBackend, githubBackend:
 		gitDir := filepath.Join(e.RemoteBase, org, db+".git")
 		if err := os.MkdirAll(gitDir, 0o755); err != nil {
 			t.Fatalf("creating upstream git dir: %v", err)
@@ -231,6 +233,8 @@ func (e *testEnv) remoteArgs() []string {
 	switch e.Backend {
 	case gitBackend:
 		return []string{"--git-remote", e.RemoteBase}
+	case githubBackend:
+		return []string{"--github-local", e.RemoteBase}
 	default:
 		return []string{"--remote-base", e.RemoteBase}
 	}
