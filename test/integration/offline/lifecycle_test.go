@@ -377,29 +377,32 @@ func TestAcceptFullLifecycle(t *testing.T) {
 			env := joinedEnv(t, backend)
 			dbDir := forkCloneDir(t, env)
 
-			// Post.
+			// Post as forkOrg (poster).
 			stdout, _, err := runWL(t, env, "post", "--title", "Accept lifecycle test", "--type", "feature", "--no-push")
 			if err != nil {
 				t.Fatalf("wl post failed: %v", err)
 			}
 			wantedID := extractWantedID(t, stdout)
 
-			// Claim.
+			// Switch to worker-rig for claim + done.
+			writeConfig(t, env, upstream, "worker-rig")
+
+			// Claim as worker-rig.
 			_, _, err = runWL(t, env, "claim", wantedID, "--no-push")
 			if err != nil {
 				t.Fatalf("wl claim failed: %v", err)
 			}
 
-			// Done.
+			// Done as worker-rig.
 			_, _, err = runWL(t, env, "done", wantedID, "--evidence", "https://github.com/test/pr/1", "--no-push")
 			if err != nil {
 				t.Fatalf("wl done failed: %v", err)
 			}
 
-			// Switch to a different rig for accept (can't accept your own).
-			writeConfig(t, env, upstream, "reviewer-rig")
+			// Switch back to forkOrg (poster) for accept.
+			writeConfig(t, env, upstream, forkOrg)
 
-			// Accept.
+			// Accept as poster.
 			stdout, stderr, err := runWL(t, env, "accept", wantedID, "--quality", "4", "--reliability", "3", "--severity", "branch", "--skills", "go,test", "--message", "great work", "--no-push")
 			if err != nil {
 				t.Fatalf("wl accept failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
@@ -421,11 +424,11 @@ func TestAcceptFullLifecycle(t *testing.T) {
 			if len(rows) < 2 {
 				t.Fatal("no stamp record found")
 			}
-			if rows[1][0] != "reviewer-rig" {
-				t.Errorf("stamp author = %q, want %q", rows[1][0], "reviewer-rig")
+			if rows[1][0] != forkOrg {
+				t.Errorf("stamp author = %q, want %q", rows[1][0], forkOrg)
 			}
-			if rows[1][1] != forkOrg {
-				t.Errorf("stamp subject = %q, want %q", rows[1][1], forkOrg)
+			if rows[1][1] != "worker-rig" {
+				t.Errorf("stamp subject = %q, want %q", rows[1][1], "worker-rig")
 			}
 			if rows[1][2] != "branch" {
 				t.Errorf("stamp severity = %q, want %q", rows[1][2], "branch")
@@ -434,12 +437,12 @@ func TestAcceptFullLifecycle(t *testing.T) {
 			// Verify completion was validated.
 			raw = doltSQL(t, dbDir, "SELECT COALESCE(validated_by, '') FROM completions WHERE wanted_id='"+wantedID+"'")
 			rows = parseCSV(t, raw)
-			if len(rows) < 2 || rows[1][0] != "reviewer-rig" {
+			if len(rows) < 2 || rows[1][0] != forkOrg {
 				var got string
 				if len(rows) >= 2 {
 					got = rows[1][0]
 				}
-				t.Errorf("completion validated_by = %q, want %q", got, "reviewer-rig")
+				t.Errorf("completion validated_by = %q, want %q", got, forkOrg)
 			}
 		})
 	}
@@ -471,6 +474,90 @@ func TestAcceptSelfReject(t *testing.T) {
 			_, _, err = runWL(t, env, "accept", wantedID, "--quality", "3", "--no-push")
 			if err == nil {
 				t.Fatal("accept by same rig should have failed")
+			}
+		})
+	}
+}
+
+func TestRejectFullLifecycle(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := forkCloneDir(t, env)
+
+			// Post as forkOrg (poster).
+			stdout, _, err := runWL(t, env, "post", "--title", "Reject lifecycle test", "--type", "feature", "--no-push")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+
+			// Switch to worker-rig for claim + done.
+			writeConfig(t, env, upstream, "worker-rig")
+
+			_, _, err = runWL(t, env, "claim", wantedID, "--no-push")
+			if err != nil {
+				t.Fatalf("wl claim failed: %v", err)
+			}
+
+			_, _, err = runWL(t, env, "done", wantedID, "--evidence", "https://github.com/test/pr/1", "--no-push")
+			if err != nil {
+				t.Fatalf("wl done failed: %v", err)
+			}
+
+			// Switch back to forkOrg (poster) for reject.
+			writeConfig(t, env, upstream, forkOrg)
+
+			stdout, stderr, err := runWL(t, env, "reject", wantedID, "--reason", "tests failing", "--no-push")
+			if err != nil {
+				t.Fatalf("wl reject failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "Rejected") {
+				t.Errorf("expected 'Rejected' message, got: %s", stdout)
+			}
+
+			// Verify status reverted to claimed.
+			raw := doltSQL(t, dbDir, "SELECT status FROM wanted WHERE id='"+wantedID+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) < 2 || rows[1][0] != "claimed" {
+				t.Errorf("status = %q, want %q", rows[1][0], "claimed")
+			}
+
+			// Verify completion record was deleted.
+			raw = doltSQL(t, dbDir, "SELECT COUNT(*) FROM completions WHERE wanted_id='"+wantedID+"'")
+			rows = parseCSV(t, raw)
+			if len(rows) < 2 || rows[1][0] != "0" {
+				var got string
+				if len(rows) >= 2 {
+					got = rows[1][0]
+				}
+				t.Errorf("completion count = %q, want %q", got, "0")
+			}
+
+			// Worker re-submits.
+			writeConfig(t, env, upstream, "worker-rig")
+
+			_, _, err = runWL(t, env, "done", wantedID, "--evidence", "https://github.com/test/pr/2", "--no-push")
+			if err != nil {
+				t.Fatalf("wl done (re-submit) failed: %v", err)
+			}
+
+			// Poster accepts.
+			writeConfig(t, env, upstream, forkOrg)
+
+			stdout, stderr, err = runWL(t, env, "accept", wantedID, "--quality", "4", "--no-push")
+			if err != nil {
+				t.Fatalf("wl accept failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "Accepted") {
+				t.Errorf("expected 'Accepted' message, got: %s", stdout)
+			}
+
+			// Verify final status is completed.
+			raw = doltSQL(t, dbDir, "SELECT status FROM wanted WHERE id='"+wantedID+"'")
+			rows = parseCSV(t, raw)
+			if len(rows) < 2 || rows[1][0] != "completed" {
+				t.Errorf("status = %q, want %q", rows[1][0], "completed")
 			}
 		})
 	}

@@ -67,7 +67,7 @@ func TestValidateAcceptInputs(t *testing.T) {
 func TestAcceptCompletion_Success(t *testing.T) {
 	t.Parallel()
 	store := newFakeWLCommonsStore()
-	_ = store.InsertWanted(&commons.WantedItem{ID: "w-abc", Title: "Fix bug"})
+	_ = store.InsertWanted(&commons.WantedItem{ID: "w-abc", Title: "Fix bug", PostedBy: "reviewer-rig"})
 	_ = store.ClaimWanted("w-abc", "worker-rig")
 	_ = store.SubmitCompletion("c-test123", "w-abc", "worker-rig", "https://github.com/pr/1")
 
@@ -131,7 +131,7 @@ func TestAcceptCompletion_NotFound(t *testing.T) {
 func TestAcceptCompletion_SelfAccept(t *testing.T) {
 	t.Parallel()
 	store := newFakeWLCommonsStore()
-	_ = store.InsertWanted(&commons.WantedItem{ID: "w-abc", Title: "Fix bug"})
+	_ = store.InsertWanted(&commons.WantedItem{ID: "w-abc", Title: "Fix bug", PostedBy: "my-rig"})
 	_ = store.ClaimWanted("w-abc", "my-rig")
 	_ = store.SubmitCompletion("c-test123", "w-abc", "my-rig", "evidence")
 
@@ -144,10 +144,26 @@ func TestAcceptCompletion_SelfAccept(t *testing.T) {
 	}
 }
 
+func TestAcceptCompletion_NotPoster(t *testing.T) {
+	t.Parallel()
+	store := newFakeWLCommonsStore()
+	_ = store.InsertWanted(&commons.WantedItem{ID: "w-abc", Title: "Fix bug", PostedBy: "poster-rig"})
+	_ = store.ClaimWanted("w-abc", "worker-rig")
+	_ = store.SubmitCompletion("c-test123", "w-abc", "worker-rig", "evidence")
+
+	_, err := acceptCompletion(store, "w-abc", "other-rig", 4, 3, "leaf", nil, "")
+	if err == nil {
+		t.Fatal("acceptCompletion() expected error for non-poster")
+	}
+	if !strings.Contains(err.Error(), "only the poster can accept") {
+		t.Errorf("error = %q, want to contain 'only the poster can accept'", err.Error())
+	}
+}
+
 func TestAcceptCompletion_QueryCompletionError(t *testing.T) {
 	t.Parallel()
 	store := newFakeWLCommonsStore()
-	_ = store.InsertWanted(&commons.WantedItem{ID: "w-abc", Title: "Fix bug", Status: "in_review"})
+	_ = store.InsertWanted(&commons.WantedItem{ID: "w-abc", Title: "Fix bug", Status: "in_review", PostedBy: "reviewer-rig"})
 	store.QueryCompletionErr = fmt.Errorf("completion query error")
 
 	_, err := acceptCompletion(store, "w-abc", "reviewer-rig", 4, 3, "leaf", nil, "")
@@ -162,7 +178,7 @@ func TestAcceptCompletion_QueryCompletionError(t *testing.T) {
 func TestAcceptCompletion_AcceptCompletionError(t *testing.T) {
 	t.Parallel()
 	store := newFakeWLCommonsStore()
-	_ = store.InsertWanted(&commons.WantedItem{ID: "w-abc", Title: "Fix bug"})
+	_ = store.InsertWanted(&commons.WantedItem{ID: "w-abc", Title: "Fix bug", PostedBy: "reviewer-rig"})
 	_ = store.ClaimWanted("w-abc", "worker-rig")
 	_ = store.SubmitCompletion("c-test123", "w-abc", "worker-rig", "evidence")
 	store.AcceptCompletionErr = fmt.Errorf("accept store error")

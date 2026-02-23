@@ -25,6 +25,7 @@ type WLCommonsStore interface {
 	QueryCompletion(wantedID string) (*CompletionRecord, error)
 	QueryStamp(stampID string) (*Stamp, error)
 	AcceptCompletion(wantedID, completionID, rigHandle string, stamp *Stamp) error
+	RejectCompletion(wantedID, rigHandle, reason string) error
 	UpdateWanted(wantedID string, fields *WantedUpdate) error
 	DeleteWanted(wantedID string) error
 }
@@ -79,6 +80,11 @@ func (w *WLCommons) AcceptCompletion(wantedID, completionID, rigHandle string, s
 // UpdateWanted updates mutable fields on an open wanted item.
 func (w *WLCommons) UpdateWanted(wantedID string, fields *WantedUpdate) error {
 	return UpdateWanted(w.dbDir, wantedID, fields)
+}
+
+// RejectCompletion reverts a wanted item from in_review to claimed.
+func (w *WLCommons) RejectCompletion(wantedID, rigHandle, reason string) error {
+	return RejectCompletion(w.dbDir, wantedID, rigHandle, reason)
 }
 
 // DeleteWanted soft-deletes a wanted item by setting status=withdrawn.
@@ -277,7 +283,7 @@ CALL DOLT_COMMIT('-m', 'wl done: %s');
 // QueryWanted fetches a wanted item by ID. Returns an error if not found.
 // dbDir is the actual database directory.
 func QueryWanted(dbDir, wantedID string) (*WantedItem, error) {
-	query := fmt.Sprintf(`SELECT id, title, status, COALESCE(claimed_by, '') as claimed_by FROM wanted WHERE id='%s';`,
+	query := fmt.Sprintf(`SELECT id, title, status, COALESCE(claimed_by, '') as claimed_by, COALESCE(posted_by, '') as posted_by FROM wanted WHERE id='%s';`,
 		EscapeSQL(wantedID))
 
 	output, err := doltSQLQuery(dbDir, query)
@@ -296,6 +302,7 @@ func QueryWanted(dbDir, wantedID string) (*WantedItem, error) {
 		Title:     row["title"],
 		Status:    row["status"],
 		ClaimedBy: row["claimed_by"],
+		PostedBy:  row["posted_by"],
 	}
 	return item, nil
 }
@@ -582,4 +589,29 @@ CALL DOLT_COMMIT('-m', 'wl delete: %s');
 		return fmt.Errorf("wanted item %q is not open or does not exist", wantedID)
 	}
 	return fmt.Errorf("delete failed: %w", err)
+}
+
+// RejectCompletion reverts a wanted item from in_review to claimed and deletes
+// the completion record. The reason is embedded in the dolt commit message.
+// dbDir is the actual database directory.
+func RejectCompletion(dbDir, wantedID, _, reason string) error {
+	commitMsg := fmt.Sprintf("wl reject: %s", EscapeSQL(wantedID))
+	if reason != "" {
+		commitMsg += " — " + EscapeSQL(reason)
+	}
+
+	script := fmt.Sprintf(`DELETE FROM completions WHERE wanted_id='%s';
+UPDATE wanted SET status='claimed', updated_at=NOW() WHERE id='%s' AND status='in_review';
+CALL DOLT_ADD('-A');
+CALL DOLT_COMMIT('-m', '%s');
+`, EscapeSQL(wantedID), EscapeSQL(wantedID), commitMsg)
+
+	err := doltSQLScript(dbDir, script)
+	if err == nil {
+		return nil
+	}
+	if isNothingToCommit(err) {
+		return fmt.Errorf("wanted item %q is not in_review or does not exist", wantedID)
+	}
+	return fmt.Errorf("reject failed: %w", err)
 }

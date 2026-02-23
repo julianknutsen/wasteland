@@ -23,6 +23,7 @@ type fakeWLCommonsStore struct {
 	QueryCompletionErr   error
 	QueryStampErr        error
 	AcceptCompletionErr  error
+	RejectCompletionErr  error
 	UpdateWantedErr      error
 	DeleteWantedErr      error
 }
@@ -189,6 +190,26 @@ func (f *fakeWLCommonsStore) AcceptCompletion(wantedID, _, rigHandle string, sta
 		rec.StampID = stamp.ID
 		rec.ValidatedBy = rigHandle
 	}
+	return nil
+}
+
+func (f *fakeWLCommonsStore) RejectCompletion(wantedID, _, _ string) error {
+	if f.RejectCompletionErr != nil {
+		return f.RejectCompletionErr
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	item, ok := f.items[wantedID]
+	if !ok {
+		return fmt.Errorf("wanted item %q not found", wantedID)
+	}
+	if item.Status != "in_review" {
+		return fmt.Errorf("wanted item %q is not in_review (status: %s)", wantedID, item.Status)
+	}
+	item.Status = "claimed"
+	delete(f.completions, wantedID)
 	return nil
 }
 

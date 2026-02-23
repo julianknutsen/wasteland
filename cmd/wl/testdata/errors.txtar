@@ -82,6 +82,14 @@ stderr 'invalid severity'
 ! exec wl accept w-abc --quality 3
 stderr 'not joined'
 
+# reject with no args.
+! exec wl reject
+stderr 'accepts 1 arg'
+
+# reject not joined.
+! exec wl reject w-abc
+stderr 'not joined'
+
 # update with no args.
 ! exec wl update
 stderr 'accepts 1 arg'

@@ -133,6 +133,10 @@ func acceptCompletion(store commons.WLCommonsStore, wantedID, rigHandle string, 
 		return nil, fmt.Errorf("wanted item %s is not in_review (status: %s)", wantedID, item.Status)
 	}
 
+	if item.PostedBy != rigHandle {
+		return nil, fmt.Errorf("only the poster can accept (posted by %q)", item.PostedBy)
+	}
+
 	completion, err := store.QueryCompletion(wantedID)
 	if err != nil {
 		return nil, fmt.Errorf("querying completion: %w", err)
