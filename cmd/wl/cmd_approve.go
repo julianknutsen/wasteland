@@ -48,7 +48,8 @@ func runApprove(cmd *cobra.Command, stdout, _ io.Writer, branch, comment string)
 		return fmt.Errorf("gh not found in PATH — install from https://cli.github.com")
 	}
 
-	prURL, err := submitPRReview(ghPath, cfg.GitHubRepo, cfg.ForkOrg, branch, "APPROVE", comment)
+	client := newGHClient(ghPath)
+	prURL, err := submitPRReview(client, cfg.GitHubRepo, cfg.ForkOrg, branch, "APPROVE", comment)
 	if err != nil {
 		return err
 	}

@@ -57,11 +57,10 @@ func runMerge(cmd *cobra.Command, stdout, _ io.Writer, branch string, noPush, ke
 	// Best-effort: check PR approval status before merging.
 	if cfg.GitHubRepo != "" {
 		if ghPath, err := exec.LookPath("gh"); err == nil {
-			hasApproval, hasChangesRequested := prApprovalStatus(ghPath, cfg.GitHubRepo, cfg.ForkOrg, branch)
-			if hasChangesRequested {
-				fmt.Fprintf(stdout, "  %s PR has outstanding change requests\n", style.Warning.Render("⚠"))
-			} else if !hasApproval {
-				fmt.Fprintf(stdout, "  %s PR has no approvals\n", style.Warning.Render("⚠"))
+			client := newGHClient(ghPath)
+			hasApproval, hasChangesRequested := prApprovalStatus(client, cfg.GitHubRepo, cfg.ForkOrg, branch)
+			if msg := mergeApprovalWarning(hasApproval, hasChangesRequested); msg != "" {
+				fmt.Fprintf(stdout, "  %s %s\n", style.Warning.Render("⚠"), msg)
 			}
 		}
 	}
@@ -87,9 +86,21 @@ func runMerge(cmd *cobra.Command, stdout, _ io.Writer, branch string, noPush, ke
 	// Best-effort: auto-close the corresponding GitHub PR shell.
 	if cfg.GitHubRepo != "" {
 		if ghPath, err := exec.LookPath("gh"); err == nil {
-			closeGitHubPR(ghPath, cfg.GitHubRepo, cfg.ForkOrg, cfg.ForkDB, branch, stdout)
+			closeGitHubPR(newGHClient(ghPath), cfg.GitHubRepo, cfg.ForkOrg, cfg.ForkDB, branch, stdout)
 		}
 	}
 
 	return nil
+}
+
+// mergeApprovalWarning returns a warning message based on PR approval state.
+// Returns "" if the PR is approved with no outstanding change requests.
+func mergeApprovalWarning(hasApproval, hasChangesRequested bool) string {
+	if hasChangesRequested {
+		return "PR has outstanding change requests"
+	}
+	if !hasApproval {
+		return "PR has no approvals"
+	}
+	return ""
 }

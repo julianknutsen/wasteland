@@ -455,19 +455,14 @@ func wantedTitleFromBranch(doltPath, dbDir, branch string) string {
 
 // submitPRReview submits a review on the GitHub PR for the given branch.
 // event must be "APPROVE" or "REQUEST_CHANGES".
-func submitPRReview(ghPath, upstreamRepo, forkOrg, branch, event, comment string) (string, error) {
+func submitPRReview(client GitHubPRClient, upstreamRepo, forkOrg, branch, event, comment string) (string, error) {
 	head := forkOrg + ":" + branch
-	prURL, number := findExistingPR(ghPath, upstreamRepo, head)
+	prURL, number := client.FindPR(upstreamRepo, head)
 	if number == "" {
 		return "", fmt.Errorf("no open PR found for branch %s", branch)
 	}
 
-	reviewBody, _ := json.Marshal(map[string]string{
-		"event": event,
-		"body":  comment,
-	})
-	_, err := ghAPICall(ghPath, "POST", fmt.Sprintf("repos/%s/pulls/%s/reviews", upstreamRepo, number), string(reviewBody))
-	if err != nil {
+	if err := client.SubmitReview(upstreamRepo, number, event, comment); err != nil {
 		return "", fmt.Errorf("submitting review: %w", err)
 	}
 	return prURL, nil
@@ -505,14 +500,14 @@ func parseReviewStatus(data []byte) (hasApproval, hasChangesRequested bool) {
 
 // prApprovalStatus checks the review status of a GitHub PR. Best-effort.
 // Silently returns (false, false) on any error.
-func prApprovalStatus(ghPath, upstreamRepo, forkOrg, branch string) (hasApproval, hasChangesRequested bool) {
+func prApprovalStatus(client GitHubPRClient, upstreamRepo, forkOrg, branch string) (hasApproval, hasChangesRequested bool) {
 	head := forkOrg + ":" + branch
-	_, number := findExistingPR(ghPath, upstreamRepo, head)
+	_, number := client.FindPR(upstreamRepo, head)
 	if number == "" {
 		return false, false
 	}
 
-	data, err := ghAPICall(ghPath, "GET", fmt.Sprintf("repos/%s/pulls/%s/reviews", upstreamRepo, number), "")
+	data, err := client.ListReviews(upstreamRepo, number)
 	if err != nil {
 		return false, false
 	}
@@ -521,33 +516,24 @@ func prApprovalStatus(ghPath, upstreamRepo, forkOrg, branch string) (hasApproval
 
 // closeGitHubPR finds and closes an open GitHub PR for the given branch.
 // Best-effort: failures print warnings but don't block the merge.
-func closeGitHubPR(ghPath, upstreamRepo, forkOrg, forkDB, branch string, stdout io.Writer) {
+func closeGitHubPR(client GitHubPRClient, upstreamRepo, forkOrg, forkDB, branch string, stdout io.Writer) {
 	head := forkOrg + ":" + branch
-	prURL, number := findExistingPR(ghPath, upstreamRepo, head)
+	prURL, number := client.FindPR(upstreamRepo, head)
 	if number == "" {
 		return
 	}
 
-	// Close the PR.
-	closeBody, _ := json.Marshal(map[string]string{
-		"state": "closed",
-	})
-	_, err := ghAPICall(ghPath, "PATCH", fmt.Sprintf("repos/%s/pulls/%s", upstreamRepo, number), string(closeBody))
-	if err != nil {
+	if err := client.ClosePR(upstreamRepo, number); err != nil {
 		fmt.Fprintf(stdout, "  warning: failed to close PR %s: %v\n", prURL, err)
 		return
 	}
 
 	// Add a closing comment.
-	commentBody, _ := json.Marshal(map[string]string{
-		"body": "Merged via `wl merge`.",
-	})
-	_, _ = ghAPICall(ghPath, "POST", fmt.Sprintf("repos/%s/issues/%s/comments", upstreamRepo, number), string(commentBody))
+	_ = client.AddComment(upstreamRepo, number, "Merged via `wl merge`.")
 
 	// Delete the branch on the fork.
 	forkRepo := forkOrg + "/" + forkDB
-	_, err = ghAPICall(ghPath, "DELETE", fmt.Sprintf("repos/%s/git/refs/heads/%s", forkRepo, branch), "")
-	if err != nil {
+	if err := client.DeleteRef(forkRepo, "heads/"+branch); err != nil {
 		fmt.Fprintf(stdout, "  warning: failed to delete GitHub branch %s: %v\n", branch, err)
 	}
 

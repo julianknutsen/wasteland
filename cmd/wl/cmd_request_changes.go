@@ -49,7 +49,8 @@ func runRequestChanges(cmd *cobra.Command, stdout, _ io.Writer, branch, comment 
 		return fmt.Errorf("gh not found in PATH — install from https://cli.github.com")
 	}
 
-	prURL, err := submitPRReview(ghPath, cfg.GitHubRepo, cfg.ForkOrg, branch, "REQUEST_CHANGES", comment)
+	client := newGHClient(ghPath)
+	prURL, err := submitPRReview(client, cfg.GitHubRepo, cfg.ForkOrg, branch, "REQUEST_CHANGES", comment)
 	if err != nil {
 		return err
 	}
