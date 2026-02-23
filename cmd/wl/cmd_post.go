@@ -96,7 +96,7 @@ func runPost(cmd *cobra.Command, stdout, _ io.Writer, title, description, projec
 	}
 	defer cleanup()
 
-	store := openStore(wlCfg.LocalDir)
+	store := openStore(wlCfg.LocalDir, wlCfg.Signing)
 
 	if err := postWanted(store, item); err != nil {
 		return err

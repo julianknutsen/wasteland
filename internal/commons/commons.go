@@ -32,30 +32,36 @@ type WLCommonsStore interface {
 }
 
 // WLCommons implements WLCommonsStore using the real Dolt CLI.
-type WLCommons struct{ dbDir string }
+type WLCommons struct {
+	dbDir  string
+	signed bool
+}
 
 // NewWLCommons creates a WLCommonsStore backed by the real Dolt CLI.
 // dbDir is the local fork clone directory (e.g., {dataDir}/{org}/{db}).
 func NewWLCommons(dbDir string) *WLCommons { return &WLCommons{dbDir: dbDir} }
 
+// SetSigning enables or disables GPG-signed Dolt commits.
+func (w *WLCommons) SetSigning(enabled bool) { w.signed = enabled }
+
 // InsertWanted inserts a new wanted item.
 func (w *WLCommons) InsertWanted(item *WantedItem) error {
-	return InsertWanted(w.dbDir, item)
+	return InsertWanted(w.dbDir, item, w.signed)
 }
 
 // ClaimWanted claims a wanted item for a rig.
 func (w *WLCommons) ClaimWanted(wantedID, rigHandle string) error {
-	return ClaimWanted(w.dbDir, wantedID, rigHandle)
+	return ClaimWanted(w.dbDir, wantedID, rigHandle, w.signed)
 }
 
 // UnclaimWanted reverts a claimed wanted item to open.
 func (w *WLCommons) UnclaimWanted(wantedID string) error {
-	return UnclaimWanted(w.dbDir, wantedID)
+	return UnclaimWanted(w.dbDir, wantedID, w.signed)
 }
 
 // SubmitCompletion records completion evidence for a claimed wanted item.
 func (w *WLCommons) SubmitCompletion(completionID, wantedID, rigHandle, evidence string) error {
-	return SubmitCompletion(w.dbDir, completionID, wantedID, rigHandle, evidence)
+	return SubmitCompletion(w.dbDir, completionID, wantedID, rigHandle, evidence, w.signed)
 }
 
 // QueryWanted fetches a wanted item by ID.
@@ -80,22 +86,22 @@ func (w *WLCommons) QueryStamp(stampID string) (*Stamp, error) {
 
 // AcceptCompletion validates a completion and creates a stamp.
 func (w *WLCommons) AcceptCompletion(wantedID, completionID, rigHandle string, stamp *Stamp) error {
-	return AcceptCompletion(w.dbDir, wantedID, completionID, rigHandle, stamp)
+	return AcceptCompletion(w.dbDir, wantedID, completionID, rigHandle, stamp, w.signed)
 }
 
 // UpdateWanted updates mutable fields on an open wanted item.
 func (w *WLCommons) UpdateWanted(wantedID string, fields *WantedUpdate) error {
-	return UpdateWanted(w.dbDir, wantedID, fields)
+	return UpdateWanted(w.dbDir, wantedID, fields, w.signed)
 }
 
 // RejectCompletion reverts a wanted item from in_review to claimed.
 func (w *WLCommons) RejectCompletion(wantedID, rigHandle, reason string) error {
-	return RejectCompletion(w.dbDir, wantedID, rigHandle, reason)
+	return RejectCompletion(w.dbDir, wantedID, rigHandle, reason, w.signed)
 }
 
 // DeleteWanted soft-deletes a wanted item by setting status=withdrawn.
 func (w *WLCommons) DeleteWanted(wantedID string) error {
-	return DeleteWanted(w.dbDir, wantedID)
+	return DeleteWanted(w.dbDir, wantedID, w.signed)
 }
 
 // WantedItem represents a row in the wanted table.
@@ -166,6 +172,14 @@ func EscapeSQL(s string) string {
 	return strings.ReplaceAll(s, "'", "''")
 }
 
+// commitSQL returns the DOLT_COMMIT SQL statement, optionally with -S for GPG signing.
+func commitSQL(msg string, signed bool) string {
+	if signed {
+		return fmt.Sprintf("CALL DOLT_COMMIT('-S', '-m', '%s');\n", EscapeSQL(msg))
+	}
+	return fmt.Sprintf("CALL DOLT_COMMIT('-m', '%s');\n", EscapeSQL(msg))
+}
+
 // GenerateWantedID generates a unique wanted item ID in the format w-<10-char-hash>.
 func GenerateWantedID(title string) string {
 	randomBytes := make([]byte, 8)
@@ -189,7 +203,7 @@ func GeneratePrefixedID(prefix string, inputs ...string) string {
 
 // InsertWanted inserts a new wanted item into the wl-commons database.
 // dbDir is the actual database directory.
-func InsertWanted(dbDir string, item *WantedItem) error {
+func InsertWanted(dbDir string, item *WantedItem, signed bool) error {
 	if item.ID == "" {
 		return fmt.Errorf("wanted item ID cannot be empty")
 	}
@@ -230,24 +244,21 @@ func InsertWanted(dbDir string, item *WantedItem) error {
 VALUES ('%s', '%s', %s, %s, %s, %d, %s, %s, %s, %s, '%s', '%s');
 
 CALL DOLT_ADD('-A');
-CALL DOLT_COMMIT('-m', 'wl post: %s');
 `,
 		EscapeSQL(item.ID), EscapeSQL(item.Title), descField, projectField, typeField,
 		item.Priority, tagsJSON, postedByField, status, effortField,
-		now, now,
-		EscapeSQL(item.Title))
+		now, now)
+	script += commitSQL("wl post: "+item.Title, signed)
 
 	return doltSQLScript(dbDir, script)
 }
 
 // ClaimWanted updates a wanted item's status to claimed.
 // dbDir is the actual database directory.
-func ClaimWanted(dbDir, wantedID, rigHandle string) error {
-	script := fmt.Sprintf(`UPDATE wanted SET claimed_by='%s', status='claimed', updated_at=NOW()
-  WHERE id='%s' AND status='open';
-CALL DOLT_ADD('-A');
-CALL DOLT_COMMIT('-m', 'wl claim: %s');
-`, EscapeSQL(rigHandle), EscapeSQL(wantedID), EscapeSQL(wantedID))
+func ClaimWanted(dbDir, wantedID, rigHandle string, signed bool) error {
+	script := fmt.Sprintf("UPDATE wanted SET claimed_by='%s', status='claimed', updated_at=NOW()\n  WHERE id='%s' AND status='open';\nCALL DOLT_ADD('-A');\n",
+		EscapeSQL(rigHandle), EscapeSQL(wantedID))
+	script += commitSQL("wl claim: "+wantedID, signed)
 
 	err := doltSQLScript(dbDir, script)
 	if err == nil {
@@ -261,12 +272,10 @@ CALL DOLT_COMMIT('-m', 'wl claim: %s');
 
 // UnclaimWanted reverts a claimed wanted item to open, clearing claimed_by.
 // dbDir is the actual database directory.
-func UnclaimWanted(dbDir, wantedID string) error {
-	script := fmt.Sprintf(`UPDATE wanted SET claimed_by=NULL, status='open', updated_at=NOW()
-  WHERE id='%s' AND status='claimed';
-CALL DOLT_ADD('-A');
-CALL DOLT_COMMIT('-m', 'wl unclaim: %s');
-`, EscapeSQL(wantedID), EscapeSQL(wantedID))
+func UnclaimWanted(dbDir, wantedID string, signed bool) error {
+	script := fmt.Sprintf("UPDATE wanted SET claimed_by=NULL, status='open', updated_at=NOW()\n  WHERE id='%s' AND status='claimed';\nCALL DOLT_ADD('-A');\n",
+		EscapeSQL(wantedID))
+	script += commitSQL("wl unclaim: "+wantedID, signed)
 
 	err := doltSQLScript(dbDir, script)
 	if err == nil {
@@ -280,7 +289,7 @@ CALL DOLT_COMMIT('-m', 'wl unclaim: %s');
 
 // SubmitCompletion inserts a completion record and updates the wanted status.
 // dbDir is the actual database directory.
-func SubmitCompletion(dbDir, completionID, wantedID, rigHandle, evidence string) error {
+func SubmitCompletion(dbDir, completionID, wantedID, rigHandle, evidence string, signed bool) error {
 	script := fmt.Sprintf(`UPDATE wanted SET status='in_review', evidence_url='%s', updated_at=NOW()
   WHERE id='%s' AND status='claimed' AND claimed_by='%s';
 INSERT IGNORE INTO completions (id, wanted_id, completed_by, evidence, completed_at)
@@ -288,12 +297,11 @@ INSERT IGNORE INTO completions (id, wanted_id, completed_by, evidence, completed
   FROM wanted WHERE id='%s' AND status='in_review' AND claimed_by='%s'
   AND NOT EXISTS (SELECT 1 FROM completions WHERE wanted_id='%s');
 CALL DOLT_ADD('-A');
-CALL DOLT_COMMIT('-m', 'wl done: %s');
 `,
 		EscapeSQL(evidence), EscapeSQL(wantedID), EscapeSQL(rigHandle),
 		EscapeSQL(completionID), EscapeSQL(wantedID), EscapeSQL(rigHandle), EscapeSQL(evidence),
-		EscapeSQL(wantedID), EscapeSQL(rigHandle), EscapeSQL(wantedID),
-		EscapeSQL(wantedID))
+		EscapeSQL(wantedID), EscapeSQL(rigHandle), EscapeSQL(wantedID))
+	script += commitSQL("wl done: "+wantedID, signed)
 
 	err := doltSQLScript(dbDir, script)
 	if err == nil {
@@ -503,7 +511,7 @@ func parseTagsJSON(s string) []string {
 
 // AcceptCompletion validates a completion, creates a stamp, and marks the item completed.
 // dbDir is the actual database directory.
-func AcceptCompletion(dbDir, wantedID, completionID, rigHandle string, stamp *Stamp) error {
+func AcceptCompletion(dbDir, wantedID, completionID, rigHandle string, stamp *Stamp, signed bool) error {
 	tagsField := formatTagsJSON(stamp.SkillTags)
 
 	msgField := "NULL"
@@ -518,14 +526,13 @@ VALUES ('%s', '%s', '%s', '%s', 1.0, '%s', '%s', 'completion', %s, %s, NOW());
 UPDATE completions SET validated_by='%s', stamp_id='%s', validated_at=NOW() WHERE id='%s';
 UPDATE wanted SET status='completed', updated_at=NOW() WHERE id='%s' AND status='in_review';
 CALL DOLT_ADD('-A');
-CALL DOLT_COMMIT('-m', 'wl accept: %s');
 `,
 		EscapeSQL(stamp.ID), EscapeSQL(rigHandle), EscapeSQL(stamp.Subject),
 		EscapeSQL(valence), EscapeSQL(stamp.Severity),
 		EscapeSQL(completionID), tagsField, msgField,
 		EscapeSQL(rigHandle), EscapeSQL(stamp.ID), EscapeSQL(completionID),
-		EscapeSQL(wantedID),
 		EscapeSQL(wantedID))
+	script += commitSQL("wl accept: "+wantedID, signed)
 
 	err := doltSQLScript(dbDir, script)
 	if err == nil {
@@ -539,7 +546,7 @@ CALL DOLT_COMMIT('-m', 'wl accept: %s');
 
 // UpdateWanted updates mutable fields on an open wanted item.
 // dbDir is the actual database directory.
-func UpdateWanted(dbDir, wantedID string, fields *WantedUpdate) error {
+func UpdateWanted(dbDir, wantedID string, fields *WantedUpdate, signed bool) error {
 	var setClauses []string
 
 	if fields.Title != "" {
@@ -570,8 +577,9 @@ func UpdateWanted(dbDir, wantedID string, fields *WantedUpdate) error {
 
 	setClauses = append(setClauses, "updated_at=NOW()")
 
-	script := fmt.Sprintf("UPDATE wanted SET %s WHERE id='%s' AND status='open';\nCALL DOLT_ADD('-A');\nCALL DOLT_COMMIT('-m', 'wl update: %s');\n",
-		strings.Join(setClauses, ", "), EscapeSQL(wantedID), EscapeSQL(wantedID))
+	script := fmt.Sprintf("UPDATE wanted SET %s WHERE id='%s' AND status='open';\nCALL DOLT_ADD('-A');\n",
+		strings.Join(setClauses, ", "), EscapeSQL(wantedID))
+	script += commitSQL("wl update: "+wantedID, signed)
 
 	err := doltSQLScript(dbDir, script)
 	if err == nil {
@@ -600,11 +608,10 @@ func formatTagsJSON(tags []string) string {
 
 // DeleteWanted soft-deletes a wanted item by setting status=withdrawn.
 // dbDir is the actual database directory.
-func DeleteWanted(dbDir, wantedID string) error {
-	script := fmt.Sprintf(`UPDATE wanted SET status='withdrawn', updated_at=NOW() WHERE id='%s' AND status='open';
-CALL DOLT_ADD('-A');
-CALL DOLT_COMMIT('-m', 'wl delete: %s');
-`, EscapeSQL(wantedID), EscapeSQL(wantedID))
+func DeleteWanted(dbDir, wantedID string, signed bool) error {
+	script := fmt.Sprintf("UPDATE wanted SET status='withdrawn', updated_at=NOW() WHERE id='%s' AND status='open';\nCALL DOLT_ADD('-A');\n",
+		EscapeSQL(wantedID))
+	script += commitSQL("wl delete: "+wantedID, signed)
 
 	err := doltSQLScript(dbDir, script)
 	if err == nil {
@@ -619,17 +626,15 @@ CALL DOLT_COMMIT('-m', 'wl delete: %s');
 // RejectCompletion reverts a wanted item from in_review to claimed and deletes
 // the completion record. The reason is embedded in the dolt commit message.
 // dbDir is the actual database directory.
-func RejectCompletion(dbDir, wantedID, _, reason string) error {
-	commitMsg := fmt.Sprintf("wl reject: %s", EscapeSQL(wantedID))
+func RejectCompletion(dbDir, wantedID, _, reason string, signed bool) error {
+	commitMsg := fmt.Sprintf("wl reject: %s", wantedID)
 	if reason != "" {
-		commitMsg += " — " + EscapeSQL(reason)
+		commitMsg += " — " + reason
 	}
 
-	script := fmt.Sprintf(`DELETE FROM completions WHERE wanted_id='%s';
-UPDATE wanted SET status='claimed', updated_at=NOW() WHERE id='%s' AND status='in_review';
-CALL DOLT_ADD('-A');
-CALL DOLT_COMMIT('-m', '%s');
-`, EscapeSQL(wantedID), EscapeSQL(wantedID), commitMsg)
+	script := fmt.Sprintf("DELETE FROM completions WHERE wanted_id='%s';\nUPDATE wanted SET status='claimed', updated_at=NOW() WHERE id='%s' AND status='in_review';\nCALL DOLT_ADD('-A');\n",
+		EscapeSQL(wantedID), EscapeSQL(wantedID))
+	script += commitSQL(commitMsg, signed)
 
 	err := doltSQLScript(dbDir, script)
 	if err == nil {

@@ -55,7 +55,7 @@ func runReject(cmd *cobra.Command, stdout, _ io.Writer, wantedID, reason string,
 	}
 	defer cleanup()
 
-	store := openStore(wlCfg.LocalDir)
+	store := openStore(wlCfg.LocalDir, wlCfg.Signing)
 
 	if err := rejectCompletion(store, wantedID, rigHandle, reason); err != nil {
 		return err

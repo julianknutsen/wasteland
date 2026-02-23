@@ -52,7 +52,7 @@ func runDelete(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush 
 	}
 	defer cleanup()
 
-	store := openStore(wlCfg.LocalDir)
+	store := openStore(wlCfg.LocalDir, wlCfg.Signing)
 
 	if err := deleteWanted(store, wantedID); err != nil {
 		return err

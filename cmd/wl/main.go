@@ -82,6 +82,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		newApproveCmd(stdout, stderr),
 		newRequestChangesCmd(stdout, stderr),
 		newMergeCmd(stdout, stderr),
+		newVerifyCmd(stdout, stderr),
 		newVersionCmd(stdout),
 	)
 	return root

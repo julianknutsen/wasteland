@@ -302,3 +302,87 @@ func TestRunConfigSet_UnknownKey(t *testing.T) {
 		t.Errorf("error = %q, want to contain 'unknown config key'", err.Error())
 	}
 }
+
+func TestValidConfigKeys_Signing(t *testing.T) {
+	if !validConfigKeys["signing"] {
+		t.Error("expected 'signing' to be a valid config key")
+	}
+}
+
+func TestRunConfigGet_Signing(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	saveTestConfig(t, &federation.Config{
+		Upstream: "hop/wl-commons", ForkOrg: "alice", ForkDB: "wl-commons",
+		Signing: true, JoinedAt: time.Now(),
+	})
+
+	var stdout, stderr bytes.Buffer
+	err := runConfigGet(configCmd(), &stdout, &stderr, "signing")
+	if err != nil {
+		t.Fatalf("runConfigGet(signing) error: %v", err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "true" {
+		t.Errorf("runConfigGet(signing) = %q, want %q", got, "true")
+	}
+}
+
+func TestRunConfigGet_SigningDefault(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	saveTestConfig(t, &federation.Config{
+		Upstream: "hop/wl-commons", ForkOrg: "alice", ForkDB: "wl-commons",
+		JoinedAt: time.Now(),
+	})
+
+	var stdout, stderr bytes.Buffer
+	err := runConfigGet(configCmd(), &stdout, &stderr, "signing")
+	if err != nil {
+		t.Fatalf("runConfigGet(signing) error: %v", err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "false" {
+		t.Errorf("runConfigGet(signing default) = %q, want %q", got, "false")
+	}
+}
+
+func TestRunConfigSet_Signing(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	saveTestConfig(t, &federation.Config{
+		Upstream: "hop/wl-commons", ForkOrg: "alice", ForkDB: "wl-commons",
+		JoinedAt: time.Now(),
+	})
+
+	var stdout, stderr bytes.Buffer
+	err := runConfigSet(configCmd(), &stdout, &stderr, "signing", "true")
+	if err != nil {
+		t.Fatalf("runConfigSet(signing, true) error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "signing = true") {
+		t.Errorf("output = %q, want to contain 'signing = true'", stdout.String())
+	}
+
+	// Verify the value persists.
+	store := federation.NewConfigStore()
+	loaded, err := store.Load("hop/wl-commons")
+	if err != nil {
+		t.Fatalf("loading config after set: %v", err)
+	}
+	if !loaded.Signing {
+		t.Error("saved Signing = false, want true")
+	}
+}
+
+func TestRunConfigSet_SigningInvalid(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	saveTestConfig(t, &federation.Config{
+		Upstream: "hop/wl-commons", ForkOrg: "alice", ForkDB: "wl-commons",
+		JoinedAt: time.Now(),
+	})
+
+	var stdout, stderr bytes.Buffer
+	err := runConfigSet(configCmd(), &stdout, &stderr, "signing", "yes")
+	if err == nil {
+		t.Fatal("runConfigSet(signing, yes) expected error")
+	}
+	if !strings.Contains(err.Error(), "invalid signing value") {
+		t.Errorf("error = %q, want to contain 'invalid signing value'", err.Error())
+	}
+}

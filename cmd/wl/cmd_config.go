@@ -20,6 +20,7 @@ Use 'wl config set <key> <value>' to change a setting.
 
 Supported keys:
   mode            Workflow mode: wild-west (default) or pr
+  signing         Enable GPG-signed Dolt commits: true or false
   provider-type   Upstream provider type (read-only, set during 'wl join')
   github-repo     (deprecated) Upstream GitHub repo for PR shells`,
 		Args: cobra.NoArgs,
@@ -61,13 +62,14 @@ func newConfigSetCmd(stdout, stderr io.Writer) *cobra.Command {
 // validConfigKeys lists the keys that can be read/written via wl config.
 var validConfigKeys = map[string]bool{
 	"mode":          true,
+	"signing":       true,
 	"github-repo":   true,
 	"provider-type": true,
 }
 
 func runConfigGet(cmd *cobra.Command, stdout, _ io.Writer, key string) error {
 	if !validConfigKeys[key] {
-		return fmt.Errorf("unknown config key %q (supported: mode, provider-type, github-repo)", key)
+		return fmt.Errorf("unknown config key %q (supported: mode, signing, provider-type, github-repo)", key)
 	}
 
 	cfg, err := resolveWasteland(cmd)
@@ -78,6 +80,8 @@ func runConfigGet(cmd *cobra.Command, stdout, _ io.Writer, key string) error {
 	switch key {
 	case "mode":
 		fmt.Fprintln(stdout, cfg.ResolveMode())
+	case "signing":
+		fmt.Fprintln(stdout, cfg.Signing)
 	case "provider-type":
 		fmt.Fprintln(stdout, cfg.ResolveProviderType())
 	case "github-repo":
@@ -88,7 +92,7 @@ func runConfigGet(cmd *cobra.Command, stdout, _ io.Writer, key string) error {
 
 func runConfigSet(cmd *cobra.Command, stdout, _ io.Writer, key, value string) error {
 	if !validConfigKeys[key] {
-		return fmt.Errorf("unknown config key %q (supported: mode, provider-type, github-repo)", key)
+		return fmt.Errorf("unknown config key %q (supported: mode, signing, provider-type, github-repo)", key)
 	}
 
 	switch key {
@@ -96,6 +100,10 @@ func runConfigSet(cmd *cobra.Command, stdout, _ io.Writer, key, value string) er
 		return fmt.Errorf("provider-type is read-only (set during 'wl join')")
 	case "mode":
 		if err := validateMode(value); err != nil {
+			return err
+		}
+	case "signing":
+		if err := validateSigning(value); err != nil {
 			return err
 		}
 	case "github-repo":
@@ -114,6 +122,8 @@ func runConfigSet(cmd *cobra.Command, stdout, _ io.Writer, key, value string) er
 	switch key {
 	case "mode":
 		cfg.Mode = value
+	case "signing":
+		cfg.Signing = value == "true"
 	case "github-repo":
 		cfg.GitHubRepo = value //nolint:staticcheck // backward compat
 	}
@@ -132,6 +142,15 @@ func validateGitHubRepo(value string) error {
 		return fmt.Errorf("invalid github-repo %q: expected format \"owner/repo\"", value)
 	}
 	return nil
+}
+
+func validateSigning(value string) error {
+	switch value {
+	case "true", "false":
+		return nil
+	default:
+		return fmt.Errorf("invalid signing value %q: must be \"true\" or \"false\"", value)
+	}
 }
 
 func validateMode(value string) error {

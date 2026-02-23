@@ -265,7 +265,7 @@ func TestJoinSetsProviderTypeAndUpstreamURL(t *testing.T) {
 	cli := &noopDoltCLI{}
 
 	svc := &Service{Remote: provider, CLI: cli, Config: store}
-	cfg, err := svc.Join("org/db", "myfork", "rig", "Display", "e@e.com", "dev")
+	cfg, err := svc.Join("org/db", "myfork", "rig", "Display", "e@e.com", "dev", false)
 	if err != nil {
 		t.Fatalf("Join() error: %v", err)
 	}
@@ -304,7 +304,7 @@ func (f *fakeProviderForConfig) Type() string              { return f.typeStr }
 // noopDoltCLI is a DoltCLI that does nothing (for config-focused tests).
 type noopDoltCLI struct{}
 
-func (n *noopDoltCLI) Clone(_, _ string) error                   { return nil }
-func (n *noopDoltCLI) RegisterRig(_, _, _, _, _, _ string) error { return nil }
-func (n *noopDoltCLI) Push(_ string) error                       { return nil }
-func (n *noopDoltCLI) AddUpstreamRemote(_, _ string) error       { return nil }
+func (n *noopDoltCLI) Clone(_, _ string) error                           { return nil }
+func (n *noopDoltCLI) RegisterRig(_, _, _, _, _, _ string, _ bool) error { return nil }
+func (n *noopDoltCLI) Push(_ string) error                               { return nil }
+func (n *noopDoltCLI) AddUpstreamRemote(_, _ string) error               { return nil }

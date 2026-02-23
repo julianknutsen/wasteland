@@ -18,7 +18,7 @@ func TestJoin_Success(t *testing.T) {
 
 	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	cfg, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev")
+	cfg, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev", false)
 	if err != nil {
 		t.Fatalf("Join() error: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestJoin_ForkFails(t *testing.T) {
 
 	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	_, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev")
+	_, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev", false)
 	if err == nil {
 		t.Fatal("Join() expected error when fork fails")
 	}
@@ -97,7 +97,7 @@ func TestJoin_CloneFails(t *testing.T) {
 
 	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	_, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev")
+	_, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev", false)
 	if err == nil {
 		t.Fatal("Join() expected error when clone fails")
 	}
@@ -123,7 +123,7 @@ func TestJoin_AlreadyJoined(t *testing.T) {
 
 	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	cfg, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev")
+	cfg, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev", false)
 	if err != nil {
 		t.Fatalf("Join() should succeed (no-op) when already joined: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestJoin_SecondUpstream_Succeeds(t *testing.T) {
 
 	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	cfg, err := svc.Join("org2/commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev")
+	cfg, err := svc.Join("org2/commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev", false)
 	if err != nil {
 		t.Fatalf("Join() should succeed for second upstream: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestJoin_ConfigLoadError(t *testing.T) {
 
 	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	_, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev")
+	_, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev", false)
 	// Join should succeed since it falls through the Load error to fork/clone.
 	// But Save will also fail with the same error... actually SaveErr is separate.
 	if err != nil {
@@ -207,7 +207,7 @@ func TestJoin_InvalidUpstream(t *testing.T) {
 		Config: NewFakeConfigStore(),
 	}
 
-	_, err := svc.Join("invalid", "org", "handle", "name", "email", "v1")
+	_, err := svc.Join("invalid", "org", "handle", "name", "email", "v1", false)
 	if err == nil {
 		t.Fatal("Join() expected error for invalid upstream")
 	}

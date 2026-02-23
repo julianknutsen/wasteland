@@ -62,6 +62,9 @@ type Config struct {
 	// Mode is the workflow mode: "" or "wild-west" (default) or "pr".
 	Mode string `json:"mode,omitempty"`
 
+	// Signing enables GPG-signed Dolt commits when true.
+	Signing bool `json:"signing,omitempty"`
+
 	// GitHubRepo is the upstream GitHub repo for PR shells (e.g., "steveyegge/wl-commons").
 	//
 	// Deprecated: use ProviderType == "github" instead.
@@ -113,7 +116,7 @@ func escapeSQLString(s string) string {
 // DoltCLI abstracts dolt CLI subprocess operations.
 type DoltCLI interface {
 	Clone(remoteURL, targetDir string) error
-	RegisterRig(localDir, handle, dolthubOrg, displayName, ownerEmail, version string) error
+	RegisterRig(localDir, handle, dolthubOrg, displayName, ownerEmail, version string, signed bool) error
 	Push(localDir string) error
 	AddUpstreamRemote(localDir, remoteURL string) error
 }
@@ -172,7 +175,7 @@ type Service struct {
 }
 
 // Join orchestrates the wasteland join workflow: fork -> clone -> add upstream -> register -> push -> save config.
-func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, version string) (*Config, error) {
+func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, version string, signed bool) (*Config, error) {
 	upstreamOrg, upstreamDB, err := ParseUpstream(upstream)
 	if err != nil {
 		return nil, err
@@ -207,7 +210,7 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 	}
 
 	progress("Registering rig...")
-	if err := s.CLI.RegisterRig(localDir, handle, forkOrg, displayName, ownerEmail, version); err != nil {
+	if err := s.CLI.RegisterRig(localDir, handle, forkOrg, displayName, ownerEmail, version, signed); err != nil {
 		return nil, fmt.Errorf("registering rig: %w", err)
 	}
 
@@ -253,7 +256,7 @@ func (e *execDoltCLI) Clone(remoteURL, targetDir string) error {
 	return nil
 }
 
-func (e *execDoltCLI) RegisterRig(localDir, handle, dolthubOrg, displayName, ownerEmail, version string) error {
+func (e *execDoltCLI) RegisterRig(localDir, handle, dolthubOrg, displayName, ownerEmail, version string, signed bool) error {
 	sql := fmt.Sprintf(
 		`INSERT INTO rigs (handle, display_name, dolthub_org, owner_email, gt_version, trust_level, registered_at, last_seen) `+
 			`VALUES ('%s', '%s', '%s', '%s', '%s', 1, NOW(), NOW()) `+
@@ -279,7 +282,12 @@ func (e *execDoltCLI) RegisterRig(localDir, handle, dolthubOrg, displayName, own
 		return fmt.Errorf("dolt add: %w (%s)", err, strings.TrimSpace(string(output)))
 	}
 
-	commitCmd := exec.Command("dolt", "commit", "-m", fmt.Sprintf("Register rig: %s", handle))
+	commitArgs := []string{"commit"}
+	if signed {
+		commitArgs = append(commitArgs, "-S")
+	}
+	commitArgs = append(commitArgs, "-m", fmt.Sprintf("Register rig: %s", handle))
+	commitCmd := exec.Command("dolt", commitArgs...)
 	commitCmd.Dir = localDir
 	output, err = commitCmd.CombinedOutput()
 	if err != nil {

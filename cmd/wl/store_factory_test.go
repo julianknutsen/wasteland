@@ -17,7 +17,7 @@ func withFakeStore(t *testing.T) *fakeWLCommonsStore {
 	t.Helper()
 	fake := newFakeWLCommonsStore()
 	old := openStore
-	openStore = func(string) commons.WLCommonsStore { return fake }
+	openStore = func(string, bool) commons.WLCommonsStore { return fake }
 	t.Cleanup(func() { openStore = old })
 	return fake
 }

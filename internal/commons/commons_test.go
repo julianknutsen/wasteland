@@ -186,3 +186,32 @@ func TestGenerateWantedID_Uniqueness(t *testing.T) {
 		seen[id] = true
 	}
 }
+
+func TestCommitSQL_Unsigned(t *testing.T) {
+	t.Parallel()
+	got := commitSQL("wl post: Fix bug", false)
+	want := "CALL DOLT_COMMIT('-m', 'wl post: Fix bug');\n"
+	if got != want {
+		t.Errorf("commitSQL(unsigned) = %q, want %q", got, want)
+	}
+}
+
+func TestCommitSQL_Signed(t *testing.T) {
+	t.Parallel()
+	got := commitSQL("wl post: Fix bug", true)
+	want := "CALL DOLT_COMMIT('-S', '-m', 'wl post: Fix bug');\n"
+	if got != want {
+		t.Errorf("commitSQL(signed) = %q, want %q", got, want)
+	}
+}
+
+func TestCommitSQL_EscapesQuotes(t *testing.T) {
+	t.Parallel()
+	got := commitSQL("wl post: it's a test", true)
+	if !strings.Contains(got, "it''s a test") {
+		t.Errorf("commitSQL did not escape single quotes: %q", got)
+	}
+	if !strings.Contains(got, "'-S'") {
+		t.Errorf("commitSQL missing -S flag: %q", got)
+	}
+}

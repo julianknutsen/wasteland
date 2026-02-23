@@ -51,7 +51,7 @@ func runClaim(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush b
 	}
 	defer cleanup()
 
-	store := openStore(wlCfg.LocalDir)
+	store := openStore(wlCfg.LocalDir, wlCfg.Signing)
 	item, err := claimWanted(store, wantedID, rigHandle)
 	if err != nil {
 		return err

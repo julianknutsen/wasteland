@@ -168,7 +168,7 @@ func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, for
 
 	dbName := upstream[strings.Index(upstream, "/")+1:]
 	fmt.Fprintf(stdout, "Joining wasteland %s (fork to %s/%s)...\n", upstream, forkOrg, dbName)
-	cfg, err := svc.Join(upstream, forkOrg, handle, displayName, email, wlVersion)
+	cfg, err := svc.Join(upstream, forkOrg, handle, displayName, email, wlVersion, false)
 	if err != nil {
 		var forkErr *remote.ForkRequiredError
 		if errors.As(err, &forkErr) {
