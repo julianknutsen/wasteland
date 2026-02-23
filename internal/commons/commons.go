@@ -19,6 +19,7 @@ import (
 type WLCommonsStore interface {
 	InsertWanted(item *WantedItem) error
 	ClaimWanted(wantedID, rigHandle string) error
+	UnclaimWanted(wantedID string) error
 	SubmitCompletion(completionID, wantedID, rigHandle, evidence string) error
 	QueryWanted(wantedID string) (*WantedItem, error)
 	QueryWantedDetail(wantedID string) (*WantedItem, error)
@@ -45,6 +46,11 @@ func (w *WLCommons) InsertWanted(item *WantedItem) error {
 // ClaimWanted claims a wanted item for a rig.
 func (w *WLCommons) ClaimWanted(wantedID, rigHandle string) error {
 	return ClaimWanted(w.dbDir, wantedID, rigHandle)
+}
+
+// UnclaimWanted reverts a claimed wanted item to open.
+func (w *WLCommons) UnclaimWanted(wantedID string) error {
+	return UnclaimWanted(w.dbDir, wantedID)
 }
 
 // SubmitCompletion records completion evidence for a claimed wanted item.
@@ -251,6 +257,25 @@ CALL DOLT_COMMIT('-m', 'wl claim: %s');
 		return fmt.Errorf("wanted item %q is not open or does not exist", wantedID)
 	}
 	return fmt.Errorf("claim failed: %w", err)
+}
+
+// UnclaimWanted reverts a claimed wanted item to open, clearing claimed_by.
+// dbDir is the actual database directory.
+func UnclaimWanted(dbDir, wantedID string) error {
+	script := fmt.Sprintf(`UPDATE wanted SET claimed_by=NULL, status='open', updated_at=NOW()
+  WHERE id='%s' AND status='claimed';
+CALL DOLT_ADD('-A');
+CALL DOLT_COMMIT('-m', 'wl unclaim: %s');
+`, EscapeSQL(wantedID), EscapeSQL(wantedID))
+
+	err := doltSQLScript(dbDir, script)
+	if err == nil {
+		return nil
+	}
+	if isNothingToCommit(err) {
+		return fmt.Errorf("wanted item %q is not claimed or does not exist", wantedID)
+	}
+	return fmt.Errorf("unclaim failed: %w", err)
 }
 
 // SubmitCompletion inserts a completion record and updates the wanted status.

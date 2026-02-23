@@ -17,6 +17,7 @@ type fakeWLCommonsStore struct {
 	// Error injection fields
 	InsertWantedErr      error
 	ClaimWantedErr       error
+	UnclaimWantedErr     error
 	SubmitCompletionErr  error
 	QueryWantedErr       error
 	QueryWantedDetailErr error
@@ -79,6 +80,26 @@ func (f *fakeWLCommonsStore) ClaimWanted(wantedID, rigHandle string) error {
 	}
 	item.Status = "claimed"
 	item.ClaimedBy = rigHandle
+	return nil
+}
+
+func (f *fakeWLCommonsStore) UnclaimWanted(wantedID string) error {
+	if f.UnclaimWantedErr != nil {
+		return f.UnclaimWantedErr
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	item, ok := f.items[wantedID]
+	if !ok {
+		return fmt.Errorf("wanted item %q not found", wantedID)
+	}
+	if item.Status != "claimed" {
+		return fmt.Errorf("wanted item %q is not claimed (status: %s)", wantedID, item.Status)
+	}
+	item.Status = "open"
+	item.ClaimedBy = ""
 	return nil
 }
 

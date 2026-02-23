@@ -66,6 +66,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		newJoinCmd(stdout, stderr),
 		newPostCmd(stdout, stderr),
 		newClaimCmd(stdout, stderr),
+		newUnclaimCmd(stdout, stderr),
 		newDoneCmd(stdout, stderr),
 		newAcceptCmd(stdout, stderr),
 		newRejectCmd(stdout, stderr),

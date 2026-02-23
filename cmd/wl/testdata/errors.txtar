@@ -46,6 +46,14 @@ stderr 'accepts 1 arg'
 ! exec wl claim w-abc
 stderr 'not joined'
 
+# unclaim with no args.
+! exec wl unclaim
+stderr 'accepts 1 arg'
+
+# unclaim not joined.
+! exec wl unclaim w-abc
+stderr 'not joined'
+
 # done with no args.
 ! exec wl done
 stderr 'accepts 1 arg'

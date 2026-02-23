@@ -630,6 +630,98 @@ func TestUpdateClaimedFails(t *testing.T) {
 	}
 }
 
+func TestUnclaimWanted(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := forkCloneDir(t, env)
+
+			// Post an item.
+			stdout, _, err := runWL(t, env, "post", "--title", "Unclaim test item", "--type", "bug", "--no-push")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+
+			// Claim it.
+			_, _, err = runWL(t, env, "claim", wantedID, "--no-push")
+			if err != nil {
+				t.Fatalf("wl claim failed: %v", err)
+			}
+
+			// Unclaim it.
+			stdout, stderr, err := runWL(t, env, "unclaim", wantedID, "--no-push")
+			if err != nil {
+				t.Fatalf("wl unclaim failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "Unclaimed") {
+				t.Errorf("expected 'Unclaimed' message, got: %s", stdout)
+			}
+
+			// Verify status is open and claimed_by is empty.
+			raw := doltSQL(t, dbDir, "SELECT status, COALESCE(claimed_by,'') FROM wanted WHERE id='"+wantedID+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) < 2 {
+				t.Fatalf("wanted item %s not found after unclaim", wantedID)
+			}
+			if rows[1][0] != "open" {
+				t.Errorf("status = %q, want %q", rows[1][0], "open")
+			}
+			if rows[1][1] != "" {
+				t.Errorf("claimed_by = %q, want empty", rows[1][1])
+			}
+		})
+	}
+}
+
+func TestUnclaimByPoster(t *testing.T) {
+	for _, backend := range backends {
+		t.Run(string(backend), func(t *testing.T) {
+			env := joinedEnv(t, backend)
+			dbDir := forkCloneDir(t, env)
+
+			// Post as forkOrg (poster).
+			stdout, _, err := runWL(t, env, "post", "--title", "Poster unclaim test", "--type", "feature", "--no-push")
+			if err != nil {
+				t.Fatalf("wl post failed: %v", err)
+			}
+			wantedID := extractWantedID(t, stdout)
+
+			// Switch to worker-rig and claim.
+			writeConfig(t, env, upstream, "worker-rig")
+
+			_, _, err = runWL(t, env, "claim", wantedID, "--no-push")
+			if err != nil {
+				t.Fatalf("wl claim failed: %v", err)
+			}
+
+			// Switch back to forkOrg (poster) and unclaim.
+			writeConfig(t, env, upstream, forkOrg)
+
+			stdout, stderr, err := runWL(t, env, "unclaim", wantedID, "--no-push")
+			if err != nil {
+				t.Fatalf("wl unclaim (poster) failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "Unclaimed") {
+				t.Errorf("expected 'Unclaimed' message, got: %s", stdout)
+			}
+
+			// Verify status is open and claimed_by is empty.
+			raw := doltSQL(t, dbDir, "SELECT status, COALESCE(claimed_by,'') FROM wanted WHERE id='"+wantedID+"'")
+			rows := parseCSV(t, raw)
+			if len(rows) < 2 {
+				t.Fatalf("wanted item %s not found after unclaim", wantedID)
+			}
+			if rows[1][0] != "open" {
+				t.Errorf("status = %q, want %q", rows[1][0], "open")
+			}
+			if rows[1][1] != "" {
+				t.Errorf("claimed_by = %q, want empty", rows[1][1])
+			}
+		})
+	}
+}
+
 func TestDeleteWanted(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
