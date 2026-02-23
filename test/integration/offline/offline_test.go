@@ -207,6 +207,15 @@ func (e *testEnv) createStoreDir(t *testing.T, org, db string) string {
 			t.Fatalf("creating upstream git dir: %v", err)
 		}
 		gitCmd(t, e, "", "init", "--bare", gitDir)
+		// Seed with an initial commit so dolt can push to it.
+		seedDir := filepath.Join(t.TempDir(), "git-seed")
+		if err := os.MkdirAll(seedDir, 0o755); err != nil {
+			t.Fatalf("creating seed dir: %v", err)
+		}
+		gitCmd(t, e, seedDir, "init", "-b", "main", ".")
+		gitCmd(t, e, seedDir, "-c", "user.name=init", "-c", "user.email=init@init",
+			"commit", "--allow-empty", "-m", "init")
+		gitCmd(t, e, seedDir, "push", "file://"+gitDir, "main")
 		return fmt.Sprintf("file://%s", gitDir)
 	default:
 		storeDir := filepath.Join(e.RemoteBase, org, db)

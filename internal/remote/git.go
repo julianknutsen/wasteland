@@ -63,6 +63,12 @@ func (g *GitProvider) Fork(fromOrg, fromDB, toOrg string) error {
 		return fmt.Errorf("git init --bare %s: %w (%s)", destPath, err, strings.TrimSpace(string(output)))
 	}
 
+	// Seed the bare repo with an initial commit so dolt can push to it.
+	// Without this, dolt refuses to push to a bare repo that has no branches.
+	if err := seedBareGitRepo(destPath); err != nil {
+		return fmt.Errorf("seeding bare repo: %w", err)
+	}
+
 	// Push from the temp working dir to the new bare repo.
 	cmd = exec.Command("dolt", "remote", "add", "fork-dest", destURL)
 	cmd.Dir = workDir
@@ -83,3 +89,33 @@ func (g *GitProvider) Fork(fromOrg, fromDB, toOrg string) error {
 
 // Type returns "git".
 func (g *GitProvider) Type() string { return "git" }
+
+// seedBareGitRepo creates an initial empty commit in a bare git repo
+// so dolt can push to it. Without this, dolt may refuse to push to a
+// bare repo that has no branches.
+func seedBareGitRepo(bareDir string) error {
+	tmpDir, err := os.MkdirTemp("", "git-seed-*")
+	if err != nil {
+		return fmt.Errorf("creating temp dir: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	cmd := exec.Command("git", "init", "-b", "main", tmpDir)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git init: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+
+	cmd = exec.Command("git", "-C", tmpDir,
+		"-c", "user.name=init", "-c", "user.email=init@init",
+		"commit", "--allow-empty", "-m", "init")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git commit: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+
+	cmd = exec.Command("git", "-C", tmpDir, "push", "file://"+bareDir, "main")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git push: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+
+	return nil
+}

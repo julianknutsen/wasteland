@@ -99,12 +99,18 @@ func createGitSource(t *testing.T, baseDir, org, db string) []string {
 			"CALL DOLT_ADD('-A');"+
 			"CALL DOLT_COMMIT('-m','init');")
 
-	// Init bare git repo.
+	// Init bare git repo with an initial commit so dolt can push to it.
 	gitDir := filepath.Join(baseDir, org, db+".git")
 	if err := os.MkdirAll(gitDir, 0o755); err != nil {
 		t.Fatalf("creating git dir: %v", err)
 	}
 	run(t, env, "", false, "git", "init", "--bare", gitDir)
+	seedDir := filepath.Join(t.TempDir(), "git-seed")
+	run(t, env, seedDir, true, "git", "init", "-b", "main")
+	run(t, env, seedDir, false, "git",
+		"-c", "user.name=init", "-c", "user.email=init@init",
+		"commit", "--allow-empty", "-m", "init")
+	run(t, env, seedDir, false, "git", "push", "file://"+gitDir, "main")
 
 	// Push to git repo.
 	gitURL := fmt.Sprintf("file://%s", gitDir)
