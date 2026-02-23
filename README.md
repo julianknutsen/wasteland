@@ -44,3 +44,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 ## License
 
 [MIT](LICENSE)
+
+[![codecov](https://codecov.io/gh/julianknutsen/wasteland/graph/badge.svg?token=Y9TUUY5620)](https://codecov.io/gh/julianknutsen/wasteland)
