@@ -77,6 +77,8 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		newSyncCmd(stdout, stderr),
 		newLeaveCmd(stdout, stderr),
 		newListCmd(stdout, stderr),
+		newConfigCmd(stdout, stderr),
+		newReviewCmd(stdout, stderr),
 		newVersionCmd(stdout),
 	)
 	return root

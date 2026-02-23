@@ -23,6 +23,12 @@ import (
 // ErrNotJoined indicates the rig has not joined a wasteland.
 var ErrNotJoined = errors.New("rig has not joined a wasteland")
 
+// Mode constants for the wasteland workflow.
+const (
+	ModeWildWest = "wild-west"
+	ModePR       = "pr"
+)
+
 // ErrAmbiguous indicates multiple wastelands are joined and --wasteland is required.
 var ErrAmbiguous = errors.New("multiple wastelands joined; use --wasteland to select one")
 
@@ -45,6 +51,17 @@ type Config struct {
 
 	// JoinedAt is when the rig joined the wasteland.
 	JoinedAt time.Time `json:"joined_at"`
+
+	// Mode is the workflow mode: "" or "wild-west" (default) or "pr".
+	Mode string `json:"mode,omitempty"`
+}
+
+// ResolveMode returns the effective mode, defaulting to wild-west.
+func (c *Config) ResolveMode() string {
+	if c.Mode == "" || c.Mode == ModeWildWest {
+		return ModeWildWest
+	}
+	return c.Mode
 }
 
 // ParseUpstream parses an upstream path like "steveyegge/wl-commons" into org and db.

@@ -44,6 +44,13 @@ func runClaim(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush b
 	}
 	rigHandle := wlCfg.RigHandle
 
+	mc := newMutationContext(wlCfg, wantedID, noPush, stdout)
+	cleanup, err := mc.Setup()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	store := commons.NewWLCommons(wlCfg.LocalDir)
 	item, err := claimWanted(store, wantedID, rigHandle)
 	if err != nil {
@@ -53,10 +60,11 @@ func runClaim(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush b
 	fmt.Fprintf(stdout, "%s Claimed %s\n", style.Bold.Render("✓"), wantedID)
 	fmt.Fprintf(stdout, "  Claimed by: %s\n", rigHandle)
 	fmt.Fprintf(stdout, "  Title: %s\n", item.Title)
-
-	if !noPush {
-		_ = commons.PushWithSync(wlCfg.LocalDir, stdout)
+	if mc.BranchName() != "" {
+		fmt.Fprintf(stdout, "  Branch: %s\n", mc.BranchName())
 	}
+
+	mc.Push()
 
 	return nil
 }

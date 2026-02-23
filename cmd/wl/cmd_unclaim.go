@@ -43,6 +43,13 @@ func runUnclaim(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush
 	}
 	rigHandle := wlCfg.RigHandle
 
+	mc := newMutationContext(wlCfg, wantedID, noPush, stdout)
+	cleanup, err := mc.Setup()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	store := commons.NewWLCommons(wlCfg.LocalDir)
 	item, err := unclaimWanted(store, wantedID, rigHandle)
 	if err != nil {
@@ -52,10 +59,11 @@ func runUnclaim(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush
 	fmt.Fprintf(stdout, "%s Unclaimed %s\n", style.Bold.Render("✓"), wantedID)
 	fmt.Fprintf(stdout, "  Title: %s\n", item.Title)
 	fmt.Fprintf(stdout, "  Status: open\n")
-
-	if !noPush {
-		_ = commons.PushWithSync(wlCfg.LocalDir, stdout)
+	if mc.BranchName() != "" {
+		fmt.Fprintf(stdout, "  Branch: %s\n", mc.BranchName())
 	}
+
+	mc.Push()
 
 	return nil
 }

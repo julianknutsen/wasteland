@@ -138,6 +138,29 @@ stderr 'accepts 1 arg'
 ! exec wl status w-abc
 stderr 'not joined'
 
+# review not joined.
+! exec wl review
+stderr 'not joined'
+
+# review with branch not joined.
+! exec wl review wl/some/branch
+stderr 'not joined'
+
+# config get not joined.
+! exec wl config get mode
+stderr 'not joined'
+
+# config set not joined.
+! exec wl config set mode pr
+stderr 'not joined'
+
+# config set invalid mode.
+# (requires a joined wasteland to get past config loading, so we test the
+# validation function via unit tests instead. This just confirms the key
+# validation path.)
+! exec wl config set badkey value
+stderr 'unknown config key'
+
 # leave not joined (no arg).
 ! exec wl leave
 stderr 'not joined'

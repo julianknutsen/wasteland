@@ -79,6 +79,13 @@ func runAccept(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, quality
 	}
 	rigHandle := wlCfg.RigHandle
 
+	mc := newMutationContext(wlCfg, wantedID, noPush, stdout)
+	cleanup, err := mc.Setup()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	store := commons.NewWLCommons(wlCfg.LocalDir)
 
 	stamp, err := acceptCompletion(store, wantedID, rigHandle, quality, reliability, severity, skillTags, message)
@@ -97,10 +104,11 @@ func runAccept(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, quality
 		fmt.Fprintf(stdout, "  Message: %s\n", stamp.Message)
 	}
 	fmt.Fprintf(stdout, "  Status: completed\n")
-
-	if !noPush {
-		_ = commons.PushWithSync(wlCfg.LocalDir, stdout)
+	if mc.BranchName() != "" {
+		fmt.Fprintf(stdout, "  Branch: %s\n", mc.BranchName())
 	}
+
+	mc.Push()
 
 	return nil
 }

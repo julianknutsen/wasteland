@@ -92,6 +92,13 @@ func runUpdate(cmd *cobra.Command, stdout, _ io.Writer, wantedID, title, descrip
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
 
+	mc := newMutationContext(wlCfg, wantedID, noPush, stdout)
+	cleanup, err := mc.Setup()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	store := commons.NewWLCommons(wlCfg.LocalDir)
 
 	if err := updateWanted(store, wantedID, fields); err != nil {
@@ -99,10 +106,11 @@ func runUpdate(cmd *cobra.Command, stdout, _ io.Writer, wantedID, title, descrip
 	}
 
 	fmt.Fprintf(stdout, "%s Updated %s\n", style.Bold.Render("✓"), wantedID)
-
-	if !noPush {
-		_ = commons.PushWithSync(wlCfg.LocalDir, stdout)
+	if mc.BranchName() != "" {
+		fmt.Fprintf(stdout, "  Branch: %s\n", mc.BranchName())
 	}
+
+	mc.Push()
 
 	return nil
 }

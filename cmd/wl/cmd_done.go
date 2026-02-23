@@ -55,6 +55,13 @@ func runDone(cmd *cobra.Command, stdout, _ io.Writer, wantedID, evidence string,
 	}
 	rigHandle := wlCfg.RigHandle
 
+	mc := newMutationContext(wlCfg, wantedID, noPush, stdout)
+	cleanup, err := mc.Setup()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	store := commons.NewWLCommons(wlCfg.LocalDir)
 	completionID := commons.GeneratePrefixedID("c", wantedID, rigHandle)
 
@@ -67,10 +74,11 @@ func runDone(cmd *cobra.Command, stdout, _ io.Writer, wantedID, evidence string,
 	fmt.Fprintf(stdout, "  Completed by: %s\n", rigHandle)
 	fmt.Fprintf(stdout, "  Evidence: %s\n", evidence)
 	fmt.Fprintf(stdout, "  Status: in_review\n")
-
-	if !noPush {
-		_ = commons.PushWithSync(wlCfg.LocalDir, stdout)
+	if mc.BranchName() != "" {
+		fmt.Fprintf(stdout, "  Branch: %s\n", mc.BranchName())
 	}
+
+	mc.Push()
 
 	return nil
 }

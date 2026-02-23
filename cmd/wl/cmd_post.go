@@ -77,8 +77,6 @@ func runPost(cmd *cobra.Command, stdout, _ io.Writer, title, description, projec
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
 
-	store := commons.NewWLCommons(wlCfg.LocalDir)
-
 	item := &commons.WantedItem{
 		ID:          commons.GenerateWantedID(title),
 		Title:       title,
@@ -90,6 +88,15 @@ func runPost(cmd *cobra.Command, stdout, _ io.Writer, title, description, projec
 		PostedBy:    wlCfg.RigHandle,
 		EffortLevel: effort,
 	}
+
+	mc := newMutationContext(wlCfg, item.ID, noPush, stdout)
+	cleanup, err := mc.Setup()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	store := commons.NewWLCommons(wlCfg.LocalDir)
 
 	if err := postWanted(store, item); err != nil {
 		return err
@@ -109,10 +116,11 @@ func runPost(cmd *cobra.Command, stdout, _ io.Writer, title, description, projec
 		fmt.Fprintf(stdout, "  Tags:     %s\n", strings.Join(item.Tags, ", "))
 	}
 	fmt.Fprintf(stdout, "  Posted by: %s\n", item.PostedBy)
-
-	if !noPush {
-		_ = commons.PushWithSync(wlCfg.LocalDir, stdout)
+	if mc.BranchName() != "" {
+		fmt.Fprintf(stdout, "  Branch:   %s\n", mc.BranchName())
 	}
+
+	mc.Push()
 
 	return nil
 }

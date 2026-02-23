@@ -45,6 +45,13 @@ func runDelete(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush 
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
 
+	mc := newMutationContext(wlCfg, wantedID, noPush, stdout)
+	cleanup, err := mc.Setup()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	store := commons.NewWLCommons(wlCfg.LocalDir)
 
 	if err := deleteWanted(store, wantedID); err != nil {
@@ -53,10 +60,11 @@ func runDelete(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush 
 
 	fmt.Fprintf(stdout, "%s Withdrawn %s\n", style.Bold.Render("✓"), wantedID)
 	fmt.Fprintf(stdout, "  Status: withdrawn\n")
-
-	if !noPush {
-		_ = commons.PushWithSync(wlCfg.LocalDir, stdout)
+	if mc.BranchName() != "" {
+		fmt.Fprintf(stdout, "  Branch: %s\n", mc.BranchName())
 	}
+
+	mc.Push()
 
 	return nil
 }
