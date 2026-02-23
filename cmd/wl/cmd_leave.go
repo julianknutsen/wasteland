@@ -18,8 +18,8 @@ func newLeaveCmd(stdout, stderr io.Writer) *cobra.Command {
 If only one wasteland is joined, no argument is needed.
 If multiple are joined, specify the upstream or use --wasteland.
 
-Local data directories (fork clone, wl_commons database) are NOT deleted
-automatically. The command prints their paths for manual cleanup.
+The local fork clone directory is NOT deleted automatically.
+The command prints its path for manual cleanup.
 
 Examples:
   wl leave
@@ -55,12 +55,9 @@ func runLeave(cmd *cobra.Command, stdout, _ io.Writer, positional string) error 
 		return fmt.Errorf("removing wasteland config: %w", err)
 	}
 
-	org, db, _ := federation.ParseUpstream(upstream)
-
 	fmt.Fprintf(stdout, "%s Left wasteland: %s\n", style.Bold.Render("✓"), upstream)
 	fmt.Fprintf(stdout, "\n  Data directories (not deleted):\n")
 	fmt.Fprintf(stdout, "    Fork clone: %s\n", cfg.LocalDir)
-	fmt.Fprintf(stdout, "    WL commons: %s\n", federation.WLCommonsDir(org, db))
 	fmt.Fprintf(stdout, "\n  %s\n", style.Dim.Render("Remove these directories manually if no longer needed."))
 
 	return nil

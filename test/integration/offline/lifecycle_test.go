@@ -27,9 +27,15 @@ func joinedEnv(t *testing.T, backend backendKind) *testEnv {
 	return env
 }
 
-// wlCommonsDir returns the path to the per-wasteland wl_commons database.
-func wlCommonsDir(env *testEnv, org, db string) string {
-	return filepath.Join(env.DataDir, "wl_commons", org, db)
+// forkCloneDir returns the fork clone dir from the wasteland config.
+func forkCloneDir(t *testing.T, env *testEnv) string {
+	t.Helper()
+	cfg := env.loadConfig(t, upstream)
+	dir, ok := cfg["local_dir"].(string)
+	if !ok || dir == "" {
+		t.Fatal("local_dir is empty in config")
+	}
+	return dir
 }
 
 func TestJoinCreatesConfig(t *testing.T) {
@@ -78,15 +84,9 @@ func TestSchemaInit(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
-			dbDir := wlCommonsDir(env, upstreamOrg, upstreamDB)
+			dbDir := forkCloneDir(t, env)
 
-			// wl post triggers EnsureWLCommons → auto-creates schema.
-			stdout, stderr, err := runWL(t, env, "post", "--title", "Schema init test", "--type", "feature")
-			if err != nil {
-				t.Fatalf("wl post failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
-			}
-
-			// Verify all 7 tables exist.
+			// Fork clone should already have the schema from upstream.
 			raw := doltSQL(t, dbDir, "SHOW TABLES")
 			rows := parseCSV(t, raw)
 
@@ -111,7 +111,7 @@ func TestPostWanted(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
-			dbDir := wlCommonsDir(env, upstreamOrg, upstreamDB)
+			dbDir := forkCloneDir(t, env)
 
 			stdout, stderr, err := runWL(t, env, "post",
 				"--title", "Test feature request",
@@ -119,6 +119,7 @@ func TestPostWanted(t *testing.T) {
 				"--priority", "1",
 				"--effort", "large",
 				"--tags", "go,test",
+				"--no-push",
 			)
 			if err != nil {
 				t.Fatalf("wl post failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
@@ -164,17 +165,17 @@ func TestClaimWanted(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
-			dbDir := wlCommonsDir(env, upstreamOrg, upstreamDB)
+			dbDir := forkCloneDir(t, env)
 
 			// Post an item first.
-			stdout, _, err := runWL(t, env, "post", "--title", "Claim test item", "--type", "bug")
+			stdout, _, err := runWL(t, env, "post", "--title", "Claim test item", "--type", "bug", "--no-push")
 			if err != nil {
 				t.Fatalf("wl post failed: %v", err)
 			}
 			wantedID := extractWantedID(t, stdout)
 
 			// Claim it.
-			stdout, stderr, err := runWL(t, env, "claim", wantedID)
+			stdout, stderr, err := runWL(t, env, "claim", wantedID, "--no-push")
 			if err != nil {
 				t.Fatalf("wl claim failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
 			}
@@ -199,22 +200,22 @@ func TestClaimAlreadyClaimed(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
-			dbDir := wlCommonsDir(env, upstreamOrg, upstreamDB)
+			dbDir := forkCloneDir(t, env)
 
 			// Post and claim.
-			stdout, _, err := runWL(t, env, "post", "--title", "Double claim test", "--type", "feature")
+			stdout, _, err := runWL(t, env, "post", "--title", "Double claim test", "--type", "feature", "--no-push")
 			if err != nil {
 				t.Fatalf("wl post failed: %v", err)
 			}
 			wantedID := extractWantedID(t, stdout)
 
-			_, _, err = runWL(t, env, "claim", wantedID)
+			_, _, err = runWL(t, env, "claim", wantedID, "--no-push")
 			if err != nil {
 				t.Fatalf("first claim failed: %v", err)
 			}
 
 			// Second claim should fail.
-			_, _, err = runWL(t, env, "claim", wantedID)
+			_, _, err = runWL(t, env, "claim", wantedID, "--no-push")
 			if err == nil {
 				t.Fatal("second claim should have failed")
 			}
@@ -233,23 +234,23 @@ func TestDoneFullLifecycle(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
-			dbDir := wlCommonsDir(env, upstreamOrg, upstreamDB)
+			dbDir := forkCloneDir(t, env)
 
 			// Post.
-			stdout, _, err := runWL(t, env, "post", "--title", "Done lifecycle test", "--type", "feature")
+			stdout, _, err := runWL(t, env, "post", "--title", "Done lifecycle test", "--type", "feature", "--no-push")
 			if err != nil {
 				t.Fatalf("wl post failed: %v", err)
 			}
 			wantedID := extractWantedID(t, stdout)
 
 			// Claim.
-			_, _, err = runWL(t, env, "claim", wantedID)
+			_, _, err = runWL(t, env, "claim", wantedID, "--no-push")
 			if err != nil {
 				t.Fatalf("wl claim failed: %v", err)
 			}
 
 			// Done.
-			stdout, stderr, err := runWL(t, env, "done", wantedID, "--evidence", "https://github.com/test/pr/1")
+			stdout, stderr, err := runWL(t, env, "done", wantedID, "--evidence", "https://github.com/test/pr/1", "--no-push")
 			if err != nil {
 				t.Fatalf("wl done failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
 			}
@@ -281,16 +282,16 @@ func TestDoneWrongClaimer(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
-			dbDir := wlCommonsDir(env, upstreamOrg, upstreamDB)
+			dbDir := forkCloneDir(t, env)
 
 			// Post and claim as the default rig (forkOrg handle).
-			stdout, _, err := runWL(t, env, "post", "--title", "Wrong claimer test", "--type", "bug")
+			stdout, _, err := runWL(t, env, "post", "--title", "Wrong claimer test", "--type", "bug", "--no-push")
 			if err != nil {
 				t.Fatalf("wl post failed: %v", err)
 			}
 			wantedID := extractWantedID(t, stdout)
 
-			_, _, err = runWL(t, env, "claim", wantedID)
+			_, _, err = runWL(t, env, "claim", wantedID, "--no-push")
 			if err != nil {
 				t.Fatalf("wl claim failed: %v", err)
 			}
@@ -299,7 +300,7 @@ func TestDoneWrongClaimer(t *testing.T) {
 			writeConfig(t, env, upstream, "rig-b")
 
 			// Done as rig-b should fail (claimed by forkOrg).
-			_, _, err = runWL(t, env, "done", wantedID, "--evidence", "fake")
+			_, _, err = runWL(t, env, "done", wantedID, "--evidence", "fake", "--no-push")
 			if err == nil {
 				t.Fatal("done by wrong claimer should have failed")
 			}
@@ -318,17 +319,17 @@ func TestDoneUnclaimed(t *testing.T) {
 	for _, backend := range backends {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
-			dbDir := wlCommonsDir(env, upstreamOrg, upstreamDB)
+			dbDir := forkCloneDir(t, env)
 
 			// Post but don't claim.
-			stdout, _, err := runWL(t, env, "post", "--title", "Unclaimed done test", "--type", "feature")
+			stdout, _, err := runWL(t, env, "post", "--title", "Unclaimed done test", "--type", "feature", "--no-push")
 			if err != nil {
 				t.Fatalf("wl post failed: %v", err)
 			}
 			wantedID := extractWantedID(t, stdout)
 
 			// Done on open item should fail.
-			_, _, err = runWL(t, env, "done", wantedID, "--evidence", "fake")
+			_, _, err = runWL(t, env, "done", wantedID, "--evidence", "fake", "--no-push")
 			if err == nil {
 				t.Fatal("done on unclaimed item should have failed")
 			}
@@ -352,7 +353,7 @@ func TestPostOutput(t *testing.T) {
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
 
-			stdout, _, err := runWL(t, env, "post", "--title", "Output format test", "--type", "docs")
+			stdout, _, err := runWL(t, env, "post", "--title", "Output format test", "--type", "docs", "--no-push")
 			if err != nil {
 				t.Fatalf("wl post failed: %v", err)
 			}
@@ -434,7 +435,7 @@ func TestMultiWasteland_RequiresFlag(t *testing.T) {
 			env.joinWasteland(t, "org-b/other-db", "fork-b")
 
 			// Post without --wasteland should fail (ambiguous).
-			_, _, err := runWL(t, env, "post", "--title", "Test", "--type", "feature")
+			_, _, err := runWL(t, env, "post", "--title", "Test", "--type", "feature", "--no-push")
 			if err == nil {
 				t.Fatal("post without --wasteland should fail with multiple wastelands")
 			}
@@ -444,6 +445,7 @@ func TestMultiWasteland_RequiresFlag(t *testing.T) {
 				"--wasteland", "org-a/wl-commons",
 				"--title", "Multi-WL post test",
 				"--type", "feature",
+				"--no-push",
 			)
 			if err != nil {
 				t.Fatalf("post with --wasteland failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)

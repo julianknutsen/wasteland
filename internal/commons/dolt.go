@@ -3,6 +3,7 @@ package commons
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -19,26 +20,47 @@ func DoltHubOrg() string {
 	return os.Getenv("DOLTHUB_ORG")
 }
 
-// DatabaseExists checks whether a database exists in the data directory.
-func DatabaseExists(dataDir, dbName string) bool {
-	doltDir := fmt.Sprintf("%s/%s/.dolt", dataDir, dbName)
-	_, err := os.Stat(doltDir)
-	return err == nil
+// PushWithSync pushes the local main branch to both upstream and origin remotes.
+// If a push is rejected (stale), it pulls to merge and retries.
+// Warnings are printed but do not cause a fatal error — the local commit is safe.
+func PushWithSync(dbDir string, stdout io.Writer) error {
+	for _, remote := range []string{"upstream", "origin"} {
+		if err := pushRemote(dbDir, remote); err != nil {
+			fmt.Fprintf(stdout, "  Syncing with %s...\n", remote)
+			if pullErr := pullRemote(dbDir, remote); pullErr != nil {
+				fmt.Fprintf(stdout, "  warning: sync from %s failed: %v\n", remote, pullErr)
+				continue
+			}
+			if err := pushRemote(dbDir, remote); err != nil {
+				fmt.Fprintf(stdout, "  warning: push to %s failed after sync: %v\n", remote, err)
+				continue
+			}
+		}
+		fmt.Fprintf(stdout, "  Pushed to %s\n", remote)
+	}
+	return nil
 }
 
-// InitDB initializes a new dolt database in the data directory.
-func InitDB(dataDir, dbName string) error {
-	dbDir := fmt.Sprintf("%s/%s", dataDir, dbName)
-
-	if err := os.MkdirAll(dbDir, 0o755); err != nil {
-		return fmt.Errorf("creating database directory: %w", err)
-	}
-
-	cmd := exec.Command("dolt", "init")
+func pushRemote(dbDir, remote string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "dolt", "push", remote, "main")
 	cmd.Dir = dbDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("initializing Dolt database: %w\n%s", err, output)
+		return fmt.Errorf("dolt push %s main: %w (%s)", remote, err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func pullRemote(dbDir, remote string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "dolt", "pull", remote, "main")
+	cmd.Dir = dbDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dolt pull %s main: %w (%s)", remote, err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }

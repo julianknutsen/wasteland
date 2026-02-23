@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -13,6 +14,8 @@ import (
 	"github.com/steveyegge/wasteland/internal/style"
 )
 
+const defaultUpstream = "hop/wl-commons"
+
 func newJoinCmd(stdout, stderr io.Writer) *cobra.Command {
 	var (
 		handle      string
@@ -24,40 +27,39 @@ func newJoinCmd(stdout, stderr io.Writer) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "join <upstream>",
+		Use:   "join [upstream]",
 		Short: "Join a wasteland by forking its commons",
 		Long: `Join a wasteland community by forking its shared commons database.
 
 This command:
-  1. Forks the upstream commons to your org
+  1. Forks the upstream commons to your org (or checks that your fork exists)
   2. Clones the fork locally
   3. Registers your rig in the rigs table
   4. Pushes the registration to your fork
   5. Saves wasteland configuration locally
 
-The upstream argument is an org/database path like 'steveyegge/wl-commons'.
-You can join multiple wastelands simultaneously.
+The upstream argument defaults to 'hop/wl-commons' (the main wasteland).
+You can specify a different org/database path to join other wastelands.
 
-DoltHub mode (default):
-  Requires DOLTHUB_TOKEN and DOLTHUB_ORG (or --fork-org).
-  Forks and clones via DoltHub.
-
-Offline file mode (--remote-base):
-  Uses file:// dolt remotes. No DoltHub credentials needed.
-  Requires --fork-org (or DOLTHUB_ORG).
-
-Git remote mode (--git-remote):
-  Uses bare git repos as dolt remotes. No DoltHub credentials needed.
-  Requires --fork-org (or DOLTHUB_ORG).
+Getting started:
+  1. Sign up at https://www.dolthub.com
+  2. Fork the commons: https://www.dolthub.com/repositories/hop/wl-commons
+  3. Create an API token at https://www.dolthub.com/settings/tokens
+  4. Set environment variables:
+       export DOLTHUB_TOKEN=<your-api-token>
+       export DOLTHUB_ORG=<your-dolthub-username>
+  5. Run: wl join
 
 Examples:
-  wl join steveyegge/wl-commons
-  wl join steveyegge/wl-commons --handle my-rig
-  wl join test-org/wl-commons --remote-base /tmp/remotes --fork-org my-fork
-  wl join test-org/wl-commons --git-remote /tmp/git-remotes --fork-org my-fork`,
-		Args: cobra.ExactArgs(1),
+  wl join
+  wl join hop/wl-commons --handle my-rig`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return runJoin(stdout, stderr, args[0], handle, displayName, email, forkOrg, remoteBase, gitRemote)
+			upstream := defaultUpstream
+			if len(args) > 0 {
+				upstream = args[0]
+			}
+			return runJoin(stdout, stderr, upstream, handle, displayName, email, forkOrg, remoteBase, gitRemote)
 		},
 	}
 
@@ -150,6 +152,11 @@ func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, for
 	fmt.Fprintf(stdout, "Joining wasteland %s (fork to %s/%s)...\n", upstream, forkOrg, dbName)
 	cfg, err := svc.Join(upstream, forkOrg, handle, displayName, email, wlVersion)
 	if err != nil {
+		var forkErr *remote.ForkRequiredError
+		if errors.As(err, &forkErr) {
+			printForkInstructions(stdout, forkErr)
+			return errExit
+		}
 		fmt.Fprintf(stderr, "wl join: %v\n", err)
 		return errExit
 	}
@@ -160,6 +167,15 @@ func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, for
 	fmt.Fprintf(stdout, "  Local: %s\n", cfg.LocalDir)
 	fmt.Fprintf(stdout, "\n  %s\n", style.Dim.Render("Next: wl browse  — browse the wanted board"))
 	return nil
+}
+
+func printForkInstructions(w io.Writer, err *remote.ForkRequiredError) {
+	fmt.Fprintf(w, "\n%s Fork required\n\n", style.Bold.Render("!"))
+	fmt.Fprintf(w, "  To join this wasteland, fork the commons on DoltHub:\n\n")
+	fmt.Fprintf(w, "  1. Go to %s\n", style.Bold.Render(err.ForkURL()))
+	fmt.Fprintf(w, "  2. Click %s (top right)\n", style.Bold.Render("Fork"))
+	fmt.Fprintf(w, "  3. Select your organization: %s\n", style.Bold.Render(err.ForkOrg))
+	fmt.Fprintf(w, "  4. Rerun: %s\n", style.Bold.Render("wl join"))
 }
 
 // gitConfigValue retrieves a value from git config. Returns empty string on error.

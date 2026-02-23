@@ -3,17 +3,16 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/wasteland/internal/commons"
-	"github.com/steveyegge/wasteland/internal/federation"
 	"github.com/steveyegge/wasteland/internal/style"
 )
 
 func newClaimCmd(stdout, stderr io.Writer) *cobra.Command {
-	return &cobra.Command{
+	var noPush bool
+
+	cmd := &cobra.Command{
 		Use:   "claim <wanted-id>",
 		Short: "Claim a wanted item",
 		Long: `Claim a wanted item on the shared wanted board.
@@ -21,33 +20,31 @@ func newClaimCmd(stdout, stderr io.Writer) *cobra.Command {
 Updates the wanted row: claimed_by=<your rig handle>, status='claimed'.
 The item must exist and have status='open'.
 
-In wild-west mode (Phase 1), this writes directly to the local wl-commons
-database. In PR mode, this will create a DoltHub PR instead.
+In wild-west mode the commit is auto-pushed to upstream and origin.
+Use --no-push to skip pushing (offline work).
 
 Examples:
-  wl claim w-abc123`,
+  wl claim w-abc123
+  wl claim w-abc123 --no-push`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runClaim(cmd, stdout, stderr, args[0])
+			return runClaim(cmd, stdout, stderr, args[0], noPush)
 		},
 	}
+
+	cmd.Flags().BoolVar(&noPush, "no-push", false, "Skip pushing to remotes (offline work)")
+
+	return cmd
 }
 
-func runClaim(cmd *cobra.Command, stdout, _ io.Writer, wantedID string) error {
+func runClaim(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush bool) error {
 	wlCfg, err := resolveWasteland(cmd)
 	if err != nil {
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
 	rigHandle := wlCfg.RigHandle
 
-	org, db, _ := federation.ParseUpstream(wlCfg.Upstream)
-	commonsDir := federation.WLCommonsDir(org, db)
-
-	if _, err := os.Stat(filepath.Join(commonsDir, ".dolt")); err != nil {
-		return fmt.Errorf("wl-commons database not found at %s\nRun 'wl post' first to initialize, or join a wasteland with: wl join <org/db>", commonsDir)
-	}
-
-	store := commons.NewWLCommons(commonsDir)
+	store := commons.NewWLCommons(wlCfg.LocalDir)
 	item, err := claimWanted(store, wantedID, rigHandle)
 	if err != nil {
 		return err
@@ -56,6 +53,10 @@ func runClaim(cmd *cobra.Command, stdout, _ io.Writer, wantedID string) error {
 	fmt.Fprintf(stdout, "%s Claimed %s\n", style.Bold.Render("✓"), wantedID)
 	fmt.Fprintf(stdout, "  Claimed by: %s\n", rigHandle)
 	fmt.Fprintf(stdout, "  Title: %s\n", item.Title)
+
+	if !noPush {
+		_ = commons.PushWithSync(wlCfg.LocalDir, stdout)
+	}
 
 	return nil
 }

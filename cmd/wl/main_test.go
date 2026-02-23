@@ -43,17 +43,20 @@ func TestSubcommandRegistration(t *testing.T) {
 	}
 }
 
-func TestJoinRequiresArg(t *testing.T) {
+func TestJoinAcceptsOptionalArg(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	root := newRootCmd(&stdout, &stderr)
 
 	for _, c := range root.Commands() {
 		if c.Name() == "join" {
-			if err := c.Args(c, []string{}); err == nil {
-				t.Error("join should require exactly 1 argument")
+			if err := c.Args(c, []string{}); err != nil {
+				t.Errorf("join should accept 0 arguments (defaults to hop/wl-commons): %v", err)
 			}
 			if err := c.Args(c, []string{"org/db"}); err != nil {
 				t.Errorf("join should accept 1 argument: %v", err)
+			}
+			if err := c.Args(c, []string{"a", "b"}); err == nil {
+				t.Error("join should reject 2 arguments")
 			}
 			return
 		}

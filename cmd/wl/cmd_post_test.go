@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/steveyegge/wasteland/internal/commons"
@@ -66,22 +65,6 @@ func TestPostWanted_EmptyTitle(t *testing.T) {
 	err := postWanted(store, item)
 	if err == nil {
 		t.Fatal("postWanted() expected error for empty title")
-	}
-}
-
-func TestPostWanted_EnsureDBFails(t *testing.T) {
-	t.Parallel()
-	store := newFakeWLCommonsStore()
-	store.EnsureDBErr = fmt.Errorf("server down")
-
-	item := &commons.WantedItem{
-		ID:    "w-test",
-		Title: "Test",
-	}
-
-	err := postWanted(store, item)
-	if err == nil {
-		t.Fatal("postWanted() expected error when EnsureDB fails")
 	}
 }
 

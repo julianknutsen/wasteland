@@ -9,25 +9,11 @@ import (
 type fakeWLCommonsStore struct {
 	mu    sync.Mutex
 	items map[string]*WantedItem
-	dbOK  bool
 
-	EnsureDBErr         error
 	InsertWantedErr     error
 	ClaimWantedErr      error
 	SubmitCompletionErr error
 	QueryWantedErr      error
-}
-
-func (f *fakeWLCommonsStore) EnsureDB() error {
-	if f.EnsureDBErr != nil {
-		return f.EnsureDBErr
-	}
-	f.dbOK = true
-	return nil
-}
-
-func (f *fakeWLCommonsStore) DatabaseExists(dbName string) bool {
-	return f.dbOK && dbName == WLCommonsDB
 }
 
 func (f *fakeWLCommonsStore) InsertWanted(item *WantedItem) error {

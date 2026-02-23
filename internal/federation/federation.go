@@ -61,11 +61,6 @@ func LocalCloneDir(upstreamOrg, upstreamDB string) string {
 	return filepath.Join(xdg.DataDir(), upstreamOrg, upstreamDB)
 }
 
-// WLCommonsDir returns the per-wasteland wl_commons database directory.
-func WLCommonsDir(org, db string) string {
-	return filepath.Join(xdg.DataDir(), "wl_commons", org, db)
-}
-
 // escapeSQLString escapes backslashes and single quotes for SQL string literals.
 func escapeSQLString(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)

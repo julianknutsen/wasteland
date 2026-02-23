@@ -11,10 +11,8 @@ import (
 type fakeWLCommonsStore struct {
 	mu    sync.Mutex
 	items map[string]*commons.WantedItem
-	dbOK  bool
 
 	// Error injection fields
-	EnsureDBErr         error
 	InsertWantedErr     error
 	ClaimWantedErr      error
 	SubmitCompletionErr error
@@ -24,20 +22,7 @@ type fakeWLCommonsStore struct {
 func newFakeWLCommonsStore() *fakeWLCommonsStore {
 	return &fakeWLCommonsStore{
 		items: make(map[string]*commons.WantedItem),
-		dbOK:  true,
 	}
-}
-
-func (f *fakeWLCommonsStore) EnsureDB() error {
-	if f.EnsureDBErr != nil {
-		return f.EnsureDBErr
-	}
-	f.dbOK = true
-	return nil
-}
-
-func (f *fakeWLCommonsStore) DatabaseExists(dbName string) bool {
-	return f.dbOK && dbName == commons.WLCommonsDB
 }
 
 func (f *fakeWLCommonsStore) InsertWanted(item *commons.WantedItem) error {

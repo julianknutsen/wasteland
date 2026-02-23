@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/wasteland/internal/commons"
-	"github.com/steveyegge/wasteland/internal/federation"
 	"github.com/steveyegge/wasteland/internal/style"
 )
 
@@ -20,6 +19,7 @@ func newPostCmd(stdout, stderr io.Writer) *cobra.Command {
 		priority    int
 		effort      string
 		tags        string
+		noPush      bool
 	)
 
 	cmd := &cobra.Command{
@@ -28,17 +28,18 @@ func newPostCmd(stdout, stderr io.Writer) *cobra.Command {
 		Long: `Post a new wanted item to the Wasteland commons (shared wanted board).
 
 Creates a wanted item with a unique w-<hash> ID and inserts it into the
-wl-commons database. Phase 1 (wild-west): direct write to main branch.
+fork clone of the commons database. In wild-west mode the commit is
+auto-pushed to upstream (canonical) and origin (fork).
 
-The posted_by field is set to the rig's DoltHub org (DOLTHUB_ORG) or
-falls back to the directory name.
+Use --no-push to skip pushing (offline work).
 
 Examples:
   wl post --title "Fix auth bug" --project gastown --type bug
   wl post --title "Add federation sync" --type feature --priority 1 --effort large
-  wl post --title "Update docs" --tags "docs,federation" --effort small`,
+  wl post --title "Update docs" --tags "docs,federation" --effort small
+  wl post --title "Offline item" --no-push`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runPost(cmd, stdout, stderr, title, description, project, itemType, priority, effort, tags)
+			return runPost(cmd, stdout, stderr, title, description, project, itemType, priority, effort, tags, noPush)
 		},
 	}
 
@@ -49,13 +50,14 @@ Examples:
 	cmd.Flags().IntVar(&priority, "priority", 2, "Priority: 0=critical, 1=high, 2=medium, 3=low, 4=backlog")
 	cmd.Flags().StringVar(&effort, "effort", "medium", "Effort level: trivial, small, medium, large, epic")
 	cmd.Flags().StringVar(&tags, "tags", "", "Comma-separated tags (e.g., 'go,auth,federation')")
+	cmd.Flags().BoolVar(&noPush, "no-push", false, "Skip pushing to remotes (offline work)")
 
 	_ = cmd.MarkFlagRequired("title")
 
 	return cmd
 }
 
-func runPost(cmd *cobra.Command, stdout, _ io.Writer, title, description, project, itemType string, priority int, effort, tags string) error {
+func runPost(cmd *cobra.Command, stdout, _ io.Writer, title, description, project, itemType string, priority int, effort, tags string, noPush bool) error {
 	var tagList []string
 	if tags != "" {
 		for _, t := range strings.Split(tags, ",") {
@@ -75,9 +77,7 @@ func runPost(cmd *cobra.Command, stdout, _ io.Writer, title, description, projec
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
 
-	org, db, _ := federation.ParseUpstream(wlCfg.Upstream)
-	commonsDir := federation.WLCommonsDir(org, db)
-	store := commons.NewWLCommons(commonsDir)
+	store := commons.NewWLCommons(wlCfg.LocalDir)
 
 	item := &commons.WantedItem{
 		ID:          commons.GenerateWantedID(title),
@@ -110,6 +110,10 @@ func runPost(cmd *cobra.Command, stdout, _ io.Writer, title, description, projec
 	}
 	fmt.Fprintf(stdout, "  Posted by: %s\n", item.PostedBy)
 
+	if !noPush {
+		_ = commons.PushWithSync(wlCfg.LocalDir, stdout)
+	}
+
 	return nil
 }
 
@@ -138,10 +142,6 @@ func validatePostInputs(itemType, effort string, priority int) error {
 
 // postWanted contains the testable business logic for posting a wanted item.
 func postWanted(store commons.WLCommonsStore, item *commons.WantedItem) error {
-	if err := store.EnsureDB(); err != nil {
-		return fmt.Errorf("ensuring wl-commons database: %w", err)
-	}
-
 	if err := store.InsertWanted(item); err != nil {
 		return fmt.Errorf("posting wanted item: %w", err)
 	}

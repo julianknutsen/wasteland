@@ -205,12 +205,3 @@ func TestLocalCloneDir(t *testing.T) {
 		t.Errorf("LocalCloneDir = %q, want %q", got, want)
 	}
 }
-
-func TestWLCommonsDir(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", "/tmp/xdg-test")
-	got := WLCommonsDir("steveyegge", "wl-commons")
-	want := filepath.Join("/tmp/xdg-test", "wasteland", "wl_commons", "steveyegge", "wl-commons")
-	if got != want {
-		t.Errorf("WLCommonsDir = %q, want %q", got, want)
-	}
-}
