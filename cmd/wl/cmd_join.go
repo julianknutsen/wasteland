@@ -26,6 +26,7 @@ func newJoinCmd(stdout, stderr io.Writer) *cobra.Command {
 		gitRemote   string
 		github      bool
 		githubLocal string
+		signed      bool
 	)
 
 	cmd := &cobra.Command{
@@ -61,7 +62,7 @@ Examples:
 			if len(args) > 0 {
 				upstream = args[0]
 			}
-			return runJoin(stdout, stderr, upstream, handle, displayName, email, forkOrg, remoteBase, gitRemote, github, githubLocal)
+			return runJoin(stdout, stderr, upstream, handle, displayName, email, forkOrg, remoteBase, gitRemote, github, githubLocal, signed)
 		},
 	}
 
@@ -73,12 +74,13 @@ Examples:
 	cmd.Flags().StringVar(&gitRemote, "git-remote", "", "Base directory for bare git remotes")
 	cmd.Flags().BoolVar(&github, "github", false, "Use GitHub as the upstream provider")
 	cmd.Flags().StringVar(&githubLocal, "github-local", "", "Local base directory for GitHub-compatible testing mode")
+	cmd.Flags().BoolVar(&signed, "signed", false, "GPG-sign the rig registration commit")
 	cmd.MarkFlagsMutuallyExclusive("remote-base", "git-remote", "github", "github-local")
 
 	return cmd
 }
 
-func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, forkOrg, remoteBase, gitRemote string, github bool, githubLocal string) error {
+func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, forkOrg, remoteBase, gitRemote string, github bool, githubLocal string, signed bool) error {
 	// Parse upstream path (validate early)
 	_, _, err := federation.ParseUpstream(upstream)
 	if err != nil {
@@ -168,7 +170,7 @@ func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, for
 
 	dbName := upstream[strings.Index(upstream, "/")+1:]
 	fmt.Fprintf(stdout, "Joining wasteland %s (fork to %s/%s)...\n", upstream, forkOrg, dbName)
-	cfg, err := svc.Join(upstream, forkOrg, handle, displayName, email, wlVersion, false)
+	cfg, err := svc.Join(upstream, forkOrg, handle, displayName, email, wlVersion, signed)
 	if err != nil {
 		var forkErr *remote.ForkRequiredError
 		if errors.As(err, &forkErr) {
