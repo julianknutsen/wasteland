@@ -1,0 +1,20 @@
+# Help, version, and subcommand discovery.
+
+# No args shows help.
+exec wl
+stdout 'Available Commands'
+stdout 'join'
+stdout 'post'
+stdout 'claim'
+stdout 'done'
+stdout 'leave'
+stdout 'list'
+stdout 'version'
+
+# --help shows same help.
+exec wl --help
+stdout 'Available Commands'
+
+# Version prints version string.
+exec wl version
+stdout 'wl dev'

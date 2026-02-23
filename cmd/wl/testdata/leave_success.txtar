@@ -1,0 +1,18 @@
+# Leave wasteland with explicit upstream argument.
+
+exec wl leave hop/wl-commons
+stdout 'Left wasteland'
+stdout 'hop/wl-commons'
+
+# Config file should be removed.
+! exists .config/wasteland/wastelands/hop/wl-commons.json
+
+-- .config/wasteland/wastelands/hop/wl-commons.json --
+{
+  "upstream": "hop/wl-commons",
+  "fork_org": "alice",
+  "fork_db": "wl-commons",
+  "local_dir": "/tmp/test/wl-commons",
+  "rig_handle": "alice",
+  "joined_at": "2025-01-15T00:00:00Z"
+}

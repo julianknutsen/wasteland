@@ -36,6 +36,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	root.SetOut(stdout)
 	root.SetErr(stderr)
 	if err := root.Execute(); err != nil {
+		if !errors.Is(err, errExit) {
+			fmt.Fprintf(stderr, "wl: %v\n", err)
+		}
 		return 1
 	}
 	return 0

@@ -1,0 +1,25 @@
+# List wastelands with multiple configs.
+
+exec wl list
+stdout 'Joined wastelands \(2\)'
+stdout 'hop/wl-commons'
+stdout 'bob/wl-commons'
+
+-- .config/wasteland/wastelands/hop/wl-commons.json --
+{
+  "upstream": "hop/wl-commons",
+  "fork_org": "alice",
+  "fork_db": "wl-commons",
+  "local_dir": "/tmp/test1",
+  "rig_handle": "alice",
+  "joined_at": "2025-01-15T00:00:00Z"
+}
+-- .config/wasteland/wastelands/bob/wl-commons.json --
+{
+  "upstream": "bob/wl-commons",
+  "fork_org": "alice",
+  "fork_db": "wl-commons",
+  "local_dir": "/tmp/test2",
+  "rig_handle": "alice",
+  "joined_at": "2025-02-20T00:00:00Z"
+}

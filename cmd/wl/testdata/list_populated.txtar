@@ -1,0 +1,17 @@
+# List wastelands with a single config.
+
+exec wl list
+stdout 'Joined wastelands \(1\)'
+stdout 'hop/wl-commons'
+stdout 'alice'
+stdout '2025-01-15'
+
+-- .config/wasteland/wastelands/hop/wl-commons.json --
+{
+  "upstream": "hop/wl-commons",
+  "fork_org": "alice",
+  "fork_db": "wl-commons",
+  "local_dir": "/tmp/test/wl-commons",
+  "rig_handle": "alice",
+  "joined_at": "2025-01-15T00:00:00Z"
+}

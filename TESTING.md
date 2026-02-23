@@ -17,6 +17,26 @@ injection. These are fast and run everywhere.
 When to use: corrupted data, concurrent writes, specific error types,
 double-claim conflicts, rollback behavior, boundary conditions.
 
+### 1b. Testscript CLI tests (`cmd/wl/testdata/*.txtar`)
+
+Test what the **CLI shows the user**. Exact stdout/stderr output, exit codes,
+flag validation, error messages. These are fast (in-process, no binary build)
+and run everywhere alongside unit tests.
+
+- Uses [go-internal/testscript](https://pkg.go.dev/github.com/rogpeppe/go-internal/testscript)
+- Each `.txtar` file runs in an isolated `$WORK` directory
+- XDG dirs are isolated per script (no cross-contamination)
+- Pre-seed config files via archive sections in `.txtar` files
+- `exec wl <args>` runs the CLI in-process via `testscript.Main`
+
+```
+go test -v -run TestScripts ./cmd/wl/
+```
+
+When to use: verifying user-facing output, error messages, flag validation,
+help text, subcommand discovery, config-dependent behavior (list, leave, join
+when already joined).
+
 ### 2a. Offline integration tests (`test/integration/offline/`)
 
 Test the wl binary end-to-end against real dolt databases using `file://`
@@ -60,6 +80,10 @@ Run with: `go test -tags integration ./test/integration/`
 | Does CSV parsing handle quoted fields? | Unit test |
 | Does SQL escaping prevent injection? | Unit test |
 | Does the federation join workflow call steps in order? | Unit test |
+| Does `wl post --type invalid` show the right error? | Testscript |
+| Does `wl list` show "No wastelands joined" when empty? | Testscript |
+| Does `wl leave` auto-resolve with one wasteland? | Testscript |
+| Does `wl version` print the version string? | Testscript |
 | Does `wl post` create a valid database row? | Offline integration |
 | Does `wl claim` on an already-claimed item fail? | Offline integration |
 | Does `wl sync` pull from an upstream file:// remote? | Offline integration |

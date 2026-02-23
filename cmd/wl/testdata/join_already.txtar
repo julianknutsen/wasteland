@@ -1,0 +1,16 @@
+# Join when already joined shows existing config.
+
+exec wl join hop/wl-commons
+stdout 'Already joined'
+stdout 'hop/wl-commons'
+stdout 'alice'
+
+-- .config/wasteland/wastelands/hop/wl-commons.json --
+{
+  "upstream": "hop/wl-commons",
+  "fork_org": "alice",
+  "fork_db": "wl-commons",
+  "local_dir": "/tmp/test/wl-commons",
+  "rig_handle": "alice",
+  "joined_at": "2025-01-15T00:00:00Z"
+}

@@ -1,0 +1,67 @@
+# Error paths for wl CLI.
+
+# Unknown command.
+! exec wl blorp
+stderr 'unknown command "blorp"'
+
+# join with bad upstream format.
+! exec wl join badformat
+stderr 'invalid upstream path'
+
+# join without DOLTHUB_TOKEN.
+! exec wl join hop/wl-commons
+stderr 'DOLTHUB_TOKEN'
+
+# join with token but no org.
+env DOLTHUB_TOKEN=fake-token
+! exec wl join hop/wl-commons
+stderr 'DOLTHUB_ORG'
+env DOLTHUB_TOKEN=
+
+# post missing --title.
+! exec wl post
+stderr 'required flag.*"title"'
+
+# post with invalid type.
+! exec wl post --title test --type invalid
+stderr 'invalid type "invalid"'
+
+# post with invalid effort.
+! exec wl post --title test --effort huge
+stderr 'invalid effort "huge"'
+
+# post with invalid priority.
+! exec wl post --title test --priority 9
+stderr 'invalid priority 9'
+
+# post not joined.
+! exec wl post --title test
+stderr 'not joined'
+
+# claim with no args.
+! exec wl claim
+stderr 'accepts 1 arg'
+
+# claim not joined.
+! exec wl claim w-abc
+stderr 'not joined'
+
+# done with no args.
+! exec wl done
+stderr 'accepts 1 arg'
+
+# done missing --evidence.
+! exec wl done w-abc
+stderr 'required flag.*"evidence"'
+
+# done not joined.
+! exec wl done w-abc --evidence x
+stderr 'not joined'
+
+# leave not joined (no arg).
+! exec wl leave
+stderr 'not joined'
+
+# leave not joined (explicit arg).
+! exec wl leave hop/wl-commons
+stderr 'not joined'

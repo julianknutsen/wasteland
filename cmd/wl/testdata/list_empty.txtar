@@ -1,0 +1,4 @@
+# List wastelands when none are joined.
+
+exec wl list
+stdout 'No wastelands joined'
