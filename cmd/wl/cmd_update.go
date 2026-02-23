@@ -99,7 +99,7 @@ func runUpdate(cmd *cobra.Command, stdout, _ io.Writer, wantedID, title, descrip
 	}
 	defer cleanup()
 
-	store := commons.NewWLCommons(wlCfg.LocalDir)
+	store := openStore(wlCfg.LocalDir)
 
 	if err := updateWanted(store, wantedID, fields); err != nil {
 		return err

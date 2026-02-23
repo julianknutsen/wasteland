@@ -34,7 +34,7 @@ func runStatus(cmd *cobra.Command, stdout, _ io.Writer, wantedID string) error {
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
 
-	store := commons.NewWLCommons(wlCfg.LocalDir)
+	store := openStore(wlCfg.LocalDir)
 
 	result, err := getStatus(store, wantedID)
 	if err != nil {

@@ -50,7 +50,7 @@ func runUnclaim(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush
 	}
 	defer cleanup()
 
-	store := commons.NewWLCommons(wlCfg.LocalDir)
+	store := openStore(wlCfg.LocalDir)
 	item, err := unclaimWanted(store, wantedID, rigHandle)
 	if err != nil {
 		return err

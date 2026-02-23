@@ -86,7 +86,7 @@ func runAccept(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, quality
 	}
 	defer cleanup()
 
-	store := commons.NewWLCommons(wlCfg.LocalDir)
+	store := openStore(wlCfg.LocalDir)
 
 	stamp, err := acceptCompletion(store, wantedID, rigHandle, quality, reliability, severity, skillTags, message)
 	if err != nil {
