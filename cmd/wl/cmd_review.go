@@ -234,8 +234,9 @@ func runGitHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch, bas
 		return fmt.Errorf("gh not found in PATH — install from https://cli.github.com")
 	}
 
-	// In GitHub mode, origin is already GitHub; push dolt branch there.
-	if err := commons.PushBranchToRemote(cfg.LocalDir, "origin", branch, stdout); err != nil {
+	// In GitHub mode, origin is already GitHub; force-push dolt branch there.
+	// Force is safe — this is a wl/* branch on the user's own fork.
+	if err := commons.PushBranchToRemoteForce(cfg.LocalDir, "origin", branch, true, stdout); err != nil {
 		return fmt.Errorf("pushing to GitHub fork: %w", err)
 	}
 
@@ -266,8 +267,9 @@ func runDoltHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch, ba
 		return fmt.Errorf("DOLTHUB_TOKEN environment variable is required for DoltHub PRs")
 	}
 
-	// Push dolt branch to origin.
-	if err := commons.PushBranchToRemote(cfg.LocalDir, "origin", branch, stdout); err != nil {
+	// Force-push dolt branch to origin.
+	// Force is safe — this is a wl/* branch on the user's own fork.
+	if err := commons.PushBranchToRemoteForce(cfg.LocalDir, "origin", branch, true, stdout); err != nil {
 		return fmt.Errorf("pushing to DoltHub fork: %w", err)
 	}
 
@@ -287,10 +289,27 @@ func runDoltHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch, ba
 		return fmt.Errorf("parsing upstream: %w", err)
 	}
 
-	// Create PR via DoltHub REST API.
+	// Create PR via DoltHub REST API, or update if one already exists.
 	provider := remote.NewDoltHubProvider(token)
 	prURL, err := provider.CreatePR(cfg.ForkOrg, upstreamOrg, db, branch, prTitle, mdBuf.String())
 	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			existingURL, existingID := provider.FindPR(upstreamOrg, db, cfg.ForkOrg, branch)
+			if existingID != "" {
+				if updateErr := provider.UpdatePR(upstreamOrg, db, existingID, prTitle, mdBuf.String()); updateErr != nil {
+					fmt.Fprintf(stdout, "  warning: could not update existing PR: %v\n", updateErr)
+				} else {
+					fmt.Fprintf(stdout, "  Updated existing PR.\n")
+				}
+				fmt.Fprintf(stdout, "\n%s %s\n", style.Bold.Render("PR:"), existingURL)
+				return nil
+			}
+			// Could not find the existing PR — return the pulls page.
+			prURL = fmt.Sprintf("%s/%s/%s/pulls", "https://www.dolthub.com/repositories", upstreamOrg, db)
+			fmt.Fprintf(stdout, "  PR already exists for this branch.\n")
+			fmt.Fprintf(stdout, "\n%s %s\n", style.Bold.Render("PR:"), prURL)
+			return nil
+		}
 		return fmt.Errorf("creating DoltHub PR: %w", err)
 	}
 

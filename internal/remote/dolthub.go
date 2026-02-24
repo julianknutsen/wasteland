@@ -358,5 +358,110 @@ func (d *DoltHubProvider) CreatePR(forkOrg, upstreamOrg, db, fromBranch, title, 
 	return fmt.Sprintf("%s/%s/%s/pulls", dolthubRepoBase, upstreamOrg, db), nil
 }
 
+// FindPR searches for an open PR on DoltHub matching the given from-branch and fork org.
+// Returns the PR URL and ID, or empty strings if none found.
+//
+// The list endpoint doesn't include branch details, so we fetch each open PR's
+// detail to match on from_branch and from_branch_owner.
+func (d *DoltHubProvider) FindPR(upstreamOrg, db, forkOrg, fromBranch string) (prURL, prID string) {
+	// List all PRs.
+	listURL := fmt.Sprintf("%s/%s/%s/pulls", dolthubAPIBase, upstreamOrg, db)
+	body, err := d.dolthubGet(listURL)
+	if err != nil {
+		return "", ""
+	}
+
+	var result struct {
+		Pulls []struct {
+			PullID string `json:"pull_id"`
+			State  string `json:"state"`
+		} `json:"pulls"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", ""
+	}
+
+	// Check each open PR's detail for matching branch info.
+	for _, pr := range result.Pulls {
+		if !strings.EqualFold(pr.State, "open") {
+			continue
+		}
+		detailURL := fmt.Sprintf("%s/%s/%s/pulls/%s", dolthubAPIBase, upstreamOrg, db, pr.PullID)
+		detail, err := d.dolthubGet(detailURL)
+		if err != nil {
+			continue
+		}
+		var prDetail struct {
+			FromBranch      string `json:"from_branch"`
+			FromBranchOwner string `json:"from_branch_owner"`
+		}
+		if err := json.Unmarshal(detail, &prDetail); err != nil {
+			continue
+		}
+		if prDetail.FromBranch == fromBranch && prDetail.FromBranchOwner == forkOrg {
+			url := fmt.Sprintf("%s/%s/%s/pulls/%s", dolthubRepoBase, upstreamOrg, db, pr.PullID)
+			return url, pr.PullID
+		}
+	}
+	return "", ""
+}
+
+// dolthubGet performs an authenticated GET request to the DoltHub API.
+func (d *DoltHubProvider) dolthubGet(url string) ([]byte, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("authorization", d.token)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	return body, nil
+}
+
+// UpdatePR updates the title and description of an existing DoltHub pull request.
+func (d *DoltHubProvider) UpdatePR(upstreamOrg, db, prID, title, description string) error {
+	patchURL := fmt.Sprintf("%s/%s/%s/pulls/%s", dolthubAPIBase, upstreamOrg, db, prID)
+	reqBody, err := json.Marshal(map[string]string{
+		"title":       title,
+		"description": description,
+	})
+	if err != nil {
+		return fmt.Errorf("marshaling PR update: %w", err)
+	}
+
+	req, err := http.NewRequest("PATCH", patchURL, bytes.NewReader(reqBody))
+	if err != nil {
+		return fmt.Errorf("creating PR update request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("authorization", d.token)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("DoltHub update PR request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("DoltHub update PR error (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
 // Type returns "dolthub".
 func (d *DoltHubProvider) Type() string { return "dolthub" }

@@ -147,11 +147,13 @@ func doltExec(dbDir string, args ...string) error {
 	return nil
 }
 
-// PushBranch pushes a named branch to origin.
+// PushBranch force-pushes a named branch to origin.
+// Force is always used because wl/* branches on the user's own fork may
+// have diverged history after redo operations (unclaim then re-claim, etc.).
 func PushBranch(dbDir, branch string, stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "dolt", "push", "origin", branch)
+	cmd := exec.CommandContext(ctx, "dolt", "push", "--force", "origin", branch)
 	cmd.Dir = dbDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -242,9 +244,19 @@ func EnsureGitHubRemote(dbDir, forkOrg, forkDB string) error {
 
 // PushBranchToRemote pushes a branch to a named remote.
 func PushBranchToRemote(dbDir, remote, branch string, stdout io.Writer) error {
+	return PushBranchToRemoteForce(dbDir, remote, branch, false, stdout)
+}
+
+// PushBranchToRemoteForce pushes a branch to a named remote, optionally with --force.
+func PushBranchToRemoteForce(dbDir, remote, branch string, force bool, stdout io.Writer) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "dolt", "push", remote, branch)
+	args := []string{"push"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, remote, branch)
+	cmd := exec.CommandContext(ctx, "dolt", args...)
 	cmd.Dir = dbDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
