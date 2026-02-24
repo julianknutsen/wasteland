@@ -121,7 +121,7 @@ type DoltCLI interface {
 	Clone(remoteURL, targetDir string) error
 	RegisterRig(localDir, handle, dolthubOrg, displayName, ownerEmail, version string, signed bool) error
 	Push(localDir string) error
-	PushBranch(localDir, branch string) error
+	PushBranch(localDir, branch string, force bool) error
 	CheckoutBranch(localDir, branch string) error
 	CheckoutMain(localDir string) error
 	AddUpstreamRemote(localDir, remoteURL string) error
@@ -255,7 +255,7 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 		}
 	} else {
 		progress("Pushing branch to fork...")
-		if err := s.CLI.PushBranch(localDir, branch); err != nil {
+		if err := s.CLI.PushBranch(localDir, branch, true); err != nil {
 			return nil, fmt.Errorf("pushing branch: %w", err)
 		}
 
@@ -340,13 +340,17 @@ func (e *execDoltCLI) RegisterRig(localDir, handle, dolthubOrg, displayName, own
 	sql := fmt.Sprintf(
 		`INSERT INTO rigs (handle, display_name, dolthub_org, hop_uri, owner_email, gt_version, trust_level, registered_at, last_seen) `+
 			`VALUES ('%s', '%s', '%s', '%s', '%s', '%s', 1, NOW(), NOW()) `+
-			`ON DUPLICATE KEY UPDATE last_seen = NOW(), gt_version = '%s'`,
+			`ON DUPLICATE KEY UPDATE display_name = '%s', dolthub_org = '%s', hop_uri = '%s', owner_email = '%s', gt_version = '%s', last_seen = NOW()`,
 		escapeSQLString(handle),
 		escapeSQLString(displayName),
 		escapeSQLString(dolthubOrg),
 		escapeSQLString(hopURI),
 		escapeSQLString(ownerEmail),
 		escapeSQLString(version),
+		escapeSQLString(displayName),
+		escapeSQLString(dolthubOrg),
+		escapeSQLString(hopURI),
+		escapeSQLString(ownerEmail),
 		escapeSQLString(version),
 	)
 
@@ -399,8 +403,13 @@ func (e *execDoltCLI) Push(localDir string) error {
 	return nil
 }
 
-func (e *execDoltCLI) PushBranch(localDir, branch string) error {
-	cmd := exec.Command("dolt", "push", "origin", branch)
+func (e *execDoltCLI) PushBranch(localDir, branch string, force bool) error {
+	args := []string{"push"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, "origin", branch)
+	cmd := exec.Command("dolt", args...)
 	cmd.Dir = localDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {

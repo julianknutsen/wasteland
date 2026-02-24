@@ -308,7 +308,7 @@ type noopDoltCLI struct{}
 func (n *noopDoltCLI) Clone(_, _ string) error                           { return nil }
 func (n *noopDoltCLI) RegisterRig(_, _, _, _, _, _ string, _ bool) error { return nil }
 func (n *noopDoltCLI) Push(_ string) error                               { return nil }
-func (n *noopDoltCLI) PushBranch(_, _ string) error                      { return nil }
+func (n *noopDoltCLI) PushBranch(_, _ string, _ bool) error              { return nil }
 func (n *noopDoltCLI) CheckoutBranch(_, _ string) error                  { return nil }
 func (n *noopDoltCLI) CheckoutMain(_ string) error                       { return nil }
 func (n *noopDoltCLI) AddUpstreamRemote(_, _ string) error               { return nil }

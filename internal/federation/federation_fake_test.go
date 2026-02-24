@@ -157,7 +157,7 @@ func (f *FakeDoltCLI) Push(localDir string) error {
 	return nil
 }
 
-func (f *FakeDoltCLI) PushBranch(localDir, branch string) error {
+func (f *FakeDoltCLI) PushBranch(localDir, branch string, _ bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	call := fmt.Sprintf("PushBranch(%s, %s)", localDir, branch)
