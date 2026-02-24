@@ -219,7 +219,7 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 
 		progress("Cloning fork locally...")
 		forkURL := s.Remote.DatabaseURL(forkOrg, upstreamDB)
-		if err := s.CLI.Clone(forkURL, localDir); err != nil {
+		if err := cloneWithRetry(s.CLI, forkURL, localDir, progress); err != nil {
 			return nil, fmt.Errorf("cloning fork: %w", err)
 		}
 
@@ -286,6 +286,28 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 	}
 
 	return &JoinResult{Config: cfg, PRURL: prURL}, nil
+}
+
+// cloneWithRetry retries the clone with exponential backoff. A newly forked
+// database may not be immediately available on the dolt remote API.
+func cloneWithRetry(cli DoltCLI, remoteURL, targetDir string, progress func(string)) error {
+	backoff := 2 * time.Second
+	deadline := time.Now().Add(2 * time.Minute)
+
+	err := cli.Clone(remoteURL, targetDir)
+	for err != nil && time.Now().Before(deadline) {
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "permission") && !strings.Contains(msg, "could not access") && !strings.Contains(msg, "not found") {
+			return err
+		}
+		progress(fmt.Sprintf("  Fork not yet available, retrying in %s...", backoff))
+		time.Sleep(backoff)
+		if backoff < 16*time.Second {
+			backoff *= 2
+		}
+		err = cli.Clone(remoteURL, targetDir)
+	}
+	return err
 }
 
 // execDoltCLI implements DoltCLI using real dolt subprocess calls.

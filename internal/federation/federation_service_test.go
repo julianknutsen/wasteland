@@ -118,6 +118,32 @@ func TestJoin_CloneFails(t *testing.T) {
 	}
 }
 
+func TestJoin_CloneRetriesOnPermissionDenied(t *testing.T) {
+	t.Parallel()
+	provider := NewFakeProvider()
+	cli := NewFakeDoltCLI()
+	cli.CloneErr = fmt.Errorf("dolt clone: could not access dolt url: permission denied")
+	cli.CloneErrCount = 2 // succeed on 2nd attempt
+	cfgStore := NewFakeConfigStore()
+
+	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
+
+	_, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev", false, false)
+	if err != nil {
+		t.Fatalf("Join() should succeed after retry: %v", err)
+	}
+	// Clone should have been called at least twice.
+	cloneCalls := 0
+	for _, c := range cli.Calls {
+		if strings.Contains(c, "Clone(") {
+			cloneCalls++
+		}
+	}
+	if cloneCalls < 2 {
+		t.Errorf("expected at least 2 clone attempts, got %d", cloneCalls)
+	}
+}
+
 func TestJoin_AlreadyJoined(t *testing.T) {
 	t.Parallel()
 	provider := NewFakeProvider()

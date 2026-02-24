@@ -89,10 +89,12 @@ type FakeDoltCLI struct {
 	Calls      []string
 	Log        *CallLog // shared ordered log (optional)
 
-	CloneErr    error
-	RegisterErr error
-	PushErr     error
-	RemoteErr   error
+	CloneErr      error
+	CloneErrCount int // if > 0, CloneErr clears after this many calls
+	cloneAttempts int
+	RegisterErr   error
+	PushErr       error
+	RemoteErr     error
 }
 
 func NewFakeDoltCLI() *FakeDoltCLI {
@@ -114,7 +116,12 @@ func (f *FakeDoltCLI) Clone(remoteURL, targetDir string) error {
 		f.Log.Record(call)
 	}
 	if f.CloneErr != nil {
-		return f.CloneErr
+		f.cloneAttempts++
+		if f.CloneErrCount > 0 && f.cloneAttempts >= f.CloneErrCount {
+			f.CloneErr = nil
+		} else {
+			return f.CloneErr
+		}
 	}
 	f.Cloned[fmt.Sprintf("%s->%s", remoteURL, targetDir)] = true
 	return nil
