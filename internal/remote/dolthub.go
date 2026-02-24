@@ -289,5 +289,58 @@ type graphqlResponse struct {
 	} `json:"errors"`
 }
 
+// CreatePR opens a pull request on DoltHub from forkOrg/db (fromBranch) to upstreamOrg/db (main).
+func (d *DoltHubProvider) CreatePR(forkOrg, upstreamOrg, db, fromBranch, title, body string) (string, error) {
+	url := fmt.Sprintf("%s/%s/%s/pulls", dolthubAPIBase, upstreamOrg, db)
+	reqBody, err := json.Marshal(map[string]string{
+		"title":               title,
+		"description":         body,
+		"fromBranchOwnerName": forkOrg,
+		"fromBranchRepoName":  db,
+		"fromBranchName":      fromBranch,
+		"toBranchOwnerName":   upstreamOrg,
+		"toBranchRepoName":    db,
+		"toBranchName":        "main",
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshaling PR request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
+	if err != nil {
+		return "", fmt.Errorf("creating PR request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("authorization", "token "+d.token)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("DoltHub create PR request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("reading DoltHub PR response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("DoltHub create PR error (HTTP %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	// Extract PR URL from response. The API returns the PR status with an ID.
+	var prResp struct {
+		Status string `json:"status"`
+		ID     string `json:"_id"`
+	}
+	if err := json.Unmarshal(respBody, &prResp); err == nil && prResp.ID != "" {
+		return fmt.Sprintf("%s/%s/%s/pulls/%s", dolthubRepoBase, upstreamOrg, db, prResp.ID), nil
+	}
+
+	// Fallback: return the pulls page URL.
+	return fmt.Sprintf("%s/%s/%s/pulls", dolthubRepoBase, upstreamOrg, db), nil
+}
+
 // Type returns "dolthub".
 func (d *DoltHubProvider) Type() string { return "dolthub" }

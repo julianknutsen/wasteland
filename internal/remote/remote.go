@@ -12,6 +12,10 @@ type Provider interface {
 	// Fork creates a copy of a database from one org to another.
 	Fork(fromOrg, fromDB, toOrg string) error
 
+	// CreatePR opens a pull request from forkOrg/db (fromBranch) to upstreamOrg/db (main).
+	// Returns the PR URL on success, or ("", nil) if the provider doesn't support PRs.
+	CreatePR(forkOrg, upstreamOrg, db, fromBranch, title, body string) (url string, err error)
+
 	// Type returns a label for logging ("dolthub", "file", "git").
 	Type() string
 }

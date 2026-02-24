@@ -38,5 +38,33 @@ func (g *GitHubProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	return nil
 }
 
+// CreatePR opens a pull request on GitHub from forkOrg/db (fromBranch) to upstreamOrg/db (main).
+func (g *GitHubProvider) CreatePR(forkOrg, upstreamOrg, db, fromBranch, title, body string) (string, error) {
+	upstreamRepo := upstreamOrg + "/" + db
+	head := forkOrg + ":" + fromBranch
+	cmd := exec.Command("gh", "pr", "create",
+		"--repo", upstreamRepo,
+		"--head", head,
+		"--base", "main",
+		"--title", title,
+		"--body", body,
+	)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(output))
+		// If a PR already exists, gh prints the URL — extract and return it.
+		if strings.Contains(strings.ToLower(msg), "already exists") {
+			for _, line := range strings.Split(msg, "\n") {
+				if strings.HasPrefix(strings.TrimSpace(line), "https://") {
+					return strings.TrimSpace(line), nil
+				}
+			}
+			return "", nil
+		}
+		return "", fmt.Errorf("gh pr create: %w (%s)", err, msg)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
 // Type returns "github".
 func (g *GitHubProvider) Type() string { return "github" }

@@ -24,12 +24,14 @@ func (l *CallLog) Record(call string) {
 
 // FakeProvider is a test double for remote.Provider.
 type FakeProvider struct {
-	mu      sync.Mutex
-	Forked  map[string]bool // "fromOrg/fromDB->toOrg" => true
-	Calls   []string
-	Log     *CallLog // shared ordered log (optional)
-	ForkErr error
-	BaseURL string // returned by DatabaseURL (default "https://fake-remote")
+	mu          sync.Mutex
+	Forked      map[string]bool // "fromOrg/fromDB->toOrg" => true
+	PRs         []string        // URLs of created PRs
+	Calls       []string
+	Log         *CallLog // shared ordered log (optional)
+	ForkErr     error
+	CreatePRErr error
+	BaseURL     string // returned by DatabaseURL (default "https://fake-remote")
 }
 
 func NewFakeProvider() *FakeProvider {
@@ -58,6 +60,22 @@ func (f *FakeProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	return nil
 }
 
+func (f *FakeProvider) CreatePR(forkOrg, upstreamOrg, db, fromBranch, title, _ string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	call := fmt.Sprintf("CreatePR(%s, %s, %s, %s, %s)", forkOrg, upstreamOrg, db, fromBranch, title)
+	f.Calls = append(f.Calls, call)
+	if f.Log != nil {
+		f.Log.Record(call)
+	}
+	if f.CreatePRErr != nil {
+		return "", f.CreatePRErr
+	}
+	url := fmt.Sprintf("https://fake-pr/%s/%s/pulls/1", upstreamOrg, db)
+	f.PRs = append(f.PRs, url)
+	return url, nil
+}
+
 func (f *FakeProvider) Type() string { return "fake" }
 
 // FakeDoltCLI is a test double for DoltCLI.
@@ -66,6 +84,7 @@ type FakeDoltCLI struct {
 	Cloned     map[string]bool // "remoteURL -> targetDir"
 	Registered map[string]bool // "handle"
 	Pushed     map[string]bool // "localDir"
+	Branches   map[string]bool // "localDir -> branch"
 	Remotes    map[string]bool // "localDir -> remoteURL"
 	Calls      []string
 	Log        *CallLog // shared ordered log (optional)
@@ -81,6 +100,7 @@ func NewFakeDoltCLI() *FakeDoltCLI {
 		Cloned:     make(map[string]bool),
 		Registered: make(map[string]bool),
 		Pushed:     make(map[string]bool),
+		Branches:   make(map[string]bool),
 		Remotes:    make(map[string]bool),
 	}
 }
@@ -127,6 +147,44 @@ func (f *FakeDoltCLI) Push(localDir string) error {
 		return f.PushErr
 	}
 	f.Pushed[localDir] = true
+	return nil
+}
+
+func (f *FakeDoltCLI) PushBranch(localDir, branch string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	call := fmt.Sprintf("PushBranch(%s, %s)", localDir, branch)
+	f.Calls = append(f.Calls, call)
+	if f.Log != nil {
+		f.Log.Record(call)
+	}
+	if f.PushErr != nil {
+		return f.PushErr
+	}
+	f.Pushed[fmt.Sprintf("%s:%s", localDir, branch)] = true
+	return nil
+}
+
+func (f *FakeDoltCLI) CheckoutBranch(localDir, branch string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	call := fmt.Sprintf("CheckoutBranch(%s, %s)", localDir, branch)
+	f.Calls = append(f.Calls, call)
+	if f.Log != nil {
+		f.Log.Record(call)
+	}
+	f.Branches[fmt.Sprintf("%s->%s", localDir, branch)] = true
+	return nil
+}
+
+func (f *FakeDoltCLI) CheckoutMain(localDir string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	call := fmt.Sprintf("CheckoutMain(%s)", localDir)
+	f.Calls = append(f.Calls, call)
+	if f.Log != nil {
+		f.Log.Record(call)
+	}
 	return nil
 }
 

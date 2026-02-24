@@ -74,5 +74,8 @@ func (f *FileProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	return nil
 }
 
+// CreatePR is a no-op for file providers (no PR support).
+func (f *FileProvider) CreatePR(_, _, _, _, _, _ string) (string, error) { return "", nil }
+
 // Type returns "file".
 func (f *FileProvider) Type() string { return "file" }

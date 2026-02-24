@@ -172,7 +172,7 @@ func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, for
 
 	dbName := upstream[strings.Index(upstream, "/")+1:]
 	fmt.Fprintf(stdout, "Joining wasteland %s (fork to %s/%s)...\n", upstream, forkOrg, dbName)
-	cfg, err := svc.Join(upstream, forkOrg, handle, displayName, email, wlVersion, signed, direct)
+	result, err := svc.Join(upstream, forkOrg, handle, displayName, email, wlVersion, signed, direct)
 	if err != nil {
 		var forkErr *remote.ForkRequiredError
 		if errors.As(err, &forkErr) {
@@ -183,10 +183,14 @@ func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, for
 		return errExit
 	}
 
+	cfg := result.Config
 	fmt.Fprintf(stdout, "\n%s Joined wasteland: %s\n", style.Bold.Render("✓"), upstream)
 	fmt.Fprintf(stdout, "  Handle: %s\n", cfg.RigHandle)
 	fmt.Fprintf(stdout, "  Fork: %s/%s\n", cfg.ForkOrg, cfg.ForkDB)
 	fmt.Fprintf(stdout, "  Local: %s\n", cfg.LocalDir)
+	if result.PRURL != "" {
+		fmt.Fprintf(stdout, "  PR: %s\n", style.Bold.Render(result.PRURL))
+	}
 	fmt.Fprintf(stdout, "\n  %s\n", style.Dim.Render("Next: wl browse  — browse the wanted board"))
 	return nil
 }

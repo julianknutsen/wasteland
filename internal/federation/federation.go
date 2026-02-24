@@ -118,6 +118,9 @@ type DoltCLI interface {
 	Clone(remoteURL, targetDir string) error
 	RegisterRig(localDir, handle, dolthubOrg, displayName, ownerEmail, version string, signed bool) error
 	Push(localDir string) error
+	PushBranch(localDir, branch string) error
+	CheckoutBranch(localDir, branch string) error
+	CheckoutMain(localDir string) error
 	AddUpstreamRemote(localDir, remoteURL string) error
 }
 
@@ -174,10 +177,16 @@ type Service struct {
 	OnProgress func(step string) // optional callback for progress reporting
 }
 
+// JoinResult holds the output of a successful Join operation.
+type JoinResult struct {
+	Config *Config
+	PRURL  string // non-empty when a PR was created (fork mode only)
+}
+
 // Join orchestrates the wasteland join workflow: fork -> clone -> add upstream -> register -> push -> save config.
 // When direct is true, skips forking and clones upstream directly — useful for maintainers
 // with write access to the upstream commons.
-func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, version string, signed, direct bool) (*Config, error) {
+func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, version string, signed, direct bool) (*JoinResult, error) {
 	upstreamOrg, upstreamDB, err := ParseUpstream(upstream)
 	if err != nil {
 		return nil, err
@@ -185,7 +194,7 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 
 	// Check if already joined to this specific upstream (idempotent).
 	if existing, err := s.Config.Load(upstream); err == nil {
-		return existing, nil
+		return &JoinResult{Config: existing}, nil
 	}
 
 	localDir := LocalCloneDir(upstreamOrg, upstreamDB)
@@ -220,14 +229,46 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 		}
 	}
 
+	// In fork mode, register on a branch and create a PR.
+	// In direct mode, register and push on main.
+	branch := fmt.Sprintf("wl/register/%s", handle)
+	if !direct {
+		progress("Creating branch " + branch + "...")
+		if err := s.CLI.CheckoutBranch(localDir, branch); err != nil {
+			return nil, fmt.Errorf("creating registration branch: %w", err)
+		}
+	}
+
 	progress("Registering rig...")
 	if err := s.CLI.RegisterRig(localDir, handle, forkOrg, displayName, ownerEmail, version, signed); err != nil {
 		return nil, fmt.Errorf("registering rig: %w", err)
 	}
 
-	progress("Pushing to " + map[bool]string{true: "upstream", false: "fork"}[direct] + "...")
-	if err := s.CLI.Push(localDir); err != nil {
-		return nil, fmt.Errorf("pushing: %w", err)
+	var prURL string
+	if direct {
+		progress("Pushing to upstream...")
+		if err := s.CLI.Push(localDir); err != nil {
+			return nil, fmt.Errorf("pushing: %w", err)
+		}
+	} else {
+		progress("Pushing branch to fork...")
+		if err := s.CLI.PushBranch(localDir, branch); err != nil {
+			return nil, fmt.Errorf("pushing branch: %w", err)
+		}
+
+		// Return to main so the local clone is on the default branch.
+		if err := s.CLI.CheckoutMain(localDir); err != nil {
+			return nil, fmt.Errorf("returning to main: %w", err)
+		}
+
+		progress("Opening pull request...")
+		title := fmt.Sprintf("Register rig: %s", handle)
+		body := fmt.Sprintf("Register rig **%s** (%s) in the commons.", handle, displayName)
+		prURL, err = s.Remote.CreatePR(forkOrg, upstreamOrg, upstreamDB, branch, title, body)
+		if err != nil {
+			progress(fmt.Sprintf("warning: could not create PR: %v", err))
+			prURL = ""
+		}
 	}
 
 	cfg := &Config{
@@ -244,7 +285,7 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 		return nil, fmt.Errorf("saving wasteland config: %w", err)
 	}
 
-	return cfg, nil
+	return &JoinResult{Config: cfg, PRURL: prURL}, nil
 }
 
 // execDoltCLI implements DoltCLI using real dolt subprocess calls.
@@ -319,6 +360,45 @@ func (e *execDoltCLI) Push(localDir string) error {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("dolt push: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func (e *execDoltCLI) PushBranch(localDir, branch string) error {
+	cmd := exec.Command("dolt", "push", "origin", branch)
+	cmd.Dir = localDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dolt push branch %s: %w (%s)", branch, err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func (e *execDoltCLI) CheckoutBranch(localDir, branch string) error {
+	// Create the branch if it doesn't exist, then checkout.
+	createCmd := exec.Command("dolt", "branch", branch)
+	createCmd.Dir = localDir
+	if output, err := createCmd.CombinedOutput(); err != nil {
+		msg := strings.ToLower(strings.TrimSpace(string(output)))
+		if !strings.Contains(msg, "already exists") {
+			return fmt.Errorf("dolt branch %s: %w (%s)", branch, err, msg)
+		}
+	}
+	cmd := exec.Command("dolt", "checkout", branch)
+	cmd.Dir = localDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dolt checkout %s: %w (%s)", branch, err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func (e *execDoltCLI) CheckoutMain(localDir string) error {
+	cmd := exec.Command("dolt", "checkout", "main")
+	cmd.Dir = localDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dolt checkout main: %w (%s)", err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }

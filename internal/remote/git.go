@@ -87,6 +87,9 @@ func (g *GitProvider) Fork(fromOrg, fromDB, toOrg string) error {
 	return nil
 }
 
+// CreatePR is a no-op for git providers (no PR support).
+func (g *GitProvider) CreatePR(_, _, _, _, _, _ string) (string, error) { return "", nil }
+
 // Type returns "git".
 func (g *GitProvider) Type() string { return "git" }
 

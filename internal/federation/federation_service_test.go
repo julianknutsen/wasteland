@@ -18,11 +18,12 @@ func TestJoin_Success(t *testing.T) {
 
 	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	cfg, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev", false, false)
+	result, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev", false, false)
 	if err != nil {
 		t.Fatalf("Join() error: %v", err)
 	}
 
+	cfg := result.Config
 	if cfg.Upstream != "steveyegge/wl-commons" {
 		t.Errorf("Upstream = %q, want %q", cfg.Upstream, "steveyegge/wl-commons")
 	}
@@ -54,8 +55,8 @@ func TestJoin_Success(t *testing.T) {
 		t.Errorf("saved config doesn't match returned config")
 	}
 
-	// Verify call ordering: fork, clone, remote, register, push
-	expectedOrder := []string{"Fork", "Clone", "AddUpstreamRemote", "RegisterRig", "Push"}
+	// Verify call ordering: fork, clone, remote, checkout-branch, register, push-branch, checkout-main, create-pr
+	expectedOrder := []string{"Fork", "Clone", "AddUpstreamRemote", "CheckoutBranch", "RegisterRig", "PushBranch", "CheckoutMain", "CreatePR"}
 	if len(log.Calls) < len(expectedOrder) {
 		t.Fatalf("expected at least %d calls in unified log, got %d: %v", len(expectedOrder), len(log.Calls), log.Calls)
 	}
@@ -67,6 +68,14 @@ func TestJoin_Success(t *testing.T) {
 		if !strings.HasPrefix(got, want) {
 			t.Errorf("unified log[%d] = %q, want prefix %q", i, got, want)
 		}
+	}
+
+	// Verify PR was created.
+	if result.PRURL == "" {
+		t.Error("expected PR URL to be set in fork mode")
+	}
+	if len(provider.PRs) != 1 {
+		t.Errorf("expected 1 PR, got %d", len(provider.PRs))
 	}
 }
 
@@ -123,12 +132,12 @@ func TestJoin_AlreadyJoined(t *testing.T) {
 
 	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	cfg, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev", false, false)
+	result, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev", false, false)
 	if err != nil {
 		t.Fatalf("Join() should succeed (no-op) when already joined: %v", err)
 	}
-	if cfg.RigHandle != "alice-rig" {
-		t.Errorf("returned config RigHandle = %q, want %q", cfg.RigHandle, "alice-rig")
+	if result.Config.RigHandle != "alice-rig" {
+		t.Errorf("returned config RigHandle = %q, want %q", result.Config.RigHandle, "alice-rig")
 	}
 	if len(provider.Calls) != 0 {
 		t.Errorf("expected 0 provider calls for already-joined, got %d", len(provider.Calls))
@@ -152,12 +161,12 @@ func TestJoin_SecondUpstream_Succeeds(t *testing.T) {
 
 	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
-	cfg, err := svc.Join("org2/commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev", false, false)
+	result, err := svc.Join("org2/commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev", false, false)
 	if err != nil {
 		t.Fatalf("Join() should succeed for second upstream: %v", err)
 	}
-	if cfg.Upstream != "org2/commons" {
-		t.Errorf("Upstream = %q, want %q", cfg.Upstream, "org2/commons")
+	if result.Config.Upstream != "org2/commons" {
+		t.Errorf("Upstream = %q, want %q", result.Config.Upstream, "org2/commons")
 	}
 
 	// Both configs should exist.
@@ -175,27 +184,17 @@ func TestJoin_ConfigLoadError(t *testing.T) {
 	provider := NewFakeProvider()
 	cli := NewFakeDoltCLI()
 	cfgStore := NewFakeConfigStore()
-	// LoadErr is returned for all Load() calls — simulates disk permission error.
-	// But our new Join() only checks Load(upstream) and treats ErrNotJoined as "proceed".
-	// To test the real disk-error path we need LoadErr that is NOT ErrNotJoined.
-	// However, the new Join flow just does: if existing, err := Load(upstream); err == nil → return.
-	// Otherwise it proceeds with the join. So a LoadErr that isn't ErrNotJoined
-	// will just cause the Load to fail and Join will proceed (not error out).
-	// This test now verifies that a generic LoadErr causes Load to fail (not return config),
-	// and Join proceeds to fork/clone/etc.
 	cfgStore.LoadErr = fmt.Errorf("permission denied")
 
 	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
 
 	_, err := svc.Join("steveyegge/wl-commons", "alice-dev", "alice-rig", "Alice", "alice@example.com", "dev", false, false)
-	// Join should succeed since it falls through the Load error to fork/clone.
-	// But Save will also fail with the same error... actually SaveErr is separate.
 	if err != nil {
 		t.Fatalf("Join() error: %v (expected success since LoadErr only affects Load)", err)
 	}
 	// Fork should have been called.
-	if len(provider.Calls) != 1 {
-		t.Errorf("expected 1 provider call, got %d", len(provider.Calls))
+	if !strings.HasPrefix(provider.Calls[0], "Fork") {
+		t.Errorf("expected first provider call to be Fork, got %q", provider.Calls[0])
 	}
 }
 
@@ -210,6 +209,48 @@ func TestJoin_InvalidUpstream(t *testing.T) {
 	_, err := svc.Join("invalid", "org", "handle", "name", "email", "v1", false, false)
 	if err == nil {
 		t.Fatal("Join() expected error for invalid upstream")
+	}
+}
+
+func TestJoin_Direct_SkipsForkAndPR(t *testing.T) {
+	t.Parallel()
+	log := NewCallLog()
+	provider := NewFakeProvider()
+	provider.Log = log
+	cli := NewFakeDoltCLI()
+	cli.Log = log
+	cfgStore := NewFakeConfigStore()
+
+	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
+
+	result, err := svc.Join("hop/wl-commons", "hop", "hop-rig", "Hop", "hop@example.com", "dev", false, true)
+	if err != nil {
+		t.Fatalf("Join(direct=true) error: %v", err)
+	}
+
+	// Should not have forked or created a PR.
+	if len(provider.Forked) != 0 {
+		t.Error("expected no fork in direct mode")
+	}
+	if len(provider.PRs) != 0 {
+		t.Error("expected no PR in direct mode")
+	}
+	if result.PRURL != "" {
+		t.Errorf("expected empty PRURL in direct mode, got %q", result.PRURL)
+	}
+
+	// Should have cloned, registered, and pushed on main.
+	expectedOrder := []string{"Clone", "RegisterRig", "Push"}
+	if len(log.Calls) < len(expectedOrder) {
+		t.Fatalf("expected at least %d calls, got %d: %v", len(expectedOrder), len(log.Calls), log.Calls)
+	}
+	for i, want := range expectedOrder {
+		if i >= len(log.Calls) {
+			break
+		}
+		if !strings.HasPrefix(log.Calls[i], want) {
+			t.Errorf("log[%d] = %q, want prefix %q", i, log.Calls[i], want)
+		}
 	}
 }
 

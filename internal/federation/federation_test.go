@@ -265,15 +265,15 @@ func TestJoinSetsProviderTypeAndUpstreamURL(t *testing.T) {
 	cli := &noopDoltCLI{}
 
 	svc := &Service{Remote: provider, CLI: cli, Config: store}
-	cfg, err := svc.Join("org/db", "myfork", "rig", "Display", "e@e.com", "dev", false, false)
+	result, err := svc.Join("org/db", "myfork", "rig", "Display", "e@e.com", "dev", false, false)
 	if err != nil {
 		t.Fatalf("Join() error: %v", err)
 	}
-	if cfg.ProviderType != "github" {
-		t.Errorf("ProviderType = %q, want %q", cfg.ProviderType, "github")
+	if result.Config.ProviderType != "github" {
+		t.Errorf("ProviderType = %q, want %q", result.Config.ProviderType, "github")
 	}
-	if cfg.UpstreamURL != "https://github.com/org/db.git" {
-		t.Errorf("UpstreamURL = %q, want %q", cfg.UpstreamURL, "https://github.com/org/db.git")
+	if result.Config.UpstreamURL != "https://github.com/org/db.git" {
+		t.Errorf("UpstreamURL = %q, want %q", result.Config.UpstreamURL, "https://github.com/org/db.git")
 	}
 
 	// Verify it round-trips through config store.
@@ -298,8 +298,9 @@ type fakeProviderForConfig struct {
 func (f *fakeProviderForConfig) DatabaseURL(org, db string) string {
 	return fmt.Sprintf(f.urlFmt, org, db)
 }
-func (f *fakeProviderForConfig) Fork(_, _, _ string) error { return nil }
-func (f *fakeProviderForConfig) Type() string              { return f.typeStr }
+func (f *fakeProviderForConfig) Fork(_, _, _ string) error                        { return nil }
+func (f *fakeProviderForConfig) CreatePR(_, _, _, _, _, _ string) (string, error) { return "", nil }
+func (f *fakeProviderForConfig) Type() string                                     { return f.typeStr }
 
 // noopDoltCLI is a DoltCLI that does nothing (for config-focused tests).
 type noopDoltCLI struct{}
@@ -307,4 +308,7 @@ type noopDoltCLI struct{}
 func (n *noopDoltCLI) Clone(_, _ string) error                           { return nil }
 func (n *noopDoltCLI) RegisterRig(_, _, _, _, _, _ string, _ bool) error { return nil }
 func (n *noopDoltCLI) Push(_ string) error                               { return nil }
+func (n *noopDoltCLI) PushBranch(_, _ string) error                      { return nil }
+func (n *noopDoltCLI) CheckoutBranch(_, _ string) error                  { return nil }
+func (n *noopDoltCLI) CheckoutMain(_ string) error                       { return nil }
 func (n *noopDoltCLI) AddUpstreamRemote(_, _ string) error               { return nil }
