@@ -103,10 +103,12 @@ type testEnv struct {
 
 func newTestEnv(t *testing.T, backend backendKind) *testEnv {
 	t.Helper()
-	root := t.TempDir()
-	// Dolt may leave lock files behind, causing t.TempDir()'s RemoveAll to
-	// fail with "directory not empty". Register our own cleanup (runs first
-	// in LIFO order) to force-remove everything before the framework tries.
+	// Use os.MkdirTemp instead of t.TempDir() because dolt may leave lock
+	// files behind that cause t.TempDir()'s RemoveAll to fail the test.
+	root, err := os.MkdirTemp("", t.Name())
+	if err != nil {
+		t.Fatalf("creating temp dir: %v", err)
+	}
 	t.Cleanup(func() { os.RemoveAll(root) })
 	dataHome := filepath.Join(root, "data")
 	configHome := filepath.Join(root, "config")
@@ -214,7 +216,7 @@ func (e *testEnv) createStoreDir(t *testing.T, org, db string) string {
 		}
 		gitCmd(t, e, "", "init", "--bare", gitDir)
 		// Seed with an initial commit so dolt can push to it.
-		seedDir := filepath.Join(t.TempDir(), "git-seed")
+		seedDir := filepath.Join(e.Root, "git-seed-"+org+"-"+db)
 		if err := os.MkdirAll(seedDir, 0o755); err != nil {
 			t.Fatalf("creating seed dir: %v", err)
 		}
