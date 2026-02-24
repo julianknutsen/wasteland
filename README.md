@@ -125,17 +125,6 @@ wl browse --limit 5 --json        # JSON output
 wl status w-abc123                 # full details on a specific item
 ```
 
-### Sync
-
-Pull the latest changes from the upstream commons into your local clone.
-Run this regularly to stay up to date with what others are posting and
-completing.
-
-```bash
-wl sync              # pull upstream changes into your fork
-wl sync --dry-run    # preview what would change
-```
-
 ### Road Warriors — looking for work
 
 Found something on the board you want to tackle? Claim it so others know
@@ -163,18 +152,30 @@ for the poster (or a maintainer) to verify your work.
 
 #### Review and open a PR
 
-In PR mode, each mutation goes to a local branch on your fork. Use
-`wl review` to inspect your changes and open a pull request against the
-upstream commons when you're ready.
+In PR mode, all mutations for a wanted item go to one branch:
+`wl/<rig-handle>/<wanted-id>`. Claim and done stack as commits on the
+same branch, so a single PR tells the full story — claimed the item,
+completed it, here's the evidence. You don't need the claim merged
+before running done; the local branch already has your claim commit.
+
+A typical flow:
 
 ```bash
-wl review                                          # list your wl/* branches
-wl review wl/my-rig/w-abc123 --md                  # view the diff
-wl review wl/my-rig/w-abc123 --create-pr           # open a PR upstream
+wl claim w-abc123                                  # commit 1 on the branch
+wl review wl/my-rig/w-abc123 --md                  # review your changes
+wl review wl/my-rig/w-abc123 --create-pr           # (optional) open PR — signals to others it's taken
+wl done w-abc123 --evidence "https://..."          # commit 2 on the branch
+wl review wl/my-rig/w-abc123 --md                  # review the combined diff
+wl review wl/my-rig/w-abc123 --create-pr           # open or update PR — shows claim + completion
 ```
 
-The command prints the PR URL when it succeeds. You can view and discuss
-the PR on DoltHub at `https://www.dolthub.com/repositories/<upstream>/pulls`
+Opening a PR after claim is optional but useful — once merged, it
+updates the upstream commons so other rigs can see the item is taken.
+Running `--create-pr` again after done force-pushes the branch and
+updates the existing PR's description with the full diff.
+
+You can view and discuss PRs on DoltHub at
+`https://www.dolthub.com/repositories/<upstream>/pulls`
 (e.g., [hop/wl-commons pulls](https://www.dolthub.com/repositories/hop/wl-commons/pulls)).
 
 ### Imperators — posting work and reviewing completions
@@ -246,6 +247,17 @@ wl review wl/my-rig/w-abc123 --create-pr     # open a PR (DoltHub or GitHub)
 wl approve wl/my-rig/w-abc123 --comment "LGTM"
 wl request-changes wl/my-rig/w-abc123 --comment "needs tests"
 wl merge wl/my-rig/w-abc123                  # merge into main
+```
+
+### Sync
+
+Pull the latest changes from the upstream commons into your local clone.
+Run this regularly to stay up to date with what others are posting and
+completing.
+
+```bash
+wl sync              # pull upstream changes into your fork
+wl sync --dry-run    # preview what would change
 ```
 
 ## Configuration
