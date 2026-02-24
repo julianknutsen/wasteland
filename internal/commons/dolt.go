@@ -234,6 +234,19 @@ func DeleteBranch(dbDir, branch string) error {
 	return doltSQLScript(dbDir, fmt.Sprintf("CALL DOLT_BRANCH('-D', '%s');", escaped))
 }
 
+// DeleteRemoteBranch deletes a branch on a named remote using refspec syntax.
+func DeleteRemoteBranch(dbDir, remote, branch string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "dolt", "push", remote, ":"+branch)
+	cmd.Dir = dbDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dolt push %s :%s: %w (%s)", remote, branch, err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
 // EnsureGitHubRemote adds a "github" Dolt remote pointing to the rig's
 // GitHub fork (e.g. https://github.com/alice-dev/wl-commons.git).
 // Idempotent: if "github" remote already exists, no-op.

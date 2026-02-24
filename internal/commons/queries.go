@@ -309,16 +309,21 @@ func QueryMyDashboard(dbDir, handle string) (*DashboardData, error) {
 }
 
 // BrowseWantedBranchAware wraps BrowseWanted with branch overlay in PR mode.
-func BrowseWantedBranchAware(dbDir, mode, rigHandle string, f BrowseFilter) ([]WantedSummary, error) {
+// Returns the items and a map of wanted IDs that have active branches.
+func BrowseWantedBranchAware(dbDir, mode, rigHandle string, f BrowseFilter) ([]WantedSummary, map[string]bool, error) {
 	items, err := BrowseWanted(dbDir, f)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	branchIDs := make(map[string]bool)
 	if mode == "pr" {
 		overrides := DetectBranchOverrides(dbDir, rigHandle)
+		for _, o := range overrides {
+			branchIDs[o.WantedID] = true
+		}
 		items = ApplyBranchOverrides(dbDir, items, overrides, f.Status)
 	}
-	return items, nil
+	return items, branchIDs, nil
 }
 
 // QueryFullDetail fetches a wanted item with all related records (completion, stamp).

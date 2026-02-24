@@ -191,6 +191,18 @@ func TransitionRequiresInput(t Transition) string {
 	}
 }
 
+// DeltaLabel returns a human-readable label for a state delta.
+// Single-hop deltas map to transition names: "claim", "done", "reject".
+// Multi-hop or unrecognized deltas return "changes".
+func DeltaLabel(mainStatus, branchStatus string) string {
+	for _, rule := range transitionRules {
+		if rule.from == mainStatus && rule.to == branchStatus {
+			return rule.name
+		}
+	}
+	return "changes"
+}
+
 // AvailableTransitions returns transitions valid for item that actor can perform.
 func AvailableTransitions(item *WantedItem, actor string) []Transition {
 	if item == nil {

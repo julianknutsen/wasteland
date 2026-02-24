@@ -198,6 +198,34 @@ func TestAvailableTransitions(t *testing.T) {
 	}
 }
 
+func TestDeltaLabel(t *testing.T) {
+	tests := []struct {
+		name         string
+		mainStatus   string
+		branchStatus string
+		want         string
+	}{
+		{"claim", "open", "claimed", "claim"},
+		{"unclaim", "claimed", "open", "unclaim"},
+		{"done", "claimed", "in_review", "done"},
+		{"accept", "in_review", "completed", "accept"},
+		{"reject", "in_review", "claimed", "reject"},
+		{"delete", "open", "withdrawn", "delete"},
+		{"multi-hop open to in_review", "open", "in_review", "changes"},
+		{"multi-hop open to completed", "open", "completed", "changes"},
+		{"same status", "open", "open", "update"},
+		{"unrecognized", "completed", "open", "changes"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := DeltaLabel(tc.mainStatus, tc.branchStatus)
+			if got != tc.want {
+				t.Errorf("DeltaLabel(%q, %q) = %q, want %q", tc.mainStatus, tc.branchStatus, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestResolvePushTarget_WildWest(t *testing.T) {
 	loc := &ItemLocation{
 		LocalStatus:    "claimed",

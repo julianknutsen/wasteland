@@ -144,6 +144,41 @@ func (m Model) Update(msg bubbletea.Msg) (bubbletea.Model, bubbletea.Cmd) {
 		m.detail.refreshViewport()
 		return m, fetchDetail(m.cfg, m.detail.item.ID)
 
+	case deltaRequestMsg:
+		m.detail.deltaConfirm = &deltaConfirmAction{
+			action: msg.action,
+			label:  msg.label,
+		}
+		m.detail.result = ""
+		m.detail.refreshViewport()
+		return m, nil
+
+	case deltaConfirmedMsg:
+		m.detail.deltaConfirm = nil
+		m.detail.executing = true
+		switch msg.action {
+		case deltaApply:
+			m.detail.executingLabel = "Applying..."
+		case deltaDiscard:
+			m.detail.executingLabel = "Discarding..."
+		}
+		m.detail.refreshViewport()
+		return m, bubbletea.Batch(
+			m.detail.spinner.Tick,
+			executeDelta(m.cfg, m.detail.branch, msg.action),
+		)
+
+	case deltaResultMsg:
+		m.detail.executing = false
+		m.detail.executingLabel = ""
+		if msg.err != nil {
+			m.detail.result = styleError.Render("Error: " + msg.err.Error())
+			m.detail.refreshViewport()
+			return m, nil
+		}
+		// Delta resolved — re-fetch detail from main (branch is gone).
+		return m, fetchDetail(m.cfg, m.detail.item.ID)
+
 	case errMsg:
 		m.err = msg.err
 		return m, nil
@@ -199,11 +234,11 @@ func (m Model) View() string {
 
 func fetchBrowse(cfg Config, f commons.BrowseFilter) bubbletea.Cmd {
 	return func() bubbletea.Msg {
-		items, err := commons.BrowseWantedBranchAware(cfg.DBDir, cfg.Mode, cfg.RigHandle, f)
+		items, branchIDs, err := commons.BrowseWantedBranchAware(cfg.DBDir, cfg.Mode, cfg.RigHandle, f)
 		if err != nil {
 			return browseDataMsg{err: err}
 		}
-		return browseDataMsg{items: items}
+		return browseDataMsg{items: items, branchIDs: branchIDs}
 	}
 }
 
@@ -235,6 +270,9 @@ func executeWildWestMutation(cfg Config, wantedID string, t commons.Transition) 
 func executePRMutation(cfg Config, wantedID string, t commons.Transition) actionResultMsg {
 	branch := commons.BranchName(cfg.RigHandle, wantedID)
 
+	// Query main status before checking out the branch.
+	mainStatus := commons.QueryItemStatusAsOf(cfg.DBDir, wantedID, "main")
+
 	if err := commons.CheckoutBranch(cfg.DBDir, branch); err != nil {
 		return actionResultMsg{err: fmt.Errorf("checkout branch: %w", err)}
 	}
@@ -247,6 +285,7 @@ func executePRMutation(cfg Config, wantedID string, t commons.Transition) action
 	// Read updated detail while still on the branch.
 	detail := fetchDetailSync(cfg.DBDir, wantedID)
 	detail.branch = branch
+	detail.mainStatus = mainStatus
 
 	var pushLog bytes.Buffer
 	if err := commons.PushBranch(cfg.DBDir, branch, &pushLog); err != nil {
@@ -285,9 +324,12 @@ func fetchDetail(cfg Config, wantedID string) bubbletea.Cmd {
 		// If so, checkout the branch to read its state, then return to main.
 		if cfg.Mode == "pr" {
 			if branch := commons.FindBranchForItem(cfg.DBDir, cfg.RigHandle, wantedID); branch != "" {
+				// Query main status before checking out the branch.
+				mainStatus := commons.QueryItemStatusAsOf(cfg.DBDir, wantedID, "main")
 				if err := commons.CheckoutBranch(cfg.DBDir, branch); err == nil {
 					detail := fetchDetailSync(cfg.DBDir, wantedID)
 					detail.branch = branch
+					detail.mainStatus = mainStatus
 					_ = commons.CheckoutMain(cfg.DBDir)
 					return detail
 				}
@@ -295,6 +337,45 @@ func fetchDetail(cfg Config, wantedID string) bubbletea.Cmd {
 		}
 		return fetchDetailSync(cfg.DBDir, wantedID)
 	}
+}
+
+func executeDelta(cfg Config, branch string, action branchDeltaAction) bubbletea.Cmd {
+	return func() bubbletea.Msg {
+		switch action {
+		case deltaApply:
+			return executeDeltaApply(cfg, branch)
+		case deltaDiscard:
+			return executeDeltaDiscard(cfg, branch)
+		default:
+			return deltaResultMsg{err: fmt.Errorf("unknown delta action")}
+		}
+	}
+}
+
+func executeDeltaApply(cfg Config, branch string) deltaResultMsg {
+	// Merge branch into main.
+	if err := commons.MergeBranch(cfg.DBDir, branch); err != nil {
+		return deltaResultMsg{err: err}
+	}
+	// Delete local branch.
+	if err := commons.DeleteBranch(cfg.DBDir, branch); err != nil {
+		return deltaResultMsg{err: fmt.Errorf("delete local branch: %w", err)}
+	}
+	// Push merged main to origin.
+	if err := commons.PushOriginMain(cfg.DBDir, io.Discard); err != nil {
+		return deltaResultMsg{err: fmt.Errorf("push origin main: %w", err)}
+	}
+	return deltaResultMsg{hint: "applied"}
+}
+
+func executeDeltaDiscard(cfg Config, branch string) deltaResultMsg {
+	// Delete local branch.
+	if err := commons.DeleteBranch(cfg.DBDir, branch); err != nil {
+		return deltaResultMsg{err: fmt.Errorf("delete local branch: %w", err)}
+	}
+	// Delete remote branch (best-effort).
+	_ = commons.DeleteRemoteBranch(cfg.DBDir, "origin", branch)
+	return deltaResultMsg{hint: "discarded"}
 }
 
 // fetchDetailSync queries detail data from the current working copy.

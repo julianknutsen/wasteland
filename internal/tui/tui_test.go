@@ -677,6 +677,153 @@ func TestRootModel_ProjectFilter_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestDelta_RequestMsg_ShowsConfirmation(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
+	m.detail.branch = "wl/test-rig/w-abc123"
+	m.detail.mainStatus = "open"
+
+	result, cmd := m.Update(deltaRequestMsg{
+		action: deltaApply,
+		label:  "Apply claim to main? Pushes to origin. [y/n]",
+	})
+	m2 := result.(Model)
+
+	if m2.detail.deltaConfirm == nil {
+		t.Fatal("deltaRequestMsg should set deltaConfirm")
+	}
+	if m2.detail.deltaConfirm.action != deltaApply {
+		t.Errorf("deltaConfirm action = %v, want deltaApply", m2.detail.deltaConfirm.action)
+	}
+	if cmd != nil {
+		t.Error("deltaRequestMsg should not return a cmd")
+	}
+
+	// View should show the confirmation.
+	v := m2.View()
+	if !strings.Contains(v, "Apply claim to main") {
+		t.Errorf("view should contain confirmation text, got:\n%s", v)
+	}
+}
+
+func TestDelta_ConfirmYes_ReturnsDeltaConfirmed(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
+	m.detail.branch = "wl/test-rig/w-abc123"
+	m.detail.mainStatus = "open"
+	m.detail.deltaConfirm = &deltaConfirmAction{
+		action: deltaApply,
+		label:  "Apply claim to main? [y/n]",
+	}
+
+	result, cmd := m.Update(keyMsg("y"))
+	m2 := result.(Model)
+
+	if m2.detail.deltaConfirm != nil {
+		t.Error("after 'y': deltaConfirm should be cleared")
+	}
+	if cmd == nil {
+		t.Fatal("after 'y': expected cmd, got nil")
+	}
+
+	msg := cmd()
+	confirmed, ok := msg.(deltaConfirmedMsg)
+	if !ok {
+		t.Fatalf("expected deltaConfirmedMsg, got %T", msg)
+	}
+	if confirmed.action != deltaApply {
+		t.Errorf("confirmed action = %v, want deltaApply", confirmed.action)
+	}
+}
+
+func TestDelta_ConfirmCancel_ClearsPrompt(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
+	m.detail.branch = "wl/test-rig/w-abc123"
+	m.detail.mainStatus = "open"
+	m.detail.deltaConfirm = &deltaConfirmAction{
+		action: deltaApply,
+		label:  "Apply claim to main? [y/n]",
+	}
+
+	result, cmd := m.Update(keyMsg("n"))
+	m2 := result.(Model)
+	if m2.detail.deltaConfirm != nil {
+		t.Error("after 'n': deltaConfirm should be nil")
+	}
+	if cmd != nil {
+		t.Error("after 'n': should have no cmd")
+	}
+}
+
+func TestDelta_ConfirmedMsg_SetsExecuting(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
+	m.detail.branch = "wl/test-rig/w-abc123"
+	m.detail.mainStatus = "open"
+
+	result, cmd := m.Update(deltaConfirmedMsg{action: deltaApply})
+	m2 := result.(Model)
+
+	if !m2.detail.executing {
+		t.Error("executing should be true after deltaConfirmedMsg")
+	}
+	if m2.detail.executingLabel != "Applying..." {
+		t.Errorf("executingLabel = %q, want %q", m2.detail.executingLabel, "Applying...")
+	}
+	if cmd == nil {
+		t.Error("should return executeDelta cmd")
+	}
+}
+
+func TestDelta_ConfirmedMsg_Discard_SetsExecuting(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
+	m.detail.branch = "wl/test-rig/w-abc123"
+	m.detail.mainStatus = "open"
+
+	result, _ := m.Update(deltaConfirmedMsg{action: deltaDiscard})
+	m2 := result.(Model)
+
+	if !m2.detail.executing {
+		t.Error("executing should be true after deltaConfirmedMsg")
+	}
+	if m2.detail.executingLabel != "Discarding..." {
+		t.Errorf("executingLabel = %q, want %q", m2.detail.executingLabel, "Discarding...")
+	}
+}
+
+func TestDelta_ResultMsg_Error(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
+	m.detail.executing = true
+	m.detail.executingLabel = "Applying..."
+
+	result, cmd := m.Update(deltaResultMsg{err: fmt.Errorf("merge conflict")})
+	m2 := result.(Model)
+
+	if m2.detail.executing {
+		t.Error("executing should be false after error result")
+	}
+	if !strings.Contains(m2.detail.result, "merge conflict") {
+		t.Errorf("result should contain error, got: %q", m2.detail.result)
+	}
+	if cmd != nil {
+		t.Error("error result should not return cmd")
+	}
+}
+
+func TestDelta_ResultMsg_Success_RefetchesDetail(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
+	m.detail.executing = true
+	m.detail.executingLabel = "Applying..."
+
+	result, cmd := m.Update(deltaResultMsg{hint: "applied"})
+	m2 := result.(Model)
+
+	if m2.detail.executing {
+		t.Error("executing should be false after result")
+	}
+	// Success should re-fetch detail (branch is gone).
+	if cmd == nil {
+		t.Error("success result should return fetchDetail cmd")
+	}
+}
+
 func TestMe_View_Hints(t *testing.T) {
 	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
 	m.active = viewMe

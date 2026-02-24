@@ -23,6 +23,8 @@ type keyMap struct {
 	Reject   key.Binding
 	Close    key.Binding
 	Delete   key.Binding
+	Apply    key.Binding
+	Discard  key.Binding
 	Confirm  key.Binding
 	Cancel   key.Binding
 }
@@ -107,6 +109,14 @@ var keys = keyMap{
 	Delete: key.NewBinding(
 		key.WithKeys("D"),
 		key.WithHelp("D", "delete"),
+	),
+	Apply: key.NewBinding(
+		key.WithKeys("M"),
+		key.WithHelp("M", "apply"),
+	),
+	Discard: key.NewBinding(
+		key.WithKeys("b"),
+		key.WithHelp("b", "discard"),
 	),
 	Confirm: key.NewBinding(
 		key.WithKeys("y"),

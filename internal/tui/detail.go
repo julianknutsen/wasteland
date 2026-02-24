@@ -17,6 +17,12 @@ type confirmAction struct {
 	label      string
 }
 
+// deltaConfirmAction holds state while waiting for the user to confirm a delta action.
+type deltaConfirmAction struct {
+	action branchDeltaAction
+	label  string
+}
+
 type detailModel struct {
 	item       *commons.WantedItem
 	completion *commons.CompletionRecord
@@ -31,10 +37,12 @@ type detailModel struct {
 	dbDir          string
 	rigHandle      string
 	mode           string
-	branch         string         // non-empty when showing branch state
-	confirming     *confirmAction // non-nil → showing confirmation prompt
-	executing      bool           // true → showing spinner
-	executingLabel string         // e.g. "Claiming..."
+	branch         string              // non-empty when showing branch state
+	mainStatus     string              // status on main when showing branch state
+	confirming     *confirmAction      // non-nil → showing confirmation prompt
+	deltaConfirm   *deltaConfirmAction // non-nil → showing delta confirmation prompt
+	executing      bool                // true → showing spinner
+	executingLabel string              // e.g. "Claiming..."
 	spinner        spinner.Model
 	result         string // brief success/error message
 }
@@ -70,8 +78,10 @@ func (m *detailModel) setData(msg detailDataMsg) {
 	m.completion = msg.completion
 	m.stamp = msg.stamp
 	m.branch = msg.branch
+	m.mainStatus = msg.mainStatus
 	// Clear mutation state so stale results don't mask action hints.
 	m.confirming = nil
+	m.deltaConfirm = nil
 	m.executing = false
 	m.executingLabel = ""
 	m.result = ""
@@ -113,6 +123,22 @@ func (m detailModel) update(msg bubbletea.Msg) (detailModel, bubbletea.Cmd) {
 			return m, nil
 		}
 
+		// Delta confirmation prompt active: handle y/n/esc only.
+		if m.deltaConfirm != nil {
+			switch {
+			case key.Matches(msg, keys.Confirm):
+				a := m.deltaConfirm.action
+				m.deltaConfirm = nil
+				return m, func() bubbletea.Msg {
+					return deltaConfirmedMsg{action: a}
+				}
+			case key.Matches(msg, keys.Cancel), key.Matches(msg, keys.Back):
+				m.deltaConfirm = nil
+				return m, nil
+			}
+			return m, nil
+		}
+
 		// Normal key handling.
 		switch {
 		case key.Matches(msg, keys.Back):
@@ -139,6 +165,12 @@ func (m detailModel) update(msg bubbletea.Msg) (detailModel, bubbletea.Cmd) {
 			return m.tryAction(commons.TransitionClose)
 		case key.Matches(msg, keys.Delete):
 			return m.tryAction(commons.TransitionDelete)
+
+		// Delta resolution keys.
+		case key.Matches(msg, keys.Apply):
+			return m.tryDelta(deltaApply)
+		case key.Matches(msg, keys.Discard):
+			return m.tryDelta(deltaDiscard)
 		}
 	}
 
@@ -187,6 +219,28 @@ func (m detailModel) tryTextAction(t commons.Transition) (detailModel, bubbletea
 	return m, nil
 }
 
+// tryDelta validates that a branch exists, computes a label, and returns a deltaRequestMsg.
+func (m detailModel) tryDelta(action branchDeltaAction) (detailModel, bubbletea.Cmd) {
+	if m.branch == "" || m.item == nil {
+		return m, nil
+	}
+	// Apply is not available in PR mode — deltas resolve via upstream PR merge.
+	if action == deltaApply && m.mode == "pr" {
+		return m, nil
+	}
+	delta := commons.DeltaLabel(m.mainStatus, m.item.Status)
+	var label string
+	switch action {
+	case deltaApply:
+		label = fmt.Sprintf("Apply %s to main? Pushes to origin. [y/n]", delta)
+	case deltaDiscard:
+		label = fmt.Sprintf("Discard %s? Reverts to %s. Deletes local + remote branch. [y/n]", delta, m.mainStatus)
+	}
+	return m, func() bubbletea.Msg {
+		return deltaRequestMsg{action: action, label: label}
+	}
+}
+
 func (m detailModel) view() string {
 	if m.loading {
 		return styleDim.Render("  Loading...")
@@ -207,6 +261,9 @@ func (m detailModel) renderContent() string {
 	var b strings.Builder
 
 	b.WriteString(fmt.Sprintf("\n  Status:      %s\n", colorizeStatus(item.Status)))
+	if m.branch != "" && m.mainStatus != "" && m.mainStatus != item.Status {
+		b.WriteString(fmt.Sprintf("  Pending:     %s → %s\n", m.mainStatus, item.Status))
+	}
 	if m.branch != "" {
 		b.WriteString(styleDim.Render(fmt.Sprintf("  Branch:      %s\n", m.branch)))
 	}
@@ -278,6 +335,8 @@ func (m detailModel) renderContent() string {
 	case m.confirming != nil:
 		b.WriteString(styleConfirm.Render(fmt.Sprintf(
 			"  %s Pushes to upstream. [y/n]", m.confirming.label)))
+	case m.deltaConfirm != nil:
+		b.WriteString(styleConfirm.Render(fmt.Sprintf("  %s", m.deltaConfirm.label)))
 	case m.executing:
 		b.WriteString(fmt.Sprintf("  %s %s", m.spinner.View(), m.executingLabel))
 	case m.result != "":
@@ -308,9 +367,6 @@ func (m detailModel) actionHints() string {
 		return ""
 	}
 	available := commons.AvailableTransitions(m.item, m.rigHandle)
-	if len(available) == 0 {
-		return "  (no actions available)"
-	}
 	var hints []string
 	for _, t := range available {
 		k := transitionKeyHint[t]
@@ -320,6 +376,25 @@ func (m detailModel) actionHints() string {
 			hint += "*"
 		}
 		hints = append(hints, hint)
+	}
+
+	// Delta actions: only when a branch exists with a pending delta.
+	if m.branch != "" && m.mainStatus != "" && m.mainStatus != m.item.Status {
+		delta := commons.DeltaLabel(m.mainStatus, m.item.Status)
+		var deltaHints []string
+		if m.mode != "pr" {
+			// Apply only in wild-west mode — PR mode resolves via upstream PR.
+			deltaHints = append(deltaHints, fmt.Sprintf("M:apply %s", delta))
+		}
+		deltaHints = append(deltaHints, fmt.Sprintf("b:discard (→ %s)", m.mainStatus))
+		if len(hints) > 0 {
+			hints = append(hints, "|")
+		}
+		hints = append(hints, deltaHints...)
+	}
+
+	if len(hints) == 0 {
+		return "  (no actions available)"
 	}
 	return "  Actions: " + strings.Join(hints, "  ")
 }

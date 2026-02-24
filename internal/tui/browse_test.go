@@ -344,3 +344,38 @@ func TestBrowseFilter_ProjectFilter_EmptyWhenUnset(t *testing.T) {
 		t.Errorf("filter Project should be empty, got %q", f.Project)
 	}
 }
+
+func TestBrowseView_BranchIndicator(t *testing.T) {
+	m := newBrowseModel()
+	m.loading = false
+	m.width = 80
+	m.height = 24
+	m.items = []commons.WantedSummary{
+		{ID: "w-abc123", Title: "Has branch", Status: "claimed", Priority: 1, Project: "proj", Type: "bug"},
+		{ID: "w-def456", Title: "No branch", Status: "open", Priority: 2, Project: "proj", Type: "bug"},
+	}
+	m.branchIDs = map[string]bool{"w-abc123": true}
+
+	v := m.view()
+	// The item with a branch should have * after its status.
+	if !strings.Contains(v, "claimed*") {
+		t.Errorf("view should contain 'claimed*' for branched item, got:\n%s", v)
+	}
+	// The item without a branch should not have *.
+	// "open" should appear without * (we check it doesn't have "open*").
+	if strings.Contains(v, "open*") {
+		t.Errorf("view should NOT contain 'open*' for non-branched item, got:\n%s", v)
+	}
+}
+
+func TestBrowseSetData_StoresBranchIDs(t *testing.T) {
+	m := newBrowseModel()
+	branchIDs := map[string]bool{"w-abc123": true}
+	m.setData(browseDataMsg{
+		items:     []commons.WantedSummary{{ID: "w-abc123", Status: "claimed"}},
+		branchIDs: branchIDs,
+	})
+	if !m.branchIDs["w-abc123"] {
+		t.Error("branchIDs should contain w-abc123")
+	}
+}
