@@ -105,7 +105,7 @@ func newTestEnv(t *testing.T, backend backendKind) *testEnv {
 	t.Helper()
 	// Use os.MkdirTemp instead of t.TempDir() because dolt may leave lock
 	// files behind that cause t.TempDir()'s RemoveAll to fail the test.
-	root, err := os.MkdirTemp("", t.Name())
+	root, err := os.MkdirTemp("", strings.ReplaceAll(t.Name(), "/", "-"))
 	if err != nil {
 		t.Fatalf("creating temp dir: %v", err)
 	}
