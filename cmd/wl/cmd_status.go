@@ -12,8 +12,9 @@ import (
 
 func newStatusCmd(stdout, stderr io.Writer) *cobra.Command {
 	return &cobra.Command{
-		Use:   "status <wanted-id>",
-		Short: "Show detailed status for a wanted item",
+		Use:     "status <wanted-id>",
+		Aliases: []string{"show"},
+		Short:   "Show detailed status for a wanted item",
 		Long: `Show the full lifecycle status of a wanted item.
 
 Displays all fields including description, timestamps, and conditionally
