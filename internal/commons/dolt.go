@@ -342,6 +342,31 @@ func ResolveWantedID(dbDir, idOrPrefix string) (string, error) {
 	return matches[0], nil
 }
 
+// QueryItemStatusAsOf returns the status of a wanted item at a specific ref.
+// If ref is empty, queries the working copy. Returns "" if the item doesn't
+// exist at that ref or if the query fails.
+func QueryItemStatusAsOf(dbDir, wantedID, ref string) string {
+	query := fmt.Sprintf(
+		"SELECT status FROM wanted WHERE id = '%s'",
+		EscapeSQL(wantedID),
+	)
+	if ref != "" {
+		query = fmt.Sprintf(
+			"SELECT status FROM wanted AS OF '%s' WHERE id = '%s'",
+			EscapeSQL(ref), EscapeSQL(wantedID),
+		)
+	}
+	out, err := DoltSQLQuery(dbDir, query)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(lines[1])
+}
+
 // DoltSQLQuery executes a SQL query and returns the raw CSV output.
 func DoltSQLQuery(dbDir, query string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

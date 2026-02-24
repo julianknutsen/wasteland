@@ -18,6 +18,7 @@ type mutationContext struct {
 	branch   string // computed branch name, empty in wild-west mode
 	noPush   bool
 	stdout   io.Writer
+	location *commons.ItemLocation // detected item location across remotes
 }
 
 // newMutationContext creates a mutation context for the given config and wanted ID.
@@ -39,8 +40,8 @@ func (m *mutationContext) BranchName() string {
 	return m.branch
 }
 
-// Setup prepares the mutation context: checks dolt, syncs upstream, and
-// (in PR mode) checks out the item branch.
+// Setup prepares the mutation context: checks dolt, syncs upstream, detects
+// item location, and (in PR mode) checks out the item branch.
 // The returned cleanup function must be deferred to return to main.
 func (m *mutationContext) Setup() (cleanup func(), err error) {
 	noop := func() {}
@@ -53,6 +54,13 @@ func (m *mutationContext) Setup() (cleanup func(), err error) {
 	if syncErr != nil {
 		fmt.Fprintf(m.stdout, "  warning: upstream sync failed: %v\n", syncErr)
 	}
+
+	// Detect item location across remotes (best-effort).
+	if m.wantedID != "" {
+		loc, _ := commons.DetectItemLocation(m.cfg.LocalDir, m.wantedID)
+		m.location = loc
+	}
+
 	if m.branch == "" {
 		return noop, nil
 	}
@@ -65,14 +73,49 @@ func (m *mutationContext) Setup() (cleanup func(), err error) {
 }
 
 // Push pushes changes to the appropriate remote(s).
+// Uses location detection in PR mode to minimize push operations.
 // In wild-west mode: PushWithSync (upstream + origin).
-// In PR mode: PushBranch (origin only).
+// In PR mode with branches: PushBranch (origin only).
+// In PR mode on main: uses ResolvePushTarget for location-aware pushing.
 func (m *mutationContext) Push() error {
 	if m.noPush {
 		return nil
 	}
+	// PR mode with branch — push branch to origin, then refresh any existing PR.
 	if m.branch != "" {
-		return commons.PushBranch(m.cfg.LocalDir, m.branch, m.stdout)
+		if err := commons.PushBranch(m.cfg.LocalDir, m.branch, m.stdout); err != nil {
+			return err
+		}
+		m.refreshPR()
+		return nil
 	}
-	return commons.PushWithSync(m.cfg.LocalDir, m.stdout)
+
+	// Wild-west mode without location info — existing behavior.
+	if m.location == nil || m.cfg.ResolveMode() != federation.ModePR {
+		return commons.PushWithSync(m.cfg.LocalDir, m.stdout)
+	}
+
+	// PR mode on main — use location-aware push.
+	// Re-read local status after the mutation has been applied.
+	m.location.LocalStatus = commons.QueryItemStatusAsOf(m.cfg.LocalDir, m.wantedID, "")
+	target := commons.ResolvePushTarget("pr", m.location)
+
+	if target.PushUpstream {
+		return commons.PushWithSync(m.cfg.LocalDir, m.stdout)
+	}
+	if target.PushOrigin {
+		if err := commons.PushOriginMain(m.cfg.LocalDir, m.stdout); err != nil {
+			return err
+		}
+	}
+
+	m.printHint(target)
+	return nil
+}
+
+// printHint shows a next-step hint based on the push target.
+func (m *mutationContext) printHint(target commons.PushTarget) {
+	if target.Hint != "" {
+		fmt.Fprintf(m.stdout, "  %s\n", style.Dim.Render(target.Hint))
+	}
 }

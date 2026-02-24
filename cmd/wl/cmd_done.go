@@ -102,8 +102,8 @@ func submitDone(store commons.WLCommonsStore, wantedID, rigHandle, evidence, com
 		return fmt.Errorf("querying wanted item: %w", err)
 	}
 
-	if item.Status != "claimed" {
-		return fmt.Errorf("wanted item %s is not claimed (status: %s)", wantedID, item.Status)
+	if _, err := commons.ValidateTransition(item.Status, commons.TransitionDone); err != nil {
+		return fmt.Errorf("wanted item %s: %w", wantedID, err)
 	}
 
 	if item.ClaimedBy != rigHandle {

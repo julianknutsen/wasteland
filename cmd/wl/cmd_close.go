@@ -87,8 +87,8 @@ func closeWanted(store commons.WLCommonsStore, wantedID, rigHandle string) error
 		return fmt.Errorf("querying wanted item: %w", err)
 	}
 
-	if item.Status != "in_review" {
-		return fmt.Errorf("wanted item %s is not in_review (status: %s)", wantedID, item.Status)
+	if _, err := commons.ValidateTransition(item.Status, commons.TransitionClose); err != nil {
+		return fmt.Errorf("wanted item %s: %w", wantedID, err)
 	}
 
 	if item.PostedBy != rigHandle {

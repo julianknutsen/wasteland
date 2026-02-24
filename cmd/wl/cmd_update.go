@@ -160,8 +160,8 @@ func updateWanted(store commons.WLCommonsStore, wantedID string, fields *commons
 		return fmt.Errorf("querying wanted item: %w", err)
 	}
 
-	if item.Status != "open" {
-		return fmt.Errorf("wanted item %s is not open (status: %s)", wantedID, item.Status)
+	if _, err := commons.ValidateTransition(item.Status, commons.TransitionUpdate); err != nil {
+		return fmt.Errorf("wanted item %s: %w", wantedID, err)
 	}
 
 	if err := store.UpdateWanted(wantedID, fields); err != nil {

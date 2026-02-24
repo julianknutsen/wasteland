@@ -88,8 +88,8 @@ func claimWanted(store commons.WLCommonsStore, wantedID, rigHandle string) (*com
 		return nil, fmt.Errorf("querying wanted item: %w", err)
 	}
 
-	if item.Status != "open" {
-		return nil, fmt.Errorf("wanted item %s is not open (status: %s)", wantedID, item.Status)
+	if _, err := commons.ValidateTransition(item.Status, commons.TransitionClaim); err != nil {
+		return nil, fmt.Errorf("wanted item %s: %w", wantedID, err)
 	}
 
 	if err := store.ClaimWanted(wantedID, rigHandle); err != nil {

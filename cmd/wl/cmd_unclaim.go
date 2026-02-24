@@ -87,8 +87,8 @@ func unclaimWanted(store commons.WLCommonsStore, wantedID, rigHandle string) (*c
 		return nil, fmt.Errorf("querying wanted item: %w", err)
 	}
 
-	if item.Status != "claimed" {
-		return nil, fmt.Errorf("wanted item %s is not claimed (status: %s)", wantedID, item.Status)
+	if _, err := commons.ValidateTransition(item.Status, commons.TransitionUnclaim); err != nil {
+		return nil, fmt.Errorf("wanted item %s: %w", wantedID, err)
 	}
 
 	if item.ClaimedBy != rigHandle && item.PostedBy != rigHandle {
