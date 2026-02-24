@@ -130,14 +130,16 @@ func (d *DoltHubProvider) forkREST(fromOrg, fromDB, toOrg string) error {
 	}
 
 	// Poll until the fork operation completes.
-	return d.pollForkOperation(forkResp.OperationName)
+	return d.pollForkOperation(forkResp.OperationName, toOrg, fromDB)
 }
 
 // pollForkOperation polls the fork endpoint until the operation completes.
-func (d *DoltHubProvider) pollForkOperation(operationName string) error {
+// Falls back to checking if the database exists when the poll times out,
+// since the fork may complete with a response format we don't recognize.
+func (d *DoltHubProvider) pollForkOperation(operationName, forkOrg, forkDB string) error {
 	client := &http.Client{Timeout: 30 * time.Second}
 	backoff := 500 * time.Millisecond
-	deadline := time.Now().Add(60 * time.Second)
+	deadline := time.Now().Add(2 * time.Minute)
 
 	for time.Now().Before(deadline) {
 		time.Sleep(backoff)
@@ -167,17 +169,31 @@ func (d *DoltHubProvider) pollForkOperation(operationName string) error {
 		}
 
 		var pollResp struct {
+			Status       string `json:"status"`
 			OwnerName    string `json:"owner_name"`
 			DatabaseName string `json:"database_name"`
 		}
-		if err := json.Unmarshal(body, &pollResp); err == nil &&
-			pollResp.OwnerName != "" && pollResp.DatabaseName != "" {
-			return nil
+		if err := json.Unmarshal(body, &pollResp); err == nil {
+			// Check for completion via owner_name + database_name fields.
+			if pollResp.OwnerName != "" && pollResp.DatabaseName != "" {
+				return nil
+			}
+			// Check for a terminal status field (e.g., "Success", "Done").
+			s := strings.ToLower(pollResp.Status)
+			if s == "success" || s == "done" || s == "completed" {
+				return nil
+			}
 		}
 
 		if backoff < 8*time.Second {
 			backoff *= 2
 		}
+	}
+
+	// The poll timed out, but the fork may have completed anyway.
+	// Check directly whether the database exists before reporting failure.
+	if d.databaseExists(forkOrg, forkDB) {
+		return nil
 	}
 
 	return fmt.Errorf("timed out waiting for fork operation %q to complete", operationName)

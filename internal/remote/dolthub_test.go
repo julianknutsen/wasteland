@@ -163,6 +163,41 @@ func TestDoltHubProvider_ForkREST_Success(t *testing.T) {
 	}
 }
 
+func TestDoltHubProvider_ForkREST_PollStatusSuccess(t *testing.T) {
+	// REST fork: poll returns status "Success" without owner_name/database_name.
+	pollCount := 0
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/fork") {
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(`{"status":"Success","operation_name":"fork-op-456"}`))
+			return
+		}
+		if r.Method == "GET" && r.URL.Query().Get("operationName") == "fork-op-456" {
+			pollCount++
+			if pollCount < 2 {
+				w.WriteHeader(200)
+				_, _ = w.Write([]byte(`{"status":"Pending"}`))
+				return
+			}
+			w.WriteHeader(200)
+			_, _ = w.Write([]byte(`{"status":"Success"}`))
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer apiServer.Close()
+
+	oldAPI := dolthubAPIBase
+	dolthubAPIBase = apiServer.URL
+	defer func() { dolthubAPIBase = oldAPI }()
+
+	provider := NewDoltHubProvider("api-token")
+	err := provider.forkREST("steveyegge", "wl-commons", "alice-dev")
+	if err != nil {
+		t.Errorf("forkREST should succeed on status-based completion: %v", err)
+	}
+}
+
 func TestDoltHubProvider_ForkREST_AlreadyExists(t *testing.T) {
 	// REST fork: POST returns "already exists" error → treated as success.
 	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
