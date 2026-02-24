@@ -69,7 +69,7 @@ Examples:
 
 	cmd.Flags().StringVar(&handle, "handle", "", "Rig handle for registration (default: fork org)")
 	cmd.Flags().StringVar(&displayName, "display-name", "", "Display name for the rig registry")
-	cmd.Flags().StringVar(&email, "email", "", "Registration email (default: git config user.email)")
+	cmd.Flags().StringVar(&email, "email", "", "Registration email (default: GPG key email if --signed, else git config user.email)")
 	cmd.Flags().StringVar(&forkOrg, "fork-org", "", "Fork organization (default: DOLTHUB_ORG)")
 	cmd.Flags().StringVar(&remoteBase, "remote-base", "", "Base directory for file:// remotes (offline mode)")
 	cmd.Flags().StringVar(&gitRemote, "git-remote", "", "Base directory for bare git remotes")
@@ -158,7 +158,10 @@ func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, for
 		displayName = gitConfigValue("user.name")
 	}
 
-	// Determine email from flag or git config
+	// Determine email from flag, GPG key (if signed), or git config
+	if email == "" && signed {
+		email = gpgKeyEmail()
+	}
 	if email == "" {
 		email = gitConfigValue("user.email")
 	}
@@ -202,6 +205,32 @@ func printForkInstructions(w io.Writer, err *remote.ForkRequiredError) {
 	fmt.Fprintf(w, "  2. Click %s (top right)\n", style.Bold.Render("Fork"))
 	fmt.Fprintf(w, "  3. Select your organization: %s\n", style.Bold.Render(err.ForkOrg))
 	fmt.Fprintf(w, "  4. Rerun: %s\n", style.Bold.Render("wl join"))
+}
+
+// gpgKeyEmail extracts the email from the first GPG secret key's uid.
+// Returns empty string if GPG is not available or no keys are found.
+func gpgKeyEmail() string {
+	cmd := exec.Command("gpg", "--list-secret-keys", "--with-colons")
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.HasPrefix(line, "uid:") {
+			// Colon-delimited format: uid:...:...:...:...:...:...:...:...:Name <email>:...
+			fields := strings.Split(line, ":")
+			if len(fields) > 9 {
+				uid := fields[9]
+				// Extract email from "Name <email>" format
+				if start := strings.Index(uid, "<"); start >= 0 {
+					if end := strings.Index(uid[start:], ">"); end >= 0 {
+						return uid[start+1 : start+end]
+					}
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // gitConfigValue retrieves a value from git config. Returns empty string on error.
