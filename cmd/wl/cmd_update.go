@@ -52,6 +52,7 @@ Examples:
 	cmd.Flags().StringVar(&effort, "effort", "", "Effort level: trivial, small, medium, large, epic")
 	cmd.Flags().StringVar(&tags, "tags", "", "Comma-separated tags (replaces existing)")
 	cmd.Flags().BoolVar(&noPush, "no-push", false, "Skip pushing to remotes (offline work)")
+	cmd.ValidArgsFunction = completeWantedIDs("open")
 
 	return cmd
 }
@@ -110,7 +111,10 @@ func runUpdate(cmd *cobra.Command, stdout, _ io.Writer, wantedID, title, descrip
 		fmt.Fprintf(stdout, "  Branch: %s\n", mc.BranchName())
 	}
 
-	mc.Push()
+	if err := mc.Push(); err != nil {
+		fmt.Fprintf(stdout, "\n  %s %s\n", style.Warning.Render(style.IconWarn),
+			"Push failed — changes saved locally. Run 'wl sync' to retry.")
+	}
 
 	return nil
 }

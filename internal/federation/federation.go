@@ -7,6 +7,7 @@
 package federation
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -327,7 +328,9 @@ func (e *execDoltCLI) Clone(remoteURL, targetDir string) error {
 		return nil
 	}
 
-	cmd := exec.Command("dolt", "clone", remoteURL, targetDir)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "dolt", "clone", remoteURL, targetDir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("dolt clone %s: %w (%s)", remoteURL, err, strings.TrimSpace(string(output)))
@@ -354,14 +357,18 @@ func (e *execDoltCLI) RegisterRig(localDir, handle, dolthubOrg, displayName, own
 		escapeSQLString(version),
 	)
 
-	cmd := exec.Command("dolt", "sql", "-q", sql)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "dolt", "sql", "-q", sql)
 	cmd.Dir = localDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("inserting rig registration: %w (%s)", err, strings.TrimSpace(string(output)))
 	}
 
-	addCmd := exec.Command("dolt", "add", ".")
+	ctxAdd, cancelAdd := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelAdd()
+	addCmd := exec.CommandContext(ctxAdd, "dolt", "add", ".")
 	addCmd.Dir = localDir
 	if output, err := addCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("dolt add: %w (%s)", err, strings.TrimSpace(string(output)))
@@ -372,7 +379,9 @@ func (e *execDoltCLI) RegisterRig(localDir, handle, dolthubOrg, displayName, own
 		commitArgs = append(commitArgs, "-S")
 	}
 	commitArgs = append(commitArgs, "-m", fmt.Sprintf("Register rig: %s", handle))
-	commitCmd := exec.Command("dolt", commitArgs...)
+	ctxCommit, cancelCommit := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelCommit()
+	commitCmd := exec.CommandContext(ctxCommit, "dolt", commitArgs...)
 	commitCmd.Dir = localDir
 	output, err = commitCmd.CombinedOutput()
 	if err != nil {
@@ -394,7 +403,9 @@ func (e *execDoltCLI) RegisterRig(localDir, handle, dolthubOrg, displayName, own
 }
 
 func (e *execDoltCLI) Push(localDir string) error {
-	cmd := exec.Command("dolt", "push", "origin", "main")
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "dolt", "push", "origin", "main")
 	cmd.Dir = localDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -409,7 +420,9 @@ func (e *execDoltCLI) PushBranch(localDir, branch string, force bool) error {
 		args = append(args, "--force")
 	}
 	args = append(args, "origin", branch)
-	cmd := exec.Command("dolt", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "dolt", args...)
 	cmd.Dir = localDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -420,7 +433,9 @@ func (e *execDoltCLI) PushBranch(localDir, branch string, force bool) error {
 
 func (e *execDoltCLI) CheckoutBranch(localDir, branch string) error {
 	// Create the branch if it doesn't exist, then checkout.
-	createCmd := exec.Command("dolt", "branch", branch)
+	ctxCreate, cancelCreate := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelCreate()
+	createCmd := exec.CommandContext(ctxCreate, "dolt", "branch", branch)
 	createCmd.Dir = localDir
 	if output, err := createCmd.CombinedOutput(); err != nil {
 		msg := strings.ToLower(strings.TrimSpace(string(output)))
@@ -428,7 +443,9 @@ func (e *execDoltCLI) CheckoutBranch(localDir, branch string) error {
 			return fmt.Errorf("dolt branch %s: %w (%s)", branch, err, msg)
 		}
 	}
-	cmd := exec.Command("dolt", "checkout", branch)
+	ctxCheckout, cancelCheckout := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelCheckout()
+	cmd := exec.CommandContext(ctxCheckout, "dolt", "checkout", branch)
 	cmd.Dir = localDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -438,7 +455,9 @@ func (e *execDoltCLI) CheckoutBranch(localDir, branch string) error {
 }
 
 func (e *execDoltCLI) CheckoutMain(localDir string) error {
-	cmd := exec.Command("dolt", "checkout", "main")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "dolt", "checkout", "main")
 	cmd.Dir = localDir
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -448,7 +467,9 @@ func (e *execDoltCLI) CheckoutMain(localDir string) error {
 }
 
 func (e *execDoltCLI) AddUpstreamRemote(localDir, remoteURL string) error {
-	checkCmd := exec.Command("dolt", "remote", "-v")
+	ctxCheck, cancelCheck := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancelCheck()
+	checkCmd := exec.CommandContext(ctxCheck, "dolt", "remote", "-v")
 	checkCmd.Dir = localDir
 	output, err := checkCmd.CombinedOutput()
 	if err == nil {
@@ -459,7 +480,9 @@ func (e *execDoltCLI) AddUpstreamRemote(localDir, remoteURL string) error {
 		}
 	}
 
-	cmd := exec.Command("dolt", "remote", "add", "upstream", remoteURL)
+	ctxAdd, cancelAdd := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancelAdd()
+	cmd := exec.CommandContext(ctxAdd, "dolt", "remote", "add", "upstream", remoteURL)
 	cmd.Dir = localDir
 	output, err = cmd.CombinedOutput()
 	if err != nil {

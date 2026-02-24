@@ -3,6 +3,8 @@
 package style
 
 import (
+	"os"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -65,3 +67,26 @@ var (
 	Bold = lipgloss.NewStyle().
 		Bold(true)
 )
+
+// SetColorMode overrides style rendering based on --color flag or NO_COLOR env.
+func SetColorMode(mode string) {
+	switch mode {
+	case "never":
+		_ = os.Setenv("NO_COLOR", "1")
+		Success = lipgloss.NewStyle()
+		Warning = lipgloss.NewStyle()
+		Error = lipgloss.NewStyle()
+		Info = lipgloss.NewStyle()
+		Dim = lipgloss.NewStyle()
+		Bold = lipgloss.NewStyle()
+	case "always":
+		_ = os.Unsetenv("NO_COLOR")
+		_ = os.Setenv("CLICOLOR_FORCE", "1")
+		Success = lipgloss.NewStyle().Foreground(colorPass).Bold(true)
+		Warning = lipgloss.NewStyle().Foreground(colorWarn).Bold(true)
+		Error = lipgloss.NewStyle().Foreground(colorFail).Bold(true)
+		Info = lipgloss.NewStyle().Foreground(colorAccent)
+		Dim = lipgloss.NewStyle().Foreground(colorMuted)
+		Bold = lipgloss.NewStyle().Bold(true)
+	}
+}

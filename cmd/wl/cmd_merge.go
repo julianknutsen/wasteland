@@ -36,6 +36,7 @@ Examples:
 
 	cmd.Flags().BoolVar(&noPush, "no-push", false, "Skip pushing to remotes")
 	cmd.Flags().BoolVar(&keepBranch, "keep-branch", false, "Don't delete branch after merge")
+	cmd.ValidArgsFunction = completeBranchNames
 
 	return cmd
 }
@@ -84,7 +85,10 @@ func runMerge(cmd *cobra.Command, stdout, _ io.Writer, branch string, noPush, ke
 	}
 
 	if !noPush {
-		_ = commons.PushWithSync(cfg.LocalDir, stdout)
+		if err := commons.PushWithSync(cfg.LocalDir, stdout); err != nil {
+			fmt.Fprintf(stdout, "\n  %s %s\n", style.Warning.Render(style.IconWarn),
+				"Push failed — merge saved locally. Run 'wl sync' to retry.")
+		}
 	}
 
 	// Best-effort: auto-close the corresponding GitHub PR shell.

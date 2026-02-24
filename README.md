@@ -50,6 +50,26 @@ Requires [Go 1.24+](https://go.dev/dl/).
 
 [Dolt](https://docs.dolthub.com/introduction/installation) must be installed and in your PATH.
 
+### Shell Completion (optional)
+
+Enable tab completion for commands, wanted IDs, branch names, and flag values:
+
+```bash
+# Bash (add to ~/.bashrc)
+source <(wl completion bash)
+
+# Zsh (add to ~/.zshrc)
+source <(wl completion zsh)
+
+# Fish
+wl completion fish | source
+
+# PowerShell
+wl completion powershell | Out-String | Invoke-Expression
+```
+
+After sourcing, `wl claim <Tab>` completes open wanted IDs, `wl merge <Tab>` completes branch names, and flags like `--type` and `--effort` complete their valid values.
+
 ## Join a Wasteland
 
 1. [Install dolt](https://docs.dolthub.com/introduction/installation) and run `dolt login`
@@ -345,11 +365,13 @@ Config and data follow XDG conventions:
 | `wl merge <branch>` | Merge a reviewed branch | `--keep-branch`, `--no-push` |
 | `wl config get\|set` | Read or write configuration | |
 | `wl verify` | Check GPG signatures | `--last` |
+| `wl doctor` | Check setup for common issues | |
+| `wl completion <shell>` | Generate shell completion script | `bash`, `zsh`, `fish`, `powershell` |
 | `wl list` | List joined wastelands | |
 | `wl leave [upstream]` | Leave a wasteland | |
-| `wl version` | Print version info | |
+| `wl version` | Print version info | `--color` |
 
-All commands accept `--wasteland <org/db>` when multiple wastelands are joined.
+All commands accept `--wasteland <org/db>` when multiple wastelands are joined and `--color <always|auto|never>` to control colored output.
 
 ## Environment Variables
 

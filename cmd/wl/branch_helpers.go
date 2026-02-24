@@ -58,13 +58,12 @@ func (m *mutationContext) Setup() (cleanup func(), err error) {
 // Push pushes changes to the appropriate remote(s).
 // In wild-west mode: PushWithSync (upstream + origin).
 // In PR mode: PushBranch (origin only).
-func (m *mutationContext) Push() {
+func (m *mutationContext) Push() error {
 	if m.noPush {
-		return
+		return nil
 	}
 	if m.branch != "" {
-		_ = commons.PushBranch(m.cfg.LocalDir, m.branch, m.stdout)
-	} else {
-		_ = commons.PushWithSync(m.cfg.LocalDir, m.stdout)
+		return commons.PushBranch(m.cfg.LocalDir, m.branch, m.stdout)
 	}
+	return commons.PushWithSync(m.cfg.LocalDir, m.stdout)
 }

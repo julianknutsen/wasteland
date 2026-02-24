@@ -30,6 +30,7 @@ Examples:
 
 	cmd.Flags().StringVar(&comment, "comment", "", "Review comment (required)")
 	_ = cmd.MarkFlagRequired("comment")
+	cmd.ValidArgsFunction = completeBranchNames
 
 	return cmd
 }

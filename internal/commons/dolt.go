@@ -22,21 +22,27 @@ func DoltHubOrg() string {
 
 // PushWithSync pushes the local main branch to both upstream and origin remotes.
 // If a push is rejected (stale), it pulls to merge and retries.
-// Warnings are printed but do not cause a fatal error — the local commit is safe.
+// Returns an error if any remote push ultimately fails.
 func PushWithSync(dbDir string, stdout io.Writer) error {
+	var failures []string
 	for _, remote := range []string{"upstream", "origin"} {
 		if err := pushRemote(dbDir, remote); err != nil {
 			fmt.Fprintf(stdout, "  Syncing with %s...\n", remote)
 			if pullErr := pullRemote(dbDir, remote); pullErr != nil {
 				fmt.Fprintf(stdout, "  warning: sync from %s failed: %v\n", remote, pullErr)
+				failures = append(failures, remote)
 				continue
 			}
 			if err := pushRemote(dbDir, remote); err != nil {
 				fmt.Fprintf(stdout, "  warning: push to %s failed after sync: %v\n", remote, err)
+				failures = append(failures, remote)
 				continue
 			}
 		}
 		fmt.Fprintf(stdout, "  Pushed to %s\n", remote)
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("push failed for remotes: %s", strings.Join(failures, ", "))
 	}
 	return nil
 }
@@ -158,9 +164,9 @@ func PushBranch(dbDir, branch string, stdout io.Writer) error {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Fprintf(stdout, "  warning: push branch %s to origin failed: %v (%s)\n", branch, err, strings.TrimSpace(string(output)))
-	} else {
-		fmt.Fprintf(stdout, "  Pushed branch %s to origin\n", branch)
+		return fmt.Errorf("push branch %s: %w", branch, err)
 	}
+	fmt.Fprintf(stdout, "  Pushed branch %s to origin\n", branch)
 	return nil
 }
 
@@ -264,6 +270,31 @@ func PushBranchToRemoteForce(dbDir, remote, branch string, force bool, stdout io
 	}
 	fmt.Fprintf(stdout, "  Pushed branch %s to %s\n", branch, remote)
 	return nil
+}
+
+// ListWantedIDs returns wanted item IDs, optionally filtered by status.
+func ListWantedIDs(dbDir, statusFilter string) ([]string, error) {
+	query := "SELECT id FROM wanted"
+	if statusFilter != "" {
+		query += fmt.Sprintf(" WHERE status = '%s'", EscapeSQL(statusFilter))
+	}
+	query += " ORDER BY created_at DESC LIMIT 50"
+	out, err := doltSQLQuery(dbDir, query)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) < 2 {
+		return nil, nil
+	}
+	var ids []string
+	for _, line := range lines[1:] {
+		id := strings.TrimSpace(line)
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
 
 // doltSQLQuery executes a SQL query and returns the raw CSV output.

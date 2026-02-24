@@ -50,6 +50,10 @@ Examples:
 	cmd.Flags().StringVar(&message, "message", "", "Freeform message")
 	cmd.Flags().BoolVar(&noPush, "no-push", false, "Skip pushing to remotes (offline work)")
 	_ = cmd.MarkFlagRequired("quality")
+	cmd.ValidArgsFunction = completeWantedIDs("in_review")
+	_ = cmd.RegisterFlagCompletionFunc("severity", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{"leaf", "branch", "root"}, cobra.ShellCompDirectiveNoFileComp
+	})
 
 	return cmd
 }
@@ -108,7 +112,10 @@ func runAccept(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, quality
 		fmt.Fprintf(stdout, "  Branch: %s\n", mc.BranchName())
 	}
 
-	mc.Push()
+	if err := mc.Push(); err != nil {
+		fmt.Fprintf(stdout, "\n  %s %s\n", style.Warning.Render(style.IconWarn),
+			"Push failed — changes saved locally. Run 'wl sync' to retry.")
+	}
 
 	return nil
 }

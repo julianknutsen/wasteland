@@ -22,7 +22,8 @@ shows completion and stamp details based on the item's current state.
 
 Examples:
   wl status w-abc123`,
-		Args: cobra.ExactArgs(1),
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWantedIDs(""),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runStatus(cmd, stdout, stderr, args[0])
 		},

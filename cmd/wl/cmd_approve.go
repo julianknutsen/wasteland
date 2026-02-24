@@ -29,6 +29,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&comment, "comment", "", "Review comment")
+	cmd.ValidArgsFunction = completeBranchNames
 
 	return cmd
 }

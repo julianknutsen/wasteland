@@ -44,6 +44,7 @@ Examples:
 	cmd.Flags().StringVar(&evidence, "evidence", "", "Evidence URL or description (required)")
 	cmd.Flags().BoolVar(&noPush, "no-push", false, "Skip pushing to remotes (offline work)")
 	_ = cmd.MarkFlagRequired("evidence")
+	cmd.ValidArgsFunction = completeWantedIDs("claimed")
 
 	return cmd
 }
@@ -78,7 +79,10 @@ func runDone(cmd *cobra.Command, stdout, _ io.Writer, wantedID, evidence string,
 		fmt.Fprintf(stdout, "  Branch: %s\n", mc.BranchName())
 	}
 
-	mc.Push()
+	if err := mc.Push(); err != nil {
+		fmt.Fprintf(stdout, "\n  %s %s\n", style.Warning.Render(style.IconWarn),
+			"Push failed — changes saved locally. Run 'wl sync' to retry.")
+	}
 
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/julianknutsen/wasteland/internal/federation"
+	"github.com/julianknutsen/wasteland/internal/style"
 	"github.com/spf13/cobra"
 )
 
@@ -61,7 +62,17 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		},
 	}
 	root.PersistentFlags().String("wasteland", "", "Upstream wasteland to use (e.g., org/db); required when multiple are joined")
-	root.CompletionOptions.DisableDefaultCmd = true
+	root.PersistentFlags().String("color", "auto", "Color output: always, auto, never")
+	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
+		colorMode, _ := cmd.Flags().GetString("color")
+		switch colorMode {
+		case "always", "auto", "never":
+			style.SetColorMode(colorMode)
+			return nil
+		default:
+			return fmt.Errorf("invalid --color value %q: must be always, auto, or never", colorMode)
+		}
+	}
 	root.AddCommand(
 		newCreateCmd(stdout, stderr),
 		newJoinCmd(stdout, stderr),
@@ -85,6 +96,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		newRequestChangesCmd(stdout, stderr),
 		newMergeCmd(stdout, stderr),
 		newVerifyCmd(stdout, stderr),
+		newDoctorCmd(stdout, stderr),
 		newVersionCmd(stdout),
 	)
 	return root

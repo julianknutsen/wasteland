@@ -33,6 +33,7 @@ Examples:
 	}
 
 	cmd.Flags().BoolVar(&noPush, "no-push", false, "Skip pushing to remotes (offline work)")
+	cmd.ValidArgsFunction = completeWantedIDs("in_review")
 
 	return cmd
 }
@@ -63,7 +64,10 @@ func runClose(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush b
 		fmt.Fprintf(stdout, "  Branch: %s\n", mc.BranchName())
 	}
 
-	mc.Push()
+	if err := mc.Push(); err != nil {
+		fmt.Fprintf(stdout, "\n  %s %s\n", style.Warning.Render(style.IconWarn),
+			"Push failed — changes saved locally. Run 'wl sync' to retry.")
+	}
 
 	return nil
 }
