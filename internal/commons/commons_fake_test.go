@@ -15,6 +15,7 @@ type fakeWLCommonsStore struct {
 	UnclaimWantedErr    error
 	SubmitCompletionErr error
 	QueryWantedErr      error
+	CloseWantedErr      error
 }
 
 func (f *fakeWLCommonsStore) InsertWanted(item *WantedItem) error {
@@ -131,6 +132,25 @@ func (f *fakeWLCommonsStore) QueryCompletion(_ string) (*CompletionRecord, error
 
 func (f *fakeWLCommonsStore) QueryStamp(_ string) (*Stamp, error) {
 	return nil, fmt.Errorf("not implemented in commons fake")
+}
+
+func (f *fakeWLCommonsStore) CloseWanted(wantedID string) error {
+	if f.CloseWantedErr != nil {
+		return f.CloseWantedErr
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	item, ok := f.items[wantedID]
+	if !ok {
+		return fmt.Errorf("wanted item %q not found", wantedID)
+	}
+	if item.Status != "in_review" {
+		return fmt.Errorf("wanted item %q is not in_review (status: %s)", wantedID, item.Status)
+	}
+	item.Status = "completed"
+	return nil
 }
 
 func (f *fakeWLCommonsStore) AcceptCompletion(_, _, _ string, _ *Stamp) error {

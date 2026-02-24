@@ -72,6 +72,23 @@ Maintainers with push access to upstream can skip forking:
 wl join --direct [--signed]          # clone upstream directly, no fork
 ```
 
+### Solo maintainer workflow
+
+If you're bootstrapping a wasteland, you can work your own wanted board:
+
+```bash
+wl post --title "Set up CI" --type feature
+wl claim w-abc123
+wl done w-abc123 --evidence "https://github.com/org/repo/pull/1"
+wl close w-abc123
+```
+
+The item moves through `open → claimed → in_review → completed`.
+Since `accept` requires a different rig to have completed the work
+(you can't stamp your own completion), use `wl close` to mark your
+own items as completed without issuing a reputation stamp. This is
+housekeeping, not reputation — stamps must come from someone else.
+
 ## Workflow
 
 A wanted item moves through this lifecycle:
@@ -79,8 +96,8 @@ A wanted item moves through this lifecycle:
 ```
 open ──→ claimed ──→ in_review ──→ completed
   │         │                         ↑
-  │         ↓                         │
-  │      (unclaim → open)         (accept + stamp)
+  │         ↓                         ├── accept (+ stamp)
+  │      (unclaim → open)             └── close  (no stamp)
   │
   ↓
 withdrawn
@@ -290,6 +307,7 @@ Config and data follow XDG conventions:
 | `wl done <id>` | Submit completion evidence | `--evidence` (required), `--no-push` |
 | `wl accept <id>` | Accept and issue a stamp | `--quality` (required), `--reliability`, `--severity`, `--skills` |
 | `wl reject <id>` | Reject back to claimed | `--reason`, `--no-push` |
+| `wl close <id>` | Close in_review item (no stamp) | `--no-push` |
 | `wl status <id>` | Show full item details | |
 | `wl update <id>` | Update an open item | `--title`, `--priority`, `--effort`, `--type`, `--tags`, `--project` |
 | `wl unclaim <id>` | Release back to open | `--no-push` |

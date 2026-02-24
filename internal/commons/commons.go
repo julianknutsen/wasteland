@@ -27,6 +27,7 @@ type WLCommonsStore interface {
 	QueryStamp(stampID string) (*Stamp, error)
 	AcceptCompletion(wantedID, completionID, rigHandle string, stamp *Stamp) error
 	RejectCompletion(wantedID, rigHandle, reason string) error
+	CloseWanted(wantedID string) error
 	UpdateWanted(wantedID string, fields *WantedUpdate) error
 	DeleteWanted(wantedID string) error
 }
@@ -101,6 +102,11 @@ func (w *WLCommons) UpdateWanted(wantedID string, fields *WantedUpdate) error {
 // RejectCompletion reverts a wanted item from in_review to claimed.
 func (w *WLCommons) RejectCompletion(wantedID, rigHandle, reason string) error {
 	return RejectCompletion(w.dbDir, wantedID, rigHandle, reason, w.signed)
+}
+
+// CloseWanted marks an in_review item as completed without a stamp.
+func (w *WLCommons) CloseWanted(wantedID string) error {
+	return CloseWanted(w.dbDir, wantedID, w.signed)
 }
 
 // DeleteWanted soft-deletes a wanted item by setting status=withdrawn.
@@ -604,6 +610,24 @@ func UpdateWanted(dbDir, wantedID string, fields *WantedUpdate, signed bool) err
 		return fmt.Errorf("wanted item %q is not open or does not exist", wantedID)
 	}
 	return fmt.Errorf("update failed: %w", err)
+}
+
+// CloseWanted marks an in_review wanted item as completed without issuing a
+// stamp. This is housekeeping for solo maintainers who completed their own work.
+// dbDir is the actual database directory.
+func CloseWanted(dbDir, wantedID string, signed bool) error {
+	script := fmt.Sprintf("UPDATE wanted SET status='completed', updated_at=NOW() WHERE id='%s' AND status='in_review';\nCALL DOLT_ADD('-A');\n",
+		EscapeSQL(wantedID))
+	script += commitSQL("wl close: "+wantedID, signed)
+
+	err := doltSQLScript(dbDir, script)
+	if err == nil {
+		return nil
+	}
+	if isNothingToCommit(err) {
+		return fmt.Errorf("wanted item %q is not in_review or does not exist", wantedID)
+	}
+	return fmt.Errorf("close failed: %w", err)
 }
 
 // formatTagsJSON formats a string slice as a JSON array SQL literal.
