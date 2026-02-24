@@ -65,11 +65,11 @@ test:
 
 ## test-integration: run all tests including integration
 test-integration:
-	go test -tags integration ./...
+	go test -tags integration -timeout 20m ./...
 
 ## test-integration-offline: run offline integration tests only (no network, requires dolt)
 test-integration-offline:
-	go test -tags integration -v ./internal/remote/ ./test/integration/offline/
+	go test -tags integration -v -timeout 20m ./internal/remote/ ./test/integration/offline/
 
 ## test-cover: run tests with coverage output
 test-cover:

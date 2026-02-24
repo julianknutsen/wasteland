@@ -116,10 +116,12 @@ func runReview(cmd *cobra.Command, stdout, _ io.Writer, branch string, jsonOut, 
 	return showDiff(stdout, cfg.LocalDir, doltPath, branch, base, jsonOut, mdOut, statOut)
 }
 
-// diffBase returns "upstream/main" if the upstream remote exists, otherwise "main".
-// In fork mode the upstream remote points to the canonical commons, so diffs show
-// what the upstream maintainer would see. In direct mode there is no upstream
-// remote and origin IS upstream, so we fall back to local main.
+// diffBase returns "upstream/main" if the upstream remote exists and can be
+// fetched, otherwise "main". In fork mode the upstream remote points to the
+// canonical commons, so diffs show what the upstream maintainer would see. In
+// direct mode there is no upstream remote and origin IS upstream, so we fall
+// back to local main. A fetch is required so that the upstream/main ref is
+// available locally (dolt remote add does not fetch).
 func diffBase(dbDir, doltPath string) string {
 	cmd := exec.Command(doltPath, "remote", "-v")
 	cmd.Dir = dbDir
@@ -129,6 +131,11 @@ func diffBase(dbDir, doltPath string) string {
 	}
 	for _, line := range strings.Split(string(output), "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "upstream") {
+			fetch := exec.Command(doltPath, "fetch", "upstream")
+			fetch.Dir = dbDir
+			if err := fetch.Run(); err != nil {
+				return "main"
+			}
 			return "upstream/main"
 		}
 	}
