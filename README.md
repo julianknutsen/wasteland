@@ -14,11 +14,41 @@ wl join hop/wl-commons
 
 ## Install
 
+### Binary (recommended)
+
+Download the latest release for your platform:
+
 ```bash
-go install github.com/julianknutsen/wasteland/cmd/wl@latest
+# macOS (Apple Silicon)
+curl -fsSL https://github.com/julianknutsen/wasteland/releases/download/v0.1.0/wasteland_0.1.0_darwin_arm64.tar.gz | tar xz
+sudo mv wl /usr/local/bin/
+
+# macOS (Intel)
+curl -fsSL https://github.com/julianknutsen/wasteland/releases/download/v0.1.0/wasteland_0.1.0_darwin_amd64.tar.gz | tar xz
+sudo mv wl /usr/local/bin/
+
+# Linux (x86_64)
+curl -fsSL https://github.com/julianknutsen/wasteland/releases/download/v0.1.0/wasteland_0.1.0_linux_amd64.tar.gz | tar xz
+sudo mv wl /usr/local/bin/
+
+# Linux (ARM64)
+curl -fsSL https://github.com/julianknutsen/wasteland/releases/download/v0.1.0/wasteland_0.1.0_linux_arm64.tar.gz | tar xz
+sudo mv wl /usr/local/bin/
 ```
 
-Requires [Go 1.24+](https://go.dev/dl/) and [Dolt](https://docs.dolthub.com/introduction/installation).
+Or browse all assets on the [v0.1.0 release page](https://github.com/julianknutsen/wasteland/releases/tag/v0.1.0).
+
+### From source
+
+```bash
+go install github.com/julianknutsen/wasteland/cmd/wl@v0.1.0
+```
+
+Requires [Go 1.24+](https://go.dev/dl/).
+
+### Prerequisites
+
+[Dolt](https://docs.dolthub.com/introduction/installation) must be installed and in your PATH.
 
 ## Getting Started
 
