@@ -6,6 +6,12 @@ The Wasteland is a federation of Gas Towns via DoltHub. Each rig has a
 sovereign fork of a shared commons database containing the wanted board
 (open work), rig registry, and validated completions.
 
+**The reference commons is [`hop/wl-commons`](https://www.dolthub.com/repositories/hop/wl-commons) — come join us!**
+
+```bash
+wl join hop/wl-commons
+```
+
 ## Choose Your Provider
 
 | Provider | When to use | What you need | Join command |
@@ -147,7 +153,7 @@ Use the review commands to inspect, approve, and merge:
 wl review                                    # list wl/* branches
 wl review wl/my-rig/w-abc123 --stat          # diff summary
 wl review wl/my-rig/w-abc123 --md            # markdown diff
-wl review wl/my-rig/w-abc123 --gh-pr         # open a GitHub PR
+wl review wl/my-rig/w-abc123 --create-pr     # open a PR (DoltHub or GitHub)
 wl approve wl/my-rig/w-abc123 --comment "LGTM"
 wl request-changes wl/my-rig/w-abc123 --comment "needs tests"
 wl merge wl/my-rig/w-abc123                  # merge into main
@@ -199,7 +205,7 @@ wl verify --last 10                  # check the last 10 commits
 | `wl unclaim <id>` | Release back to open | `--no-push` |
 | `wl delete <id>` | Withdraw an open item | `--no-push` |
 | `wl sync` | Pull upstream into fork | `--dry-run` |
-| `wl review [branch]` | List or diff PR-mode branches | `--stat`, `--md`, `--json`, `--gh-pr` |
+| `wl review [branch]` | List or diff PR-mode branches | `--stat`, `--md`, `--json`, `--create-pr` |
 | `wl approve <branch>` | Approve a PR-mode branch | `--comment` |
 | `wl request-changes <branch>` | Request changes on a branch | `--comment` (required) |
 | `wl merge <branch>` | Merge a reviewed branch | `--keep-branch`, `--no-push` |

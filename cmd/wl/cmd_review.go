@@ -12,15 +12,16 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/wasteland/internal/commons"
 	"github.com/steveyegge/wasteland/internal/federation"
+	"github.com/steveyegge/wasteland/internal/remote"
 	"github.com/steveyegge/wasteland/internal/style"
 )
 
 func newReviewCmd(stdout, stderr io.Writer) *cobra.Command {
 	var (
-		jsonOut bool
-		mdOut   bool
-		statOut bool
-		ghPR    bool
+		jsonOut  bool
+		mdOut    bool
+		statOut  bool
+		createPR bool
 	)
 
 	cmd := &cobra.Command{
@@ -32,37 +33,37 @@ Without arguments, lists all wl/* branches.
 With a branch name, shows the diff between main and the branch.
 
 Output formats (mutually exclusive):
-  (default)  Full diff piped to stdout
-  --stat     Summary statistics
-  --json     JSON diff output
-  --md       Markdown-formatted diff for pasting into PRs
-  --gh-pr    Push branch to GitHub fork and open a cross-fork PR shell
+  (default)    Full diff piped to stdout
+  --stat       Summary statistics
+  --json       JSON diff output
+  --md         Markdown-formatted diff for pasting into PRs
+  --create-pr  Push branch and open a pull request on the upstream provider
 
 Examples:
   wl review                          # list wl/* branches
   wl review wl/my-rig/w-abc123       # terminal diff
   wl review wl/my-rig/w-abc123 --stat
   wl review wl/my-rig/w-abc123 --md
-  wl review wl/my-rig/w-abc123 --gh-pr`,
+  wl review wl/my-rig/w-abc123 --create-pr`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var branch string
 			if len(args) == 1 {
 				branch = args[0]
 			}
-			return runReview(cmd, stdout, stderr, branch, jsonOut, mdOut, statOut, ghPR)
+			return runReview(cmd, stdout, stderr, branch, jsonOut, mdOut, statOut, createPR)
 		},
 	}
 
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output diff as JSON")
 	cmd.Flags().BoolVar(&mdOut, "md", false, "Output diff as Markdown")
 	cmd.Flags().BoolVar(&statOut, "stat", false, "Output diff statistics")
-	cmd.Flags().BoolVar(&ghPR, "gh-pr", false, "Push to GitHub fork and open a PR shell")
+	cmd.Flags().BoolVar(&createPR, "create-pr", false, "Push branch and open a PR on the upstream provider")
 
 	return cmd
 }
 
-func runReview(cmd *cobra.Command, stdout, _ io.Writer, branch string, jsonOut, mdOut, statOut, ghPR bool) error {
+func runReview(cmd *cobra.Command, stdout, _ io.Writer, branch string, jsonOut, mdOut, statOut, createPR bool) error {
 	// Validate mutually exclusive flags.
 	flagCount := 0
 	if jsonOut {
@@ -74,15 +75,15 @@ func runReview(cmd *cobra.Command, stdout, _ io.Writer, branch string, jsonOut, 
 	if statOut {
 		flagCount++
 	}
-	if ghPR {
+	if createPR {
 		flagCount++
 	}
 	if flagCount > 1 {
-		return fmt.Errorf("--json, --md, --stat, and --gh-pr are mutually exclusive")
+		return fmt.Errorf("--json, --md, --stat, and --create-pr are mutually exclusive")
 	}
 
-	if ghPR && branch == "" {
-		return fmt.Errorf("--gh-pr requires a branch argument")
+	if createPR && branch == "" {
+		return fmt.Errorf("--create-pr requires a branch argument")
 	}
 
 	cfg, err := resolveWasteland(cmd)
@@ -99,8 +100,15 @@ func runReview(cmd *cobra.Command, stdout, _ io.Writer, branch string, jsonOut, 
 		return fmt.Errorf("dolt not found in PATH — install from https://docs.dolthub.com/introduction/installation")
 	}
 
-	if ghPR {
-		return runGitHubPR(stdout, cfg, doltPath, branch)
+	if createPR {
+		switch cfg.ResolveProviderType() {
+		case "github":
+			return runGitHubPR(stdout, cfg, doltPath, branch)
+		case "dolthub":
+			return runDoltHubPR(stdout, cfg, doltPath, branch)
+		default:
+			return fmt.Errorf("--create-pr: provider %q does not support pull requests", cfg.ResolveProviderType())
+		}
 	}
 
 	return showDiff(stdout, cfg.LocalDir, doltPath, branch, jsonOut, mdOut, statOut)
@@ -200,10 +208,6 @@ func renderMarkdownDiff(stdout io.Writer, dbDir, doltPath, branch string) error 
 // --- GitHub PR shell ---
 
 func runGitHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch string) error {
-	if !cfg.IsGitHub() {
-		return fmt.Errorf("--gh-pr requires GitHub provider (joined with --github)")
-	}
-
 	ghPath, err := exec.LookPath("gh")
 	if err != nil {
 		return fmt.Errorf("gh not found in PATH — install from https://cli.github.com")
@@ -229,6 +233,44 @@ func runGitHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch stri
 	prURL, err := createGitHubPR(client, cfg.Upstream, cfg.ForkOrg, cfg.ForkDB, branch, prTitle, mdBuf.String(), stdout)
 	if err != nil {
 		return err
+	}
+
+	fmt.Fprintf(stdout, "\n%s %s\n", style.Bold.Render("PR:"), prURL)
+	return nil
+}
+
+func runDoltHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch string) error {
+	token := os.Getenv("DOLTHUB_TOKEN")
+	if token == "" {
+		return fmt.Errorf("DOLTHUB_TOKEN environment variable is required for DoltHub PRs")
+	}
+
+	// Push dolt branch to origin.
+	if err := commons.PushBranchToRemote(cfg.LocalDir, "origin", branch, stdout); err != nil {
+		return fmt.Errorf("pushing to DoltHub fork: %w", err)
+	}
+
+	// Generate markdown diff for PR body.
+	var mdBuf bytes.Buffer
+	if err := renderMarkdownDiff(&mdBuf, cfg.LocalDir, doltPath, branch); err != nil {
+		return fmt.Errorf("generating markdown diff: %w", err)
+	}
+
+	// Get wanted title for PR title.
+	title := wantedTitleFromBranch(doltPath, cfg.LocalDir, branch)
+	prTitle := fmt.Sprintf("[wl] %s", title)
+
+	// Parse upstream into org + db.
+	upstreamOrg, db, err := federation.ParseUpstream(cfg.Upstream)
+	if err != nil {
+		return fmt.Errorf("parsing upstream: %w", err)
+	}
+
+	// Create PR via DoltHub REST API.
+	provider := remote.NewDoltHubProvider(token)
+	prURL, err := provider.CreatePR(cfg.ForkOrg, upstreamOrg, db, branch, prTitle, mdBuf.String())
+	if err != nil {
+		return fmt.Errorf("creating DoltHub PR: %w", err)
 	}
 
 	fmt.Fprintf(stdout, "\n%s %s\n", style.Bold.Render("PR:"), prURL)

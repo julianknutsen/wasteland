@@ -45,10 +45,10 @@ func TestProviderGateRequestChanges(t *testing.T) {
 	}
 }
 
-func TestProviderGateReviewGHPR(t *testing.T) {
+func TestProviderGateReviewCreatePR(t *testing.T) {
 	for _, backend := range backends {
 		if backend == githubBackend {
-			continue // on github backend, --gh-pr passes the gate
+			continue // on github backend, --create-pr passes the gate
 		}
 		t.Run(string(backend), func(t *testing.T) {
 			env := joinedEnv(t, backend)
@@ -67,12 +67,12 @@ func TestProviderGateReviewGHPR(t *testing.T) {
 			wantedID := extractWantedID(t, stdout)
 			branch := "wl/" + forkOrg + "/" + wantedID
 
-			_, stderr, err := runWL(t, env, "review", branch, "--gh-pr")
+			_, stderr, err := runWL(t, env, "review", branch, "--create-pr")
 			if err == nil {
-				t.Fatal("review --gh-pr should fail on non-GitHub backend")
+				t.Fatal("review --create-pr should fail on non-PR-capable backend")
 			}
-			if !strings.Contains(stderr, "requires GitHub provider") {
-				t.Errorf("expected 'requires GitHub provider' error, got stderr: %s", stderr)
+			if !strings.Contains(stderr, "does not support pull requests") {
+				t.Errorf("expected 'does not support pull requests' error, got stderr: %s", stderr)
 			}
 		})
 	}

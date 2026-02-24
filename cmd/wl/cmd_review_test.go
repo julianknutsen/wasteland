@@ -45,17 +45,17 @@ func TestReviewMutuallyExclusiveFlags(t *testing.T) {
 	}
 }
 
-func TestReviewGhPRMutuallyExclusive(t *testing.T) {
+func TestReviewCreatePRMutuallyExclusive(t *testing.T) {
 	for _, tc := range []struct {
-		name                    string
-		jsonOut, md, stat, ghPR bool
+		name                        string
+		jsonOut, md, stat, createPR bool
 	}{
-		{"gh-pr+json", true, false, false, true},
-		{"gh-pr+md", false, true, false, true},
-		{"gh-pr+stat", false, false, true, true},
+		{"create-pr+json", true, false, false, true},
+		{"create-pr+md", false, true, false, true},
+		{"create-pr+stat", false, false, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := runReview(nil, &bytes.Buffer{}, &bytes.Buffer{}, "wl/x/y", tc.jsonOut, tc.md, tc.stat, tc.ghPR)
+			err := runReview(nil, &bytes.Buffer{}, &bytes.Buffer{}, "wl/x/y", tc.jsonOut, tc.md, tc.stat, tc.createPR)
 			if err == nil {
 				t.Error("expected error for mutually exclusive flags")
 			}
@@ -63,12 +63,12 @@ func TestReviewGhPRMutuallyExclusive(t *testing.T) {
 	}
 }
 
-func TestReviewGhPRRequiresBranch(t *testing.T) {
+func TestReviewCreatePRRequiresBranch(t *testing.T) {
 	err := runReview(nil, &bytes.Buffer{}, &bytes.Buffer{}, "", false, false, false, true)
 	if err == nil {
-		t.Error("expected error for --gh-pr without branch")
+		t.Error("expected error for --create-pr without branch")
 	}
-	if err != nil && !strings.Contains(err.Error(), "--gh-pr requires a branch") {
+	if err != nil && !strings.Contains(err.Error(), "--create-pr requires a branch") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }

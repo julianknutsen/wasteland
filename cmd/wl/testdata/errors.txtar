@@ -197,20 +197,20 @@ stderr 'unknown config key'
 ! exec wl config set provider-type github
 stderr 'read-only'
 
-# review --gh-pr without branch.
-! exec wl review --gh-pr
+# review --create-pr without branch.
+! exec wl review --create-pr
 stderr 'requires a branch'
 
-# review --gh-pr with --md (mutually exclusive).
-! exec wl review wl/rig/w-abc --gh-pr --md
+# review --create-pr with --md (mutually exclusive).
+! exec wl review wl/rig/w-abc --create-pr --md
 stderr 'mutually exclusive'
 
-# review --gh-pr with --json (mutually exclusive).
-! exec wl review wl/rig/w-abc --gh-pr --json
+# review --create-pr with --json (mutually exclusive).
+! exec wl review wl/rig/w-abc --create-pr --json
 stderr 'mutually exclusive'
 
-# review --gh-pr with --stat (mutually exclusive).
-! exec wl review wl/rig/w-abc --gh-pr --stat
+# review --create-pr with --stat (mutually exclusive).
+! exec wl review wl/rig/w-abc --create-pr --stat
 stderr 'mutually exclusive'
 
 # review --json with --stat (mutually exclusive).

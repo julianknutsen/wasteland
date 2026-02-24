@@ -17,7 +17,7 @@ func newRequestChangesCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short: "Request changes on a PR-mode branch",
 		Long: `Submit a "request changes" review on the GitHub PR for a wl/* branch.
 
-Requires a GitHub PR to exist (created via 'wl review --gh-pr').
+Requires a GitHub PR to exist (created via 'wl review --create-pr').
 The --comment flag is required to explain what needs to change.
 
 Examples:

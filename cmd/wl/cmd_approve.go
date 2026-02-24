@@ -17,7 +17,7 @@ func newApproveCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short: "Approve a PR-mode branch",
 		Long: `Submit an approving review on the GitHub PR for a wl/* branch.
 
-Requires a GitHub PR to exist (created via 'wl review --gh-pr').
+Requires a GitHub PR to exist (created via 'wl review --create-pr').
 
 Examples:
   wl approve wl/my-rig/w-abc123
