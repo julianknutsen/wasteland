@@ -8,6 +8,7 @@ type activeView int
 const (
 	viewBrowse activeView = iota
 	viewDetail
+	viewMe
 )
 
 // navigateMsg requests a view switch.
@@ -29,6 +30,12 @@ type detailDataMsg struct {
 	stamp      *commons.Stamp
 	err        error
 	branch     string // non-empty when detail was read from a PR branch
+}
+
+// meDataMsg carries dashboard query results.
+type meDataMsg struct {
+	data *commons.DashboardData
+	err  error
 }
 
 // errMsg carries an error to display.

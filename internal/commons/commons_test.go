@@ -241,6 +241,110 @@ func TestFormatTagsJSON(t *testing.T) {
 	}
 }
 
+func TestBuildBrowseQuery_MyItems(t *testing.T) {
+	t.Parallel()
+	f := BrowseFilter{Priority: -1, MyItems: "my-rig"}
+	q := BuildBrowseQuery(f)
+	if !strings.Contains(q, "(posted_by = 'my-rig' OR claimed_by = 'my-rig')") {
+		t.Errorf("MyItems should produce OR clause, got:\n%s", q)
+	}
+	// MyItems should suppress separate PostedBy/ClaimedBy.
+	if strings.Contains(q, "AND posted_by =") || strings.Contains(q, "AND claimed_by =") {
+		t.Error("MyItems should suppress separate posted_by/claimed_by conditions")
+	}
+}
+
+func TestBuildBrowseQuery_MyItems_OverridesPostedClaimedBy(t *testing.T) {
+	t.Parallel()
+	f := BrowseFilter{Priority: -1, MyItems: "my-rig", PostedBy: "other", ClaimedBy: "other"}
+	q := BuildBrowseQuery(f)
+	if !strings.Contains(q, "(posted_by = 'my-rig' OR claimed_by = 'my-rig')") {
+		t.Errorf("MyItems should take priority, got:\n%s", q)
+	}
+	if strings.Contains(q, "posted_by = 'other'") {
+		t.Error("PostedBy should be ignored when MyItems is set")
+	}
+}
+
+func TestBuildBrowseQuery_SortPriority(t *testing.T) {
+	t.Parallel()
+	f := BrowseFilter{Priority: -1, Sort: SortPriority}
+	q := BuildBrowseQuery(f)
+	if !strings.Contains(q, "ORDER BY priority ASC, created_at DESC") {
+		t.Errorf("SortPriority should order by priority, got:\n%s", q)
+	}
+}
+
+func TestBuildBrowseQuery_SortNewest(t *testing.T) {
+	t.Parallel()
+	f := BrowseFilter{Priority: -1, Sort: SortNewest}
+	q := BuildBrowseQuery(f)
+	if !strings.Contains(q, "ORDER BY created_at DESC") {
+		t.Errorf("SortNewest should order by created_at DESC, got:\n%s", q)
+	}
+	if strings.Contains(q, "priority ASC") {
+		t.Error("SortNewest should not include priority ordering")
+	}
+}
+
+func TestBuildBrowseQuery_SortAlpha(t *testing.T) {
+	t.Parallel()
+	f := BrowseFilter{Priority: -1, Sort: SortAlpha}
+	q := BuildBrowseQuery(f)
+	if !strings.Contains(q, "ORDER BY title ASC") {
+		t.Errorf("SortAlpha should order by title ASC, got:\n%s", q)
+	}
+}
+
+func TestBuildBrowseQuery_PriorityFilter(t *testing.T) {
+	t.Parallel()
+	f := BrowseFilter{Priority: 1}
+	q := BuildBrowseQuery(f)
+	if !strings.Contains(q, "priority = 1") {
+		t.Errorf("Priority=1 should filter by priority, got:\n%s", q)
+	}
+}
+
+func TestValidPriorities(t *testing.T) {
+	t.Parallel()
+	got := ValidPriorities()
+	want := []int{-1, 0, 1, 2, 3, 4}
+	if len(got) != len(want) {
+		t.Fatalf("len = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("index %d: got %d, want %d", i, got[i], want[i])
+		}
+	}
+}
+
+func TestPriorityLabel(t *testing.T) {
+	t.Parallel()
+	if got := PriorityLabel(-1); got != "all" {
+		t.Errorf("PriorityLabel(-1) = %q, want %q", got, "all")
+	}
+	if got := PriorityLabel(0); got != "P0" {
+		t.Errorf("PriorityLabel(0) = %q, want %q", got, "P0")
+	}
+	if got := PriorityLabel(3); got != "P3" {
+		t.Errorf("PriorityLabel(3) = %q, want %q", got, "P3")
+	}
+}
+
+func TestSortLabel(t *testing.T) {
+	t.Parallel()
+	if got := SortLabel(SortPriority); got != "priority" {
+		t.Errorf("SortLabel(SortPriority) = %q", got)
+	}
+	if got := SortLabel(SortNewest); got != "newest" {
+		t.Errorf("SortLabel(SortNewest) = %q", got)
+	}
+	if got := SortLabel(SortAlpha); got != "alpha" {
+		t.Errorf("SortLabel(SortAlpha) = %q", got)
+	}
+}
+
 func TestFormatTagsJSON_RoundTrip(t *testing.T) {
 	t.Parallel()
 	tags := []string{"it's", "go", `say "hi"`}

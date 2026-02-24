@@ -456,3 +456,237 @@ func TestDetail_ExecutingState_IgnoresKeys(t *testing.T) {
 		t.Error("should not return cmd while executing")
 	}
 }
+
+func TestRootModel_MeKey_NavigatesToMe(t *testing.T) {
+	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m.browse.loading = false
+	m.width = 80
+	m.height = 24
+	m.browse.setSize(80, 23)
+
+	// Press 'm' to navigate to me dashboard.
+	result, cmd := m.Update(keyMsg("m"))
+	m2 := result.(Model)
+
+	if cmd == nil {
+		t.Fatal("after 'm': expected a cmd, got nil")
+	}
+	// Execute the cmd to get the navigateMsg.
+	msg := cmd()
+	nav, ok := msg.(navigateMsg)
+	if !ok {
+		t.Fatalf("expected navigateMsg, got %T", msg)
+	}
+	if nav.view != viewMe {
+		t.Errorf("expected viewMe, got %d", nav.view)
+	}
+
+	// Feed the navigate msg back in.
+	result, cmd = m2.Update(nav)
+	m3 := result.(Model)
+	if m3.active != viewMe {
+		t.Errorf("active = %d, want viewMe", m3.active)
+	}
+	if !m3.me.loading {
+		t.Error("me should be loading after navigation")
+	}
+	if cmd == nil {
+		t.Error("expected fetchMe cmd")
+	}
+}
+
+func TestRootModel_MeDataMsg_SetsData(t *testing.T) {
+	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m.active = viewMe
+	m.me.loading = true
+	m.width = 80
+	m.height = 24
+
+	data := &commons.DashboardData{
+		Claimed: []commons.WantedSummary{
+			{ID: "w-123", Title: "Test", Status: "claimed", Priority: 1},
+		},
+	}
+	result, _ := m.Update(meDataMsg{data: data})
+	m2 := result.(Model)
+
+	if m2.me.loading {
+		t.Error("me should not be loading after data msg")
+	}
+	if m2.me.data == nil {
+		t.Fatal("me.data should be set")
+	}
+	if len(m2.me.data.Claimed) != 1 {
+		t.Errorf("claimed items = %d, want 1", len(m2.me.data.Claimed))
+	}
+}
+
+func TestMe_EscReturns(t *testing.T) {
+	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m.active = viewMe
+	m.me.loading = false
+	m.me.data = &commons.DashboardData{}
+	m.width = 80
+	m.height = 24
+
+	// Press esc to go back.
+	result, cmd := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEsc})
+	_ = result.(Model)
+
+	if cmd == nil {
+		t.Fatal("expected cmd from esc, got nil")
+	}
+	msg := cmd()
+	nav, ok := msg.(navigateMsg)
+	if !ok {
+		t.Fatalf("expected navigateMsg, got %T", msg)
+	}
+	if nav.view != viewBrowse {
+		t.Errorf("expected viewBrowse, got %d", nav.view)
+	}
+}
+
+func TestMe_EnterOpensDetail(t *testing.T) {
+	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m.active = viewMe
+	m.width = 80
+	m.height = 24
+	m.me.loading = false
+	m.me.data = &commons.DashboardData{
+		Claimed: []commons.WantedSummary{
+			{ID: "w-test1", Title: "Item 1", Status: "claimed", Priority: 1},
+		},
+	}
+	m.me.cursor = 0
+
+	result, cmd := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	_ = result.(Model)
+
+	if cmd == nil {
+		t.Fatal("expected cmd from enter, got nil")
+	}
+	msg := cmd()
+	nav, ok := msg.(navigateMsg)
+	if !ok {
+		t.Fatalf("expected navigateMsg, got %T", msg)
+	}
+	if nav.view != viewDetail {
+		t.Errorf("expected viewDetail, got %d", nav.view)
+	}
+	if nav.wantedID != "w-test1" {
+		t.Errorf("wantedID = %q, want %q", nav.wantedID, "w-test1")
+	}
+}
+
+func TestMe_View_ShowsSections(t *testing.T) {
+	m := newMeModel()
+	m.loading = false
+	m.width = 80
+	m.height = 24
+	m.data = &commons.DashboardData{
+		Claimed: []commons.WantedSummary{
+			{ID: "w-1", Title: "Claimed item", Status: "claimed", Priority: 1, Project: "proj"},
+		},
+		InReview: []commons.WantedSummary{
+			{ID: "w-2", Title: "Review item", Status: "in_review", Priority: 2, Project: "proj"},
+		},
+		Completed: []commons.WantedSummary{
+			{ID: "w-3", Title: "Done item", Status: "completed", Priority: 2, Project: "proj"},
+		},
+	}
+
+	v := m.view()
+	if !strings.Contains(v, "My Dashboard") {
+		t.Errorf("view should contain title, got:\n%s", v)
+	}
+	if !strings.Contains(v, "My Claimed Items") {
+		t.Errorf("view should contain claimed section, got:\n%s", v)
+	}
+	if !strings.Contains(v, "Awaiting My Review") {
+		t.Errorf("view should contain review section, got:\n%s", v)
+	}
+	if !strings.Contains(v, "Recent Completions") {
+		t.Errorf("view should contain completions section, got:\n%s", v)
+	}
+}
+
+func TestRootModel_ProjectFilter_RoundTrip(t *testing.T) {
+	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m.browse.loading = false
+	m.width = 80
+	m.height = 24
+	m.browse.setSize(80, 23)
+
+	// Enter project mode via root Update.
+	result, _ := m.Update(keyMsg("P"))
+	m = result.(Model)
+	if !m.browse.projectMode {
+		t.Fatal("should be in project mode")
+	}
+
+	// Type "gastown" through root Update.
+	for _, ch := range "gastown" {
+		result, _ = m.Update(keyMsg(string(ch)))
+		m = result.(Model)
+	}
+	if m.browse.project.Value() != "gastown" {
+		t.Fatalf("project value through root = %q, want %q", m.browse.project.Value(), "gastown")
+	}
+
+	// Press Enter through root Update.
+	result, cmd := m.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter})
+	m = result.(Model)
+	if m.browse.projectMode {
+		t.Error("project mode should be off")
+	}
+	if cmd == nil {
+		t.Fatal("expected fetchBrowse cmd")
+	}
+
+	// Verify projectFilter stored value.
+	if m.browse.projectFilter != "gastown" {
+		t.Errorf("projectFilter = %q, want %q", m.browse.projectFilter, "gastown")
+	}
+	f := m.browse.filter(m.cfg.RigHandle)
+	if f.Project != "gastown" {
+		t.Errorf("filter Project = %q, want %q", f.Project, "gastown")
+	}
+
+	// Simulate data arriving.
+	result, _ = m.Update(browseDataMsg{items: nil})
+	m = result.(Model)
+
+	// Cycle status through root — project should survive.
+	result, cmd = m.Update(keyMsg("s"))
+	m = result.(Model)
+	if cmd == nil {
+		t.Fatal("expected cmd after 's'")
+	}
+	if m.browse.projectFilter != "gastown" {
+		t.Errorf("after status cycle, projectFilter = %q, want %q", m.browse.projectFilter, "gastown")
+	}
+	f = m.browse.filter(m.cfg.RigHandle)
+	if f.Project != "gastown" {
+		t.Errorf("after status cycle, filter Project = %q, want %q", f.Project, "gastown")
+	}
+
+	// View should show "Project: gastown".
+	v := m.View()
+	if !strings.Contains(v, "gastown") {
+		t.Errorf("view should show 'gastown' in filter bar, got:\n%s", v)
+	}
+}
+
+func TestMe_View_Hints(t *testing.T) {
+	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m.active = viewMe
+	m.me.loading = false
+	m.me.data = &commons.DashboardData{}
+	m.width = 80
+	m.height = 24
+
+	v := m.View()
+	if !strings.Contains(v, "esc: back") {
+		t.Errorf("me view hints should contain 'esc: back', got:\n%s", v)
+	}
+}

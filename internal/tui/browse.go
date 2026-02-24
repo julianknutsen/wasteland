@@ -13,37 +13,57 @@ import (
 )
 
 type browseModel struct {
-	items      []commons.WantedSummary
-	cursor     int
-	statusIdx  int // index into statusCycle
-	typeIdx    int // index into typeCycle
-	searchMode bool
-	search     textinput.Model
-	width      int
-	height     int
-	loading    bool
-	err        error
+	items         []commons.WantedSummary
+	cursor        int
+	statusIdx     int // index into statusCycle
+	typeIdx       int // index into typeCycle
+	priorityIdx   int // index into priorityCycle
+	sortIdx       int // index into sortCycle
+	myItems       bool
+	searchMode    bool
+	search        textinput.Model
+	projectMode   bool
+	project       textinput.Model
+	projectFilter string // applied project value; decoupled from textinput state
+	width         int
+	height        int
+	loading       bool
+	err           error
 }
 
 func newBrowseModel() browseModel {
 	ti := textinput.New()
 	ti.Placeholder = "search title..."
 	ti.CharLimit = 64
+
+	pi := textinput.New()
+	pi.Placeholder = "project name..."
+	pi.CharLimit = 32
+
 	return browseModel{
 		statusIdx: 0, // default to "open"
 		search:    ti,
+		project:   pi,
 		loading:   true,
 	}
 }
 
-func (m browseModel) filter() commons.BrowseFilter {
-	return commons.BrowseFilter{
+func (m browseModel) filter(rigHandle string) commons.BrowseFilter {
+	f := commons.BrowseFilter{
 		Status:   commons.ValidStatuses()[m.statusIdx],
 		Type:     commons.ValidTypes()[m.typeIdx],
-		Priority: -1,
+		Priority: commons.ValidPriorities()[m.priorityIdx],
 		Limit:    100,
 		Search:   m.search.Value(),
+		Sort:     commons.ValidSortOrders()[m.sortIdx],
 	}
+	if m.projectFilter != "" {
+		f.Project = m.projectFilter
+	}
+	if m.myItems && rigHandle != "" {
+		f.MyItems = rigHandle
+	}
+	return f
 }
 
 func (m *browseModel) setSize(w, h int) {
@@ -63,6 +83,9 @@ func (m *browseModel) setData(msg browseDataMsg) {
 func (m browseModel) update(msg bubbletea.Msg, cfg Config) (browseModel, bubbletea.Cmd) {
 	if m.searchMode {
 		return m.updateSearch(msg, cfg)
+	}
+	if m.projectMode {
+		return m.updateProject(msg, cfg)
 	}
 
 	if msg, ok := msg.(bubbletea.KeyMsg); ok {
@@ -97,13 +120,47 @@ func (m browseModel) update(msg bubbletea.Msg, cfg Config) (browseModel, bubblet
 			m.statusIdx = (m.statusIdx + 1) % len(commons.ValidStatuses())
 			m.cursor = 0
 			m.loading = true
-			return m, fetchBrowse(cfg, m.filter())
+			return m, fetchBrowse(cfg, m.filter(cfg.RigHandle))
 
 		case key.Matches(msg, keys.Type):
 			m.typeIdx = (m.typeIdx + 1) % len(commons.ValidTypes())
 			m.cursor = 0
 			m.loading = true
-			return m, fetchBrowse(cfg, m.filter())
+			return m, fetchBrowse(cfg, m.filter(cfg.RigHandle))
+
+		case key.Matches(msg, keys.Priority):
+			m.priorityIdx = (m.priorityIdx + 1) % len(commons.ValidPriorities())
+			m.cursor = 0
+			m.loading = true
+			return m, fetchBrowse(cfg, m.filter(cfg.RigHandle))
+
+		case key.Matches(msg, keys.Project):
+			m.projectMode = true
+			m.project.SetValue(m.projectFilter)
+			m.project.Focus()
+			return m, textinput.Blink
+
+		case key.Matches(msg, keys.MyItems):
+			m.myItems = !m.myItems
+			if m.myItems {
+				// Reset status to "all" so the user sees all their items,
+				// not just the ones matching the current status filter.
+				m.statusIdx = len(commons.ValidStatuses()) - 1
+			}
+			m.cursor = 0
+			m.loading = true
+			return m, fetchBrowse(cfg, m.filter(cfg.RigHandle))
+
+		case key.Matches(msg, keys.Sort):
+			m.sortIdx = (m.sortIdx + 1) % len(commons.ValidSortOrders())
+			m.cursor = 0
+			m.loading = true
+			return m, fetchBrowse(cfg, m.filter(cfg.RigHandle))
+
+		case key.Matches(msg, keys.Me):
+			return m, func() bubbletea.Msg {
+				return navigateMsg{view: viewMe}
+			}
 		}
 	}
 
@@ -119,7 +176,7 @@ func (m browseModel) updateSearch(msg bubbletea.Msg, cfg Config) (browseModel, b
 			if msg.String() == "enter" {
 				m.cursor = 0
 				m.loading = true
-				return m, fetchBrowse(cfg, m.filter())
+				return m, fetchBrowse(cfg, m.filter(cfg.RigHandle))
 			}
 			return m, nil
 		}
@@ -130,6 +187,27 @@ func (m browseModel) updateSearch(msg bubbletea.Msg, cfg Config) (browseModel, b
 	return m, cmd
 }
 
+func (m browseModel) updateProject(msg bubbletea.Msg, cfg Config) (browseModel, bubbletea.Cmd) {
+	if msg, ok := msg.(bubbletea.KeyMsg); ok {
+		switch msg.String() {
+		case "enter", "esc":
+			m.projectMode = false
+			m.project.Blur()
+			if msg.String() == "enter" {
+				m.projectFilter = m.project.Value()
+				m.cursor = 0
+				m.loading = true
+				return m, fetchBrowse(cfg, m.filter(cfg.RigHandle))
+			}
+			return m, nil
+		}
+	}
+
+	var cmd bubbletea.Cmd
+	m.project, cmd = m.project.Update(msg)
+	return m, cmd
+}
+
 func (m browseModel) view() string {
 	var b strings.Builder
 
@@ -137,26 +215,57 @@ func (m browseModel) view() string {
 	b.WriteString(styleTitle.Render("Wasteland Board"))
 	b.WriteByte('\n')
 
-	// Filter bar — always visible so user can see active filters.
+	// Two-line filter bar.
 	statusLabel := commons.StatusLabel(commons.ValidStatuses()[m.statusIdx])
 	typeLabel := commons.TypeLabel(commons.ValidTypes()[m.typeIdx])
-	filterLine := fmt.Sprintf("  [s] Status: %-12s  [t] Type: %-10s", statusLabel, typeLabel)
-	if m.search.Value() != "" {
-		filterLine += fmt.Sprintf("  Search: %q", m.search.Value())
+
+	mineLabel := "OFF"
+	mineStr := fmt.Sprintf("[i] Mine: %s", mineLabel)
+	if m.myItems {
+		mineLabel = "ON"
+		mineStr = "[i] Mine: " + styleMineOn.Render(mineLabel)
 	}
-	b.WriteString(styleFilterBar.Render(filterLine))
+	sortLabel := commons.SortLabel(commons.ValidSortOrders()[m.sortIdx])
+
+	filterLine1 := fmt.Sprintf("  [s] Status: %-12s  [t] Type: %-10s  %s  [o] Sort: %s",
+		statusLabel, typeLabel, mineStr, sortLabel)
+	b.WriteString(styleFilterBar.Render(filterLine1))
 	b.WriteByte('\n')
 
-	// Search bar — shown on its own line when active.
+	priLabel := commons.PriorityLabel(commons.ValidPriorities()[m.priorityIdx])
+	projLabel := "--"
+	if m.projectFilter != "" {
+		projLabel = m.projectFilter
+	}
+	filterLine2 := fmt.Sprintf("  [p] Priority: %-8s  [P] Project: %-8s", priLabel, projLabel)
+	if m.search.Value() != "" {
+		filterLine2 += fmt.Sprintf("  Search: %q", m.search.Value())
+	}
+	b.WriteString(styleFilterBar.Render(filterLine2))
+	b.WriteByte('\n')
+
+	// Text input bars.
 	if m.searchMode {
 		b.WriteString("  Search: ")
 		b.WriteString(m.search.View())
 		b.WriteByte('\n')
 	}
+	if m.projectMode {
+		b.WriteString("  Project: ")
+		b.WriteString(m.project.View())
+		b.WriteByte('\n')
+	}
 
-	// Column headers.
-	colHeader := fmt.Sprintf("  %-12s %-36s %-10s %-8s %-4s %-8s",
-		"ID", "TITLE", "PROJECT", "TYPE", "PRI", "EFFORT")
+	// Column headers — replace EFFORT with STATUS, add POSTED BY for wide terminals.
+	wide := m.width > 100
+	var colHeader string
+	if wide {
+		colHeader = fmt.Sprintf("  %-12s %-30s %-10s %-8s %-4s %-10s %-12s",
+			"ID", "TITLE", "PROJECT", "TYPE", "PRI", "STATUS", "POSTED BY")
+	} else {
+		colHeader = fmt.Sprintf("  %-12s %-30s %-10s %-8s %-4s %-10s",
+			"ID", "TITLE", "PROJECT", "TYPE", "PRI", "STATUS")
+	}
 	b.WriteString(styleDim.Render(colHeader))
 	b.WriteByte('\n')
 
@@ -186,8 +295,11 @@ func (m browseModel) view() string {
 	b.WriteByte('\n')
 
 	// Compute visible window.
-	headerLines := 6 // title + filter + colheader + sep + count + slack
+	headerLines := 7 // title + filter1 + filter2 + colheader + sep + count + slack
 	if m.searchMode {
+		headerLines++
+	}
+	if m.projectMode {
 		headerLines++
 	}
 	listHeight := m.height - headerLines
@@ -203,15 +315,23 @@ func (m browseModel) view() string {
 		endIdx = len(m.items)
 	}
 
+	titleMax := 30
 	for i := startIdx; i < endIdx; i++ {
 		item := m.items[i]
 		title := item.Title
-		if len(title) > 36 {
-			title = title[:33] + "..."
+		if len(title) > titleMax {
+			title = title[:titleMax-3] + "..."
 		}
 		pri := colorizePriority(item.Priority)
-		line := fmt.Sprintf("  %-12s %-36s %-10s %-8s %-4s %-8s",
-			item.ID, title, item.Project, item.Type, pri, item.EffortLevel)
+		status := colorizeStatus(item.Status)
+		var line string
+		if wide {
+			line = fmt.Sprintf("  %-12s %-30s %-10s %-8s %-4s %-10s %-12s",
+				item.ID, title, item.Project, item.Type, pri, status, item.PostedBy)
+		} else {
+			line = fmt.Sprintf("  %-12s %-30s %-10s %-8s %-4s %-10s",
+				item.ID, title, item.Project, item.Type, pri, status)
+		}
 
 		if i == m.cursor {
 			line = styleSelected.Width(m.width).Render(line)

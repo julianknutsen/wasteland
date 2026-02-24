@@ -26,6 +26,7 @@ type Model struct {
 	active   activeView
 	browse   browseModel
 	detail   detailModel
+	me       meModel
 	bar      statusBar
 	width    int
 	height   int
@@ -40,13 +41,14 @@ func New(cfg Config) Model {
 		active: viewBrowse,
 		browse: newBrowseModel(),
 		detail: newDetailModel(cfg.DBDir, cfg.RigHandle, cfg.Mode),
+		me:     newMeModel(),
 		bar:    newStatusBar(fmt.Sprintf("%s@%s", cfg.RigHandle, cfg.Upstream)),
 	}
 }
 
 // Init starts the initial data load.
 func (m Model) Init() bubbletea.Cmd {
-	return fetchBrowse(m.cfg, m.browse.filter())
+	return fetchBrowse(m.cfg, m.browse.filter(m.cfg.RigHandle))
 }
 
 // Update processes messages.
@@ -64,6 +66,7 @@ func (m Model) Update(msg bubbletea.Msg) (bubbletea.Model, bubbletea.Cmd) {
 		m.bar.width = msg.Width
 		m.browse.setSize(msg.Width, msg.Height-1) // -1 for statusbar
 		m.detail.setSize(msg.Width, msg.Height-1)
+		m.me.setSize(msg.Width, msg.Height-1)
 
 	case navigateMsg:
 		m.active = msg.view
@@ -71,7 +74,10 @@ func (m Model) Update(msg bubbletea.Msg) (bubbletea.Model, bubbletea.Cmd) {
 		case viewDetail:
 			return m, fetchDetail(m.cfg, msg.wantedID)
 		case viewBrowse:
-			return m, fetchBrowse(m.cfg, m.browse.filter())
+			return m, fetchBrowse(m.cfg, m.browse.filter(m.cfg.RigHandle))
+		case viewMe:
+			m.me.loading = true
+			return m, fetchMe(m.cfg)
 		}
 
 	case browseDataMsg:
@@ -80,6 +86,10 @@ func (m Model) Update(msg bubbletea.Msg) (bubbletea.Model, bubbletea.Cmd) {
 
 	case detailDataMsg:
 		m.detail.setData(msg)
+		return m, nil
+
+	case meDataMsg:
+		m.me.setData(msg)
 		return m, nil
 
 	case actionRequestMsg:
@@ -146,6 +156,8 @@ func (m Model) Update(msg bubbletea.Msg) (bubbletea.Model, bubbletea.Cmd) {
 		m.browse, cmd = m.browse.update(msg, m.cfg)
 	case viewDetail:
 		m.detail, cmd = m.detail.update(msg)
+	case viewMe:
+		m.me, cmd = m.me.update(msg)
 	}
 	return m, cmd
 }
@@ -162,10 +174,13 @@ func (m Model) View() string {
 	switch m.active {
 	case viewBrowse:
 		content = m.browse.view()
-		hints = "j/k: navigate  enter: open  /: search  s: cycle status  t: cycle type  q: quit"
+		hints = "j/k: navigate  enter: open  s/t/p/o: filters  i: mine  P: project  /: search  m: me  q: quit"
 	case viewDetail:
 		content = m.detail.view()
 		hints = "esc: back  j/k: scroll  c/u/x/X/D: actions  q: quit"
+	case viewMe:
+		content = m.me.view()
+		hints = "j/k: navigate  enter: open  esc: back  q: quit"
 	}
 
 	// Pad content to fill available height.
@@ -189,6 +204,13 @@ func fetchBrowse(cfg Config, f commons.BrowseFilter) bubbletea.Cmd {
 			return browseDataMsg{err: err}
 		}
 		return browseDataMsg{items: items}
+	}
+}
+
+func fetchMe(cfg Config) bubbletea.Cmd {
+	return func() bubbletea.Msg {
+		data, err := commons.QueryMyDashboard(cfg.DBDir, cfg.RigHandle)
+		return meDataMsg{data: data, err: err}
 	}
 }
 

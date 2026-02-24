@@ -3,23 +3,28 @@ package tui
 import "github.com/charmbracelet/bubbles/key"
 
 type keyMap struct {
-	Up      key.Binding
-	Down    key.Binding
-	Enter   key.Binding
-	Back    key.Binding
-	Quit    key.Binding
-	Search  key.Binding
-	Status  key.Binding
-	Type    key.Binding
-	Claim   key.Binding
-	Unclaim key.Binding
-	Done    key.Binding
-	Accept  key.Binding
-	Reject  key.Binding
-	Close   key.Binding
-	Delete  key.Binding
-	Confirm key.Binding
-	Cancel  key.Binding
+	Up       key.Binding
+	Down     key.Binding
+	Enter    key.Binding
+	Back     key.Binding
+	Quit     key.Binding
+	Search   key.Binding
+	Status   key.Binding
+	Type     key.Binding
+	Priority key.Binding
+	Project  key.Binding
+	MyItems  key.Binding
+	Sort     key.Binding
+	Me       key.Binding
+	Claim    key.Binding
+	Unclaim  key.Binding
+	Done     key.Binding
+	Accept   key.Binding
+	Reject   key.Binding
+	Close    key.Binding
+	Delete   key.Binding
+	Confirm  key.Binding
+	Cancel   key.Binding
 }
 
 var keys = keyMap{
@@ -54,6 +59,26 @@ var keys = keyMap{
 	Type: key.NewBinding(
 		key.WithKeys("t"),
 		key.WithHelp("t", "type"),
+	),
+	Priority: key.NewBinding(
+		key.WithKeys("p"),
+		key.WithHelp("p", "priority"),
+	),
+	Project: key.NewBinding(
+		key.WithKeys("P"),
+		key.WithHelp("P", "project"),
+	),
+	MyItems: key.NewBinding(
+		key.WithKeys("i"),
+		key.WithHelp("i", "mine"),
+	),
+	Sort: key.NewBinding(
+		key.WithKeys("o"),
+		key.WithHelp("o", "sort"),
+	),
+	Me: key.NewBinding(
+		key.WithKeys("m"),
+		key.WithHelp("m", "me"),
 	),
 	Claim: key.NewBinding(
 		key.WithKeys("c"),

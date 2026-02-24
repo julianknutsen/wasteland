@@ -5,6 +5,35 @@ import (
 	"strings"
 )
 
+// SortOrder defines browse result ordering.
+type SortOrder int
+
+// Sort order constants for browse results.
+const (
+	SortPriority SortOrder = iota
+	SortNewest
+	SortAlpha
+)
+
+// ValidSortOrders returns all sort modes.
+func ValidSortOrders() []SortOrder {
+	return []SortOrder{SortPriority, SortNewest, SortAlpha}
+}
+
+// SortLabel returns a human-readable label for a sort order.
+func SortLabel(s SortOrder) string {
+	switch s {
+	case SortPriority:
+		return "priority"
+	case SortNewest:
+		return "newest"
+	case SortAlpha:
+		return "alpha"
+	default:
+		return "priority"
+	}
+}
+
 // BrowseFilter holds filter parameters for querying the wanted board.
 type BrowseFilter struct {
 	Status    string
@@ -15,6 +44,8 @@ type BrowseFilter struct {
 	PostedBy  string
 	ClaimedBy string
 	Search    string
+	MyItems   string    // rig handle for OR filter (posted_by OR claimed_by); empty = disabled
+	Sort      SortOrder // result ordering
 }
 
 // WantedSummary holds the columns returned by BrowseWanted.
@@ -56,11 +87,16 @@ func BuildBrowseQuery(f BrowseFilter) string {
 	if f.Priority >= 0 {
 		conditions = append(conditions, fmt.Sprintf("priority = %d", f.Priority))
 	}
-	if f.PostedBy != "" {
-		conditions = append(conditions, fmt.Sprintf("posted_by = '%s'", EscapeSQL(f.PostedBy)))
-	}
-	if f.ClaimedBy != "" {
-		conditions = append(conditions, fmt.Sprintf("claimed_by = '%s'", EscapeSQL(f.ClaimedBy)))
+	if f.MyItems != "" {
+		escaped := EscapeSQL(f.MyItems)
+		conditions = append(conditions, fmt.Sprintf("(posted_by = '%s' OR claimed_by = '%s')", escaped, escaped))
+	} else {
+		if f.PostedBy != "" {
+			conditions = append(conditions, fmt.Sprintf("posted_by = '%s'", EscapeSQL(f.PostedBy)))
+		}
+		if f.ClaimedBy != "" {
+			conditions = append(conditions, fmt.Sprintf("claimed_by = '%s'", EscapeSQL(f.ClaimedBy)))
+		}
 	}
 	if f.Search != "" {
 		conditions = append(conditions, fmt.Sprintf("title LIKE '%%%s%%'", EscapeSQL(f.Search)))
@@ -70,7 +106,15 @@ func BuildBrowseQuery(f BrowseFilter) string {
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
-	query += " ORDER BY priority ASC, created_at DESC"
+
+	switch f.Sort {
+	case SortNewest:
+		query += " ORDER BY created_at DESC"
+	case SortAlpha:
+		query += " ORDER BY title ASC"
+	default:
+		query += " ORDER BY priority ASC, created_at DESC"
+	}
 	limit := f.Limit
 	if limit <= 0 {
 		limit = 50
@@ -203,6 +247,65 @@ func TypeLabel(typ string) string {
 		return "all"
 	}
 	return typ
+}
+
+// ValidPriorities returns the browse filter priority cycle values.
+// -1 means "all" (unfiltered).
+func ValidPriorities() []int {
+	return []int{-1, 0, 1, 2, 3, 4}
+}
+
+// PriorityLabel returns a human-readable label for a priority filter value.
+func PriorityLabel(pri int) string {
+	if pri < 0 {
+		return "all"
+	}
+	return fmt.Sprintf("P%d", pri)
+}
+
+// DashboardData holds the sections for the "me" dashboard view.
+type DashboardData struct {
+	Claimed   []WantedSummary // status=claimed, claimed_by=me
+	InReview  []WantedSummary // status=in_review, posted_by=me
+	Completed []WantedSummary // status=completed, claimed_by=me, limit 5
+}
+
+// QueryMyDashboard fetches personal dashboard data for the given handle.
+func QueryMyDashboard(dbDir, handle string) (*DashboardData, error) {
+	escaped := EscapeSQL(handle)
+	data := &DashboardData{}
+
+	// Claimed items.
+	claimedQ := fmt.Sprintf(
+		"SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted WHERE status = 'claimed' AND claimed_by = '%s' ORDER BY priority ASC, created_at DESC LIMIT 50",
+		escaped)
+	csv, err := DoltSQLQuery(dbDir, claimedQ)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard claimed: %w", err)
+	}
+	data.Claimed = parseWantedSummaries(csv)
+
+	// In-review items (posted by me, awaiting my review).
+	reviewQ := fmt.Sprintf(
+		"SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted WHERE status = 'in_review' AND posted_by = '%s' ORDER BY priority ASC, created_at DESC LIMIT 50",
+		escaped)
+	csv, err = DoltSQLQuery(dbDir, reviewQ)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard in_review: %w", err)
+	}
+	data.InReview = parseWantedSummaries(csv)
+
+	// Recent completions.
+	completedQ := fmt.Sprintf(
+		"SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted WHERE status = 'completed' AND claimed_by = '%s' ORDER BY created_at DESC LIMIT 5",
+		escaped)
+	csv, err = DoltSQLQuery(dbDir, completedQ)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard completed: %w", err)
+	}
+	data.Completed = parseWantedSummaries(csv)
+
+	return data, nil
 }
 
 // BrowseWantedBranchAware wraps BrowseWanted with branch overlay in PR mode.

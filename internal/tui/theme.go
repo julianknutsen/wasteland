@@ -32,6 +32,7 @@ var (
 			Padding(0, 1)
 
 	styleFilterBar = lipgloss.NewStyle().Foreground(colorText)
+	styleMineOn    = lipgloss.NewStyle().Foreground(colorPass).Bold(true)
 	styleConfirm   = lipgloss.NewStyle().Foreground(colorWarn).Bold(true)
 	styleSuccess   = lipgloss.NewStyle().Foreground(colorPass)
 	styleError     = lipgloss.NewStyle().Foreground(colorFail)
