@@ -53,7 +53,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Install dolt
-        run: sudo bash -c 'curl -L https://github.com/dolthub/dolt/releases/latest/download/install.sh | bash'
+        run: curl -fsSL -o /tmp/install-dolt.sh https://github.com/dolthub/dolt/releases/latest/download/install.sh && sudo bash /tmp/install-dolt.sh
 
       - name: Configure dolt
         run: |
@@ -76,7 +76,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Install dolt
-        run: sudo bash -c 'curl -L https://github.com/dolthub/dolt/releases/latest/download/install.sh | bash'
+        run: curl -fsSL -o /tmp/install-dolt.sh https://github.com/dolthub/dolt/releases/latest/download/install.sh && sudo bash /tmp/install-dolt.sh
 
       - name: Integration tests
         run: make test-integration

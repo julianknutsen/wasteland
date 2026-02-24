@@ -253,11 +253,11 @@ func TestWildWestModeUnchanged(t *testing.T) {
 
 			wantedID := extractWantedID(t, stdout)
 
-			// No wl/* branch should have been created.
-			raw := doltSQL(t, dbDir, "SELECT COUNT(*) FROM dolt_branches WHERE name LIKE 'wl/%'")
+			// No mutation branches should have been created (wl/register/* from join is OK).
+			raw := doltSQL(t, dbDir, "SELECT COUNT(*) FROM dolt_branches WHERE name LIKE 'wl/%' AND name NOT LIKE 'wl/register/%'")
 			rows := parseCSV(t, raw)
 			if len(rows) < 2 || strings.TrimSpace(rows[1][0]) != "0" {
-				t.Errorf("expected 0 wl/* branches in wild-west mode, got: %v", rows)
+				t.Errorf("expected 0 mutation branches in wild-west mode, got: %v", rows)
 			}
 
 			// Item should exist on main.
