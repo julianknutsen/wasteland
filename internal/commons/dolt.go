@@ -76,6 +76,19 @@ func PullUpstream(dbDir string) error {
 	return pullRemote(dbDir, "upstream")
 }
 
+// FetchRemote fetches the latest refs from a named remote without merging.
+func FetchRemote(dbDir, remote string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "dolt", "fetch", remote)
+	cmd.Dir = dbDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dolt fetch %s: %w (%s)", remote, err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
 // doltSQLScript executes a SQL script against a dolt database directory.
 func doltSQLScript(dbDir, script string) error {
 	tmpFile, err := os.CreateTemp("", "dolt-script-*.sql")
