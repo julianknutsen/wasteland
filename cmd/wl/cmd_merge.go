@@ -65,6 +65,10 @@ func runMerge(cmd *cobra.Command, stdout, _ io.Writer, branch string, noPush, ke
 		}
 	}
 
+	if err := commons.CheckoutMain(cfg.LocalDir); err != nil {
+		return fmt.Errorf("checking out main: %w", err)
+	}
+
 	if err := commons.MergeBranch(cfg.LocalDir, branch); err != nil {
 		return err
 	}

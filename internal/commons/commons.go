@@ -477,7 +477,7 @@ func QueryWantedDetail(dbDir, wantedID string) (*WantedItem, error) {
 // QueryStamp fetches a stamp by ID.
 // dbDir is the actual database directory.
 func QueryStamp(dbDir, stampID string) (*Stamp, error) {
-	query := fmt.Sprintf(`SELECT id, author, subject, valence, severity, COALESCE(skill_tags,'') as skill_tags, COALESCE(message,'') as message FROM stamps WHERE id='%s';`,
+	query := fmt.Sprintf(`SELECT id, author, subject, valence, severity, COALESCE(context_id,'') as context_id, COALESCE(context_type,'') as context_type, COALESCE(skill_tags,'') as skill_tags, COALESCE(message,'') as message FROM stamps WHERE id='%s';`,
 		EscapeSQL(stampID))
 
 	output, err := doltSQLQuery(dbDir, query)
@@ -507,6 +507,8 @@ func QueryStamp(dbDir, stampID string) (*Stamp, error) {
 		Quality:     valence.Quality,
 		Reliability: valence.Reliability,
 		Severity:    row["severity"],
+		ContextID:   row["context_id"],
+		ContextType: row["context_type"],
 		SkillTags:   parseTagsJSON(row["skill_tags"]),
 		Message:     row["message"],
 	}, nil
@@ -639,10 +641,10 @@ func formatTagsJSON(tags []string) string {
 	for i, t := range tags {
 		t = strings.ReplaceAll(t, `\`, `\\`)
 		t = strings.ReplaceAll(t, `"`, `\"`)
-		t = strings.ReplaceAll(t, "'", "''")
 		escaped[i] = t
 	}
-	return fmt.Sprintf("'[\"%s\"]'", strings.Join(escaped, `","`))
+	jsonStr := fmt.Sprintf(`["%s"]`, strings.Join(escaped, `","`))
+	return fmt.Sprintf("'%s'", strings.ReplaceAll(jsonStr, "'", "''"))
 }
 
 // DeleteWanted soft-deletes a wanted item by setting status=withdrawn.

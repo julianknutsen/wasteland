@@ -215,3 +215,46 @@ func TestCommitSQL_EscapesQuotes(t *testing.T) {
 		t.Errorf("commitSQL missing -S flag: %q", got)
 	}
 }
+
+func TestFormatTagsJSON(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		tags []string
+		want string
+	}{
+		{"empty", nil, "NULL"},
+		{"single tag", []string{"go"}, `'["go"]'`},
+		{"multiple tags", []string{"go", "auth"}, `'["go","auth"]'`},
+		{"single quote", []string{"it's"}, `'["it''s"]'`},
+		{"double quote", []string{`say "hello"`}, `'["say \"hello\""]'`},
+		{"backslash", []string{`path\to`}, `'["path\\to"]'`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := formatTagsJSON(tt.tags)
+			if got != tt.want {
+				t.Errorf("formatTagsJSON(%v) = %s, want %s", tt.tags, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFormatTagsJSON_RoundTrip(t *testing.T) {
+	t.Parallel()
+	tags := []string{"it's", "go", `say "hi"`}
+	result := formatTagsJSON(tags)
+	// Strip SQL quoting: outer single quotes and unescape ''
+	inner := result[1 : len(result)-1]
+	inner = strings.ReplaceAll(inner, "''", "'")
+	parsed := parseTagsJSON(inner)
+	if len(parsed) != len(tags) {
+		t.Fatalf("round-trip got %d tags, want %d", len(parsed), len(tags))
+	}
+	for i, want := range tags {
+		if parsed[i] != want {
+			t.Errorf("tag[%d] = %q, want %q", i, parsed[i], want)
+		}
+	}
+}

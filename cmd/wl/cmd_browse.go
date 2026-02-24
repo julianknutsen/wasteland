@@ -104,7 +104,7 @@ func runBrowse(cmd *cobra.Command, stdout, _ io.Writer, project, status, itemTyp
 	if jsonOut {
 		sqlCmd := exec.Command(doltPath, "sql", "-q", query, "-r", "json")
 		sqlCmd.Dir = cloneDir
-		sqlCmd.Stdout = os.Stdout
+		sqlCmd.Stdout = stdout
 		sqlCmd.Stderr = os.Stderr
 		return sqlCmd.Run()
 	}

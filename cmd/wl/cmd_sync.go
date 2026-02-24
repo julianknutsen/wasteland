@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 
 	"github.com/julianknutsen/wasteland/internal/style"
@@ -35,7 +34,7 @@ EXAMPLES:
 	return cmd
 }
 
-func runSync(cmd *cobra.Command, stdout, _ io.Writer, dryRun bool) error {
+func runSync(cmd *cobra.Command, stdout, stderr io.Writer, dryRun bool) error {
 	doltPath, err := exec.LookPath("dolt")
 	if err != nil {
 		return fmt.Errorf("dolt not found in PATH — install from https://docs.dolthub.com/introduction/installation")
@@ -58,15 +57,15 @@ func runSync(cmd *cobra.Command, stdout, _ io.Writer, dryRun bool) error {
 
 		fetchCmd := exec.Command(doltPath, "fetch", "upstream")
 		fetchCmd.Dir = forkDir
-		fetchCmd.Stderr = os.Stderr
+		fetchCmd.Stderr = stderr
 		if err := fetchCmd.Run(); err != nil {
 			return fmt.Errorf("fetching upstream: %w", err)
 		}
 
 		diffCmd := exec.Command(doltPath, "diff", "--stat", "HEAD", "upstream/main")
 		diffCmd.Dir = forkDir
-		diffCmd.Stdout = os.Stdout
-		diffCmd.Stderr = os.Stderr
+		diffCmd.Stdout = stdout
+		diffCmd.Stderr = stderr
 		if err := diffCmd.Run(); err != nil {
 			fmt.Fprintf(stdout, "%s Already up to date.\n", style.Bold.Render("✓"))
 		}
@@ -77,8 +76,8 @@ func runSync(cmd *cobra.Command, stdout, _ io.Writer, dryRun bool) error {
 
 	pullCmd := exec.Command(doltPath, "pull", "upstream", "main")
 	pullCmd.Dir = forkDir
-	pullCmd.Stdout = os.Stdout
-	pullCmd.Stderr = os.Stderr
+	pullCmd.Stdout = stdout
+	pullCmd.Stderr = stderr
 	if err := pullCmd.Run(); err != nil {
 		return fmt.Errorf("pulling from upstream: %w", err)
 	}
