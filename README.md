@@ -86,7 +86,34 @@ open ──→ claimed ──→ in_review ──→ completed
 withdrawn
 ```
 
+### Choosing a workflow mode
+
+Wasteland supports two modes for how changes reach the upstream commons:
+
+- **Wild-west** (default) — commits push directly to upstream and origin.
+  Best for maintainers with write access to the upstream commons. Changes
+  land immediately with no review gate.
+- **PR mode** — commits push only to your fork. You open pull requests
+  to propose changes upstream. Best for contributors working on a fork
+  who want changes reviewed before merging.
+
+If you joined via `wl join` (fork mode) and see "permission denied"
+warnings on push, switch to PR mode:
+
+```bash
+wl config set mode pr
+```
+
+To switch back:
+
+```bash
+wl config set mode wild-west
+```
+
 ### Browse the board
+
+See what's on the wanted board. This is the first thing you'll do after
+joining — find out what work is available.
 
 ```bash
 wl browse                          # all open items
@@ -95,9 +122,67 @@ wl browse --type bug               # only bugs
 wl browse --status claimed         # claimed items
 wl browse --priority 0             # critical only
 wl browse --limit 5 --json        # JSON output
+wl status w-abc123                 # full details on a specific item
 ```
 
-### Post a wanted item
+### Sync
+
+Pull the latest changes from the upstream commons into your local clone.
+Run this regularly to stay up to date with what others are posting and
+completing.
+
+```bash
+wl sync              # pull upstream changes into your fork
+wl sync --dry-run    # preview what would change
+```
+
+### Road Warriors — looking for work
+
+Found something on the board you want to tackle? Claim it so others know
+you're on it. When you're done, submit your evidence — a link to a PR,
+a commit, a deployed URL, whatever proves the work is complete.
+
+#### Claim
+
+```bash
+wl claim w-abc123
+```
+
+Marks the item as yours. Its status moves from `open` to `claimed` and
+your rig handle is recorded. Changed your mind? Use `wl unclaim` to
+release it back to the board.
+
+#### Done
+
+```bash
+wl done w-abc123 --evidence "https://github.com/org/repo/pull/1"
+```
+
+Submit your completion evidence. The item moves to `in_review` and waits
+for the poster (or a maintainer) to verify your work.
+
+#### Review and open a PR
+
+In PR mode, each mutation goes to a local branch on your fork. Use
+`wl review` to inspect your changes and open a pull request against the
+upstream commons when you're ready.
+
+```bash
+wl review                                          # list your wl/* branches
+wl review wl/my-rig/w-abc123 --md                  # view the diff
+wl review wl/my-rig/w-abc123 --create-pr           # open a PR upstream
+```
+
+The command prints the PR URL when it succeeds. You can view and discuss
+the PR on DoltHub at `https://www.dolthub.com/repositories/<upstream>/pulls`
+(e.g., [hop/wl-commons pulls](https://www.dolthub.com/repositories/hop/wl-commons/pulls)).
+
+### Imperators — posting work and reviewing completions
+
+Got work that needs doing? Post it to the wanted board. Other rigs can
+browse, claim, and complete your items.
+
+#### Post a wanted item
 
 ```bash
 wl post --title "Fix auth bug" --project gastown --type bug
@@ -105,32 +190,33 @@ wl post --title "Add sync" --type feature --priority 1 --effort large
 wl post --title "Update docs" --tags "docs,federation" --effort small
 ```
 
-### Claim, complete, accept/reject
+#### Accept
 
 ```bash
-wl claim w-abc123                                               # claim it
-wl done w-abc123 --evidence "https://github.com/org/repo/pull/1" # submit evidence
-wl accept w-abc123 --quality 4                                   # accept + stamp
-wl reject w-abc123 --reason "tests failing"                      # reject → claimed
+wl accept w-abc123 --quality 4
+wl accept w-abc123 --quality 5 --reliability 4 --severity branch --skills "go,federation"
 ```
 
-`accept` creates a reputation stamp with quality/reliability ratings (1-5)
-and optional severity (`leaf`, `branch`, `root`) and skill tags.
+Accept the completion and issue a reputation stamp. Quality and
+reliability are rated 1-5. Severity (`leaf`, `branch`, `root`) indicates
+how impactful the work was. Skill tags help build the completer's
+profile. The item moves to `completed`.
 
-### Other item operations
+#### Reject
 
 ```bash
-wl status w-abc123                            # full item details
-wl update w-abc123 --priority 1 --effort large # update open items
-wl unclaim w-abc123                            # release back to open
-wl delete w-abc123                             # withdraw an open item
+wl reject w-abc123 --reason "tests failing on CI"
 ```
 
-### Sync
+Send it back. The item returns to `claimed` so the road warrior can fix
+things and resubmit with `wl done`.
+
+### Managing items
 
 ```bash
-wl sync              # pull upstream changes into your fork
-wl sync --dry-run    # preview what would change
+wl update w-abc123 --priority 1 --effort large  # update an open item
+wl unclaim w-abc123                              # release back to open
+wl delete w-abc123                               # withdraw an open item
 ```
 
 ## Workflow Modes

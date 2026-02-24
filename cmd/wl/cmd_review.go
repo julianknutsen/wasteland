@@ -100,18 +100,39 @@ func runReview(cmd *cobra.Command, stdout, _ io.Writer, branch string, jsonOut, 
 		return fmt.Errorf("dolt not found in PATH — install from https://docs.dolthub.com/introduction/installation")
 	}
 
+	base := diffBase(cfg.LocalDir, doltPath)
+
 	if createPR {
 		switch cfg.ResolveProviderType() {
 		case "github":
-			return runGitHubPR(stdout, cfg, doltPath, branch)
+			return runGitHubPR(stdout, cfg, doltPath, branch, base)
 		case "dolthub":
-			return runDoltHubPR(stdout, cfg, doltPath, branch)
+			return runDoltHubPR(stdout, cfg, doltPath, branch, base)
 		default:
 			return fmt.Errorf("--create-pr: provider %q does not support pull requests", cfg.ResolveProviderType())
 		}
 	}
 
-	return showDiff(stdout, cfg.LocalDir, doltPath, branch, jsonOut, mdOut, statOut)
+	return showDiff(stdout, cfg.LocalDir, doltPath, branch, base, jsonOut, mdOut, statOut)
+}
+
+// diffBase returns "upstream/main" if the upstream remote exists, otherwise "main".
+// In fork mode the upstream remote points to the canonical commons, so diffs show
+// what the upstream maintainer would see. In direct mode there is no upstream
+// remote and origin IS upstream, so we fall back to local main.
+func diffBase(dbDir, doltPath string) string {
+	cmd := exec.Command(doltPath, "remote", "-v")
+	cmd.Dir = dbDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "main"
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "upstream") {
+			return "upstream/main"
+		}
+	}
+	return "main"
 }
 
 func listReviewBranches(stdout io.Writer, dbDir string) error {
@@ -132,9 +153,9 @@ func listReviewBranches(stdout io.Writer, dbDir string) error {
 	return nil
 }
 
-func showDiff(stdout io.Writer, dbDir, doltPath, branch string, jsonOut, mdOut, statOut bool) error {
+func showDiff(stdout io.Writer, dbDir, doltPath, branch, base string, jsonOut, mdOut, statOut bool) error {
 	if statOut {
-		cmd := exec.Command(doltPath, "diff", "--stat", "main..."+branch)
+		cmd := exec.Command(doltPath, "diff", "--stat", base+"..."+branch)
 		cmd.Dir = dbDir
 		cmd.Stdout = stdout
 		cmd.Stderr = os.Stderr
@@ -145,7 +166,7 @@ func showDiff(stdout io.Writer, dbDir, doltPath, branch string, jsonOut, mdOut, 
 	}
 
 	if jsonOut {
-		cmd := exec.Command(doltPath, "diff", "-r", "json", "main..."+branch)
+		cmd := exec.Command(doltPath, "diff", "-r", "json", base+"..."+branch)
 		cmd.Dir = dbDir
 		cmd.Stdout = stdout
 		cmd.Stderr = os.Stderr
@@ -156,11 +177,11 @@ func showDiff(stdout io.Writer, dbDir, doltPath, branch string, jsonOut, mdOut, 
 	}
 
 	if mdOut {
-		return renderMarkdownDiff(stdout, dbDir, doltPath, branch)
+		return renderMarkdownDiff(stdout, dbDir, doltPath, branch, base)
 	}
 
 	// Default: full terminal diff.
-	cmd := exec.Command(doltPath, "diff", "main..."+branch)
+	cmd := exec.Command(doltPath, "diff", base+"..."+branch)
 	cmd.Dir = dbDir
 	cmd.Stdout = stdout
 	cmd.Stderr = os.Stderr
@@ -170,14 +191,14 @@ func showDiff(stdout io.Writer, dbDir, doltPath, branch string, jsonOut, mdOut, 
 	return nil
 }
 
-func renderMarkdownDiff(stdout io.Writer, dbDir, doltPath, branch string) error {
+func renderMarkdownDiff(stdout io.Writer, dbDir, doltPath, branch, base string) error {
 	fmt.Fprintf(stdout, "## wl review: %s\n\n", branch)
 
 	// Summary (stat).
 	fmt.Fprintln(stdout, "### Summary")
 	fmt.Fprintln(stdout, "```")
 
-	statCmd := exec.Command(doltPath, "diff", "--stat", "main..."+branch)
+	statCmd := exec.Command(doltPath, "diff", "--stat", base+"..."+branch)
 	statCmd.Dir = dbDir
 	statOut, err := statCmd.CombinedOutput()
 	if err != nil {
@@ -192,7 +213,7 @@ func renderMarkdownDiff(stdout io.Writer, dbDir, doltPath, branch string) error 
 	fmt.Fprintln(stdout, "### Changes")
 	fmt.Fprintln(stdout, "```sql")
 
-	diffCmd := exec.Command(doltPath, "diff", "-r", "sql", "main..."+branch)
+	diffCmd := exec.Command(doltPath, "diff", "-r", "sql", base+"..."+branch)
 	diffCmd.Dir = dbDir
 	diffOut, err := diffCmd.CombinedOutput()
 	if err != nil {
@@ -207,7 +228,7 @@ func renderMarkdownDiff(stdout io.Writer, dbDir, doltPath, branch string) error 
 
 // --- GitHub PR shell ---
 
-func runGitHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch string) error {
+func runGitHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch, base string) error {
 	ghPath, err := exec.LookPath("gh")
 	if err != nil {
 		return fmt.Errorf("gh not found in PATH — install from https://cli.github.com")
@@ -220,7 +241,7 @@ func runGitHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch stri
 
 	// Generate markdown diff.
 	var mdBuf bytes.Buffer
-	if err := renderMarkdownDiff(&mdBuf, cfg.LocalDir, doltPath, branch); err != nil {
+	if err := renderMarkdownDiff(&mdBuf, cfg.LocalDir, doltPath, branch, base); err != nil {
 		return fmt.Errorf("generating markdown diff: %w", err)
 	}
 
@@ -239,7 +260,7 @@ func runGitHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch stri
 	return nil
 }
 
-func runDoltHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch string) error {
+func runDoltHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch, base string) error {
 	token := os.Getenv("DOLTHUB_TOKEN")
 	if token == "" {
 		return fmt.Errorf("DOLTHUB_TOKEN environment variable is required for DoltHub PRs")
@@ -252,7 +273,7 @@ func runDoltHubPR(stdout io.Writer, cfg *federation.Config, doltPath, branch str
 
 	// Generate markdown diff for PR body.
 	var mdBuf bytes.Buffer
-	if err := renderMarkdownDiff(&mdBuf, cfg.LocalDir, doltPath, branch); err != nil {
+	if err := renderMarkdownDiff(&mdBuf, cfg.LocalDir, doltPath, branch, base); err != nil {
 		return fmt.Errorf("generating markdown diff: %w", err)
 	}
 
