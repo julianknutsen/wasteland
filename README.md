@@ -31,7 +31,7 @@ Requires [Go 1.24+](https://go.dev/dl/) and [Dolt](https://docs.dolthub.com/intr
 ```bash
 export DOLTHUB_TOKEN=<your-api-token>
 export DOLTHUB_ORG=<your-dolthub-username>
-wl join --signed                     # joins hop/wl-commons with a signed commit
+wl join [--signed]                    # joins hop/wl-commons by default
 ```
 
 `dolt login` is required so that `dolt clone` and `dolt push` can
@@ -69,7 +69,7 @@ wl verify --last 10                  # check the last 10 commits
 Maintainers with push access to upstream can skip forking:
 
 ```bash
-wl join --direct --signed            # clone upstream directly, no fork
+wl join --direct [--signed]          # clone upstream directly, no fork
 ```
 
 ## Workflow
