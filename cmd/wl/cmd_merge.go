@@ -5,9 +5,9 @@ import (
 	"io"
 	"os/exec"
 
+	"github.com/julianknutsen/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/style"
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/wasteland/internal/commons"
-	"github.com/steveyegge/wasteland/internal/style"
 )
 
 func newMergeCmd(stdout, stderr io.Writer) *cobra.Command {

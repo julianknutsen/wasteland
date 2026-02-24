@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/julianknutsen/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/wasteland/internal/commons"
-	"github.com/steveyegge/wasteland/internal/federation"
 )
 
 // withFakeStore overrides the openStore factory for the duration of the test

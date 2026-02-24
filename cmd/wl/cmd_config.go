@@ -5,8 +5,8 @@ import (
 	"io"
 	"strings"
 
+	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/wasteland/internal/federation"
 )
 
 func newConfigCmd(stdout, stderr io.Writer) *cobra.Command {

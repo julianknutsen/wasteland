@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/wasteland/internal/remote"
+	"github.com/julianknutsen/wasteland/internal/remote"
 )
 
 func TestFakeGitHubProviderType(t *testing.T) {

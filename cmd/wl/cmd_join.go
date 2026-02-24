@@ -7,11 +7,11 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/julianknutsen/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/federation"
+	"github.com/julianknutsen/wasteland/internal/remote"
+	"github.com/julianknutsen/wasteland/internal/style"
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/wasteland/internal/commons"
-	"github.com/steveyegge/wasteland/internal/federation"
-	"github.com/steveyegge/wasteland/internal/remote"
-	"github.com/steveyegge/wasteland/internal/style"
 )
 
 const defaultUpstream = "hop/wl-commons"
@@ -83,6 +83,10 @@ Examples:
 }
 
 func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, forkOrg, remoteBase, gitRemote string, github bool, githubLocal string, signed, direct bool) error {
+	if err := requireDolt(); err != nil {
+		return err
+	}
+
 	// Parse upstream path (validate early)
 	_, _, err := federation.ParseUpstream(upstream)
 	if err != nil {

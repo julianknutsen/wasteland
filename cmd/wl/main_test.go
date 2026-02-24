@@ -28,7 +28,7 @@ func TestSubcommandRegistration(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	root := newRootCmd(&stdout, &stderr)
 
-	expected := []string{"join", "post", "claim", "unclaim", "done", "accept", "reject", "update", "delete", "browse", "status", "sync", "leave", "list", "config", "review", "approve", "request-changes", "merge", "version"}
+	expected := []string{"create", "join", "post", "claim", "unclaim", "done", "accept", "reject", "update", "delete", "browse", "status", "sync", "leave", "list", "config", "review", "approve", "request-changes", "merge", "version"}
 	for _, name := range expected {
 		found := false
 		for _, c := range root.Commands() {

@@ -7,8 +7,8 @@ import (
 	"io"
 	"os"
 
+	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/wasteland/internal/federation"
 )
 
 // Version metadata injected via ldflags.
@@ -63,6 +63,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	root.PersistentFlags().String("wasteland", "", "Upstream wasteland to use (e.g., org/db); required when multiple are joined")
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.AddCommand(
+		newCreateCmd(stdout, stderr),
 		newJoinCmd(stdout, stderr),
 		newPostCmd(stdout, stderr),
 		newClaimCmd(stdout, stderr),

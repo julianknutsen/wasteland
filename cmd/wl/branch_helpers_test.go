@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/steveyegge/wasteland/internal/federation"
+	"github.com/julianknutsen/wasteland/internal/federation"
 )
 
 func TestMutationContext_WildWest(t *testing.T) {

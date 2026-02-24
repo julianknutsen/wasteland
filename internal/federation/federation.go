@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/steveyegge/wasteland/internal/remote"
-	"github.com/steveyegge/wasteland/internal/xdg"
+	"github.com/julianknutsen/wasteland/internal/remote"
+	"github.com/julianknutsen/wasteland/internal/xdg"
 )
 
 // ErrNotJoined indicates the rig has not joined a wasteland.

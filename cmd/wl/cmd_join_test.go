@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/wasteland/internal/remote"
+	"github.com/julianknutsen/wasteland/internal/remote"
 )
 
 func TestGitConfigValue_MissingKey(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/wasteland/internal/federation"
 )
 
 func TestRunLeave_Success(t *testing.T) {

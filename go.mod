@@ -1,4 +1,4 @@
-module github.com/steveyegge/wasteland
+module github.com/julianknutsen/wasteland
 
 go 1.24.4
 

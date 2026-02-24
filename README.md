@@ -12,18 +12,15 @@ sovereign fork of a shared commons database containing the wanted board
 wl join hop/wl-commons
 ```
 
-## Choose Your Provider
+## Install
 
-| Provider | When to use | What you need | Join command |
-|----------|-------------|---------------|--------------|
-| **DoltHub** (default) | Standard federation via DoltHub forks | DoltHub account + API token | `wl join` |
-| **GitHub** | PR-based review on GitHub | GitHub repo + `gh` CLI | `wl join --github` |
-| **File** | Offline / local testing | A local directory | `wl join --remote-base /path/to/dir` |
-| **Git** | Bare git remotes (LAN, SSH) | Bare git repo path | `wl join --git-remote /path/to/bare` |
+```bash
+go install github.com/julianknutsen/wasteland/cmd/wl@latest
+```
+
+Requires [Go 1.24+](https://go.dev/dl/) and [Dolt](https://docs.dolthub.com/introduction/installation).
 
 ## Getting Started
-
-### DoltHub (default)
 
 1. [Install dolt](https://docs.dolthub.com/introduction/installation)
 2. Sign up at [dolthub.com](https://www.dolthub.com)
@@ -34,8 +31,7 @@ wl join hop/wl-commons
 ```bash
 export DOLTHUB_TOKEN=<your-api-token>
 export DOLTHUB_ORG=<your-dolthub-username>
-wl join                              # joins hop/wl-commons by default
-wl join steveyegge/wl-commons        # or specify an upstream
+wl join --signed                     # joins hop/wl-commons with a signed commit
 ```
 
 `dolt login` is required so that `dolt clone` and `dolt push` can
@@ -45,34 +41,35 @@ separately by `wl` for fork and PR operations via the DoltHub REST API.
 The join command forks the upstream commons to your org, clones it locally,
 registers your rig, and pushes the registration.
 
-### GitHub
+### GPG Signing (recommended)
+
+Wasteland uses GPG signatures to make federation tamper-evident. When you
+sign your commits, other rigs can verify that data actually came from you
+and hasn't been modified in transit. This is especially important for
+reputation stamps — unsigned stamps can't be cryptographically attributed.
+
+To enable signing, configure dolt with your GPG key:
 
 ```bash
-wl join --github
+gpg --list-secret-keys --keyid-format long    # find your key ID
+dolt config --global --add sqlserver.global.signingkey <your-gpg-key-id>
 ```
 
-Requires `gh` CLI authenticated. Use with `wl config set mode pr` for
-full PR-based review workflows.
-
-### Offline (File / Git)
+Then use `--signed` on join and enable it for all future commits:
 
 ```bash
-# File provider — everything stays on your filesystem
-wl join --remote-base /tmp/wasteland
-
-# Git provider — bare repos over LAN or SSH
-wl join --git-remote /srv/git/wl-commons.git
+wl join --signed                     # sign the initial registration
+wl config set signing true           # sign all future commits
+wl verify                            # check signatures on recent commits
+wl verify --last 10                  # check the last 10 commits
 ```
-
-No DoltHub account needed. Useful for local development and testing.
 
 ### Maintainer (Direct Push)
 
 Maintainers with push access to upstream can skip forking:
 
 ```bash
-wl join --direct               # clone upstream directly, no fork
-wl join --direct --signed      # GPG-sign the rig registration commit
+wl join --direct --signed            # clone upstream directly, no fork
 ```
 
 ## Workflow
@@ -177,29 +174,18 @@ wl config set mode pr        # change a setting
 | `mode` | `wild-west` (default), `pr` | Workflow mode |
 | `signing` | `true`, `false` | GPG-sign Dolt commits |
 | `provider-type` | `dolthub`, `github`, `file`, `git` | Set during `wl join` (read-only) |
-| `github-repo` | `org/repo` | Upstream GitHub repo (deprecated) |
 
 Config and data follow XDG conventions:
 
 - Config: `~/.config/wasteland/`
 - Data: `~/.local/share/wasteland/`
 
-## GPG Signing
-
-Sign your Dolt commits with GPG for tamper-evident federation:
-
-```bash
-wl join --signed                     # sign the initial registration
-wl config set signing true           # sign all future commits
-wl verify                            # check signatures on recent commits
-wl verify --last 10                  # check the last 10 commits
-```
-
 ## Command Reference
 
 | Command | Description | Key flags |
 |---------|-------------|-----------|
-| `wl join [upstream]` | Fork commons and register your rig | `--direct`, `--signed`, `--github`, `--remote-base`, `--git-remote`, `--handle` |
+| `wl create <org/db>` | Create a new wasteland commons | `--name`, `--local-only`, `--signed` |
+| `wl join [upstream]` | Fork commons and register your rig | `--direct`, `--signed`, `--handle` |
 | `wl browse` | Browse the wanted board | `--project`, `--type`, `--status`, `--priority`, `--limit`, `--json` |
 | `wl post` | Post a new wanted item | `--title` (required), `--project`, `--type`, `--priority`, `--effort`, `--tags` |
 | `wl claim <id>` | Claim an open item | `--no-push` |
@@ -242,6 +228,38 @@ make check    # Run all quality gates
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+## Advanced: Alternative Providers
+
+The primary community uses DoltHub. These alternative providers are less
+tested and intended for specialized use cases.
+
+| Provider | When to use | What you need | Join command |
+|----------|-------------|---------------|--------------|
+| **GitHub** | PR-based review on GitHub | GitHub repo + `gh` CLI | `wl join --github` |
+| **File** | Offline / local testing | A local directory | `wl join --remote-base /path/to/dir` |
+| **Git** | Bare git remotes (LAN, SSH) | Bare git repo path | `wl join --git-remote /path/to/bare` |
+
+### GitHub
+
+```bash
+wl join --github
+```
+
+Requires `gh` CLI authenticated. Use with `wl config set mode pr` for
+full PR-based review workflows.
+
+### Offline (File / Git)
+
+```bash
+# File provider — everything stays on your filesystem
+wl join --remote-base /tmp/wasteland
+
+# Git provider — bare repos over LAN or SSH
+wl join --git-remote /srv/git/wl-commons.git
+```
+
+No DoltHub account needed. Useful for local development and testing.
 
 ## License
 

@@ -6,8 +6,8 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/julianknutsen/wasteland/internal/style"
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/wasteland/internal/style"
 )
 
 func newSyncCmd(stdout, stderr io.Writer) *cobra.Command {

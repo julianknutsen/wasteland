@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/wasteland/internal/remote"
+	"github.com/julianknutsen/wasteland/internal/remote"
 )
 
 // providerFactory creates a Provider rooted at a test-specific base directory,

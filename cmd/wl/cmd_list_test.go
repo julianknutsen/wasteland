@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/steveyegge/wasteland/internal/federation"
+	"github.com/julianknutsen/wasteland/internal/federation"
 )
 
 func TestRunList_NoWastelands(t *testing.T) {

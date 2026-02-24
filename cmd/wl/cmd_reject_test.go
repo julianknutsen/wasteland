@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/commons"
 )
 
 func TestRejectCompletion_Success(t *testing.T) {

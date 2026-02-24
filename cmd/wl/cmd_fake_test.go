@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/steveyegge/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/commons"
 )
 
 // fakeWLCommonsStore is a local in-memory WLCommonsStore for cmd package tests.

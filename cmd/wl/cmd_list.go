@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/julianknutsen/wasteland/internal/federation"
+	"github.com/julianknutsen/wasteland/internal/style"
 	"github.com/spf13/cobra"
-	"github.com/steveyegge/wasteland/internal/federation"
-	"github.com/steveyegge/wasteland/internal/style"
 )
 
 func newListCmd(stdout, stderr io.Writer) *cobra.Command {

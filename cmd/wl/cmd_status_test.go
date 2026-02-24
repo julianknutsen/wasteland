@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/steveyegge/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/commons"
 )
 
 func TestGetStatus_Open(t *testing.T) {

@@ -3,8 +3,8 @@ package main
 import (
 	"io"
 
-	"github.com/steveyegge/wasteland/internal/commons"
-	"github.com/steveyegge/wasteland/internal/federation"
+	"github.com/julianknutsen/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/federation"
 )
 
 // mutationContext wraps branch checkout/return/push logic so all mutation
@@ -41,6 +41,9 @@ func (m *mutationContext) BranchName() string {
 // The returned cleanup function must be deferred to return to main.
 func (m *mutationContext) Setup() (cleanup func(), err error) {
 	noop := func() {}
+	if err := requireDolt(); err != nil {
+		return noop, err
+	}
 	if m.branch == "" {
 		return noop, nil
 	}
