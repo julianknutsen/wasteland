@@ -370,6 +370,13 @@ func (e *execDoltCLI) RegisterRig(localDir, handle, dolthubOrg, displayName, own
 		if strings.Contains(lower, "nothing to commit") || strings.Contains(lower, "no changes added") {
 			return nil
 		}
+		if signed && strings.Contains(lower, "invalid user id") {
+			return fmt.Errorf("GPG signing failed: no signing key configured\n\n" +
+				"Set your GPG key for dolt:\n" +
+				"  dolt config --global --add user.signingkey <your-gpg-key-id>\n\n" +
+				"List available GPG keys:\n" +
+				"  gpg --list-secret-keys --keyid-format long")
+		}
 		return fmt.Errorf("dolt commit: %w (%s)", err, msg)
 	}
 
