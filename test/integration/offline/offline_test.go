@@ -104,6 +104,10 @@ type testEnv struct {
 func newTestEnv(t *testing.T, backend backendKind) *testEnv {
 	t.Helper()
 	root := t.TempDir()
+	// Dolt may leave lock files behind, causing t.TempDir()'s RemoveAll to
+	// fail with "directory not empty". Register our own cleanup (runs first
+	// in LIFO order) to force-remove everything before the framework tries.
+	t.Cleanup(func() { os.RemoveAll(root) })
 	dataHome := filepath.Join(root, "data")
 	configHome := filepath.Join(root, "config")
 	home := filepath.Join(root, "home")
