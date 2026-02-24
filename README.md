@@ -20,28 +20,28 @@ Download the latest release for your platform:
 
 ```bash
 # macOS (Apple Silicon)
-curl -fsSL https://github.com/julianknutsen/wasteland/releases/download/v0.1.0/wasteland_0.1.0_darwin_arm64.tar.gz | tar xz
+curl -fsSL https://github.com/julianknutsen/wasteland/releases/download/v0.1.1/wasteland_0.1.1_darwin_arm64.tar.gz | tar xz
 sudo mv wl /usr/local/bin/
 
 # macOS (Intel)
-curl -fsSL https://github.com/julianknutsen/wasteland/releases/download/v0.1.0/wasteland_0.1.0_darwin_amd64.tar.gz | tar xz
+curl -fsSL https://github.com/julianknutsen/wasteland/releases/download/v0.1.1/wasteland_0.1.1_darwin_amd64.tar.gz | tar xz
 sudo mv wl /usr/local/bin/
 
 # Linux (x86_64)
-curl -fsSL https://github.com/julianknutsen/wasteland/releases/download/v0.1.0/wasteland_0.1.0_linux_amd64.tar.gz | tar xz
+curl -fsSL https://github.com/julianknutsen/wasteland/releases/download/v0.1.1/wasteland_0.1.1_linux_amd64.tar.gz | tar xz
 sudo mv wl /usr/local/bin/
 
 # Linux (ARM64)
-curl -fsSL https://github.com/julianknutsen/wasteland/releases/download/v0.1.0/wasteland_0.1.0_linux_arm64.tar.gz | tar xz
+curl -fsSL https://github.com/julianknutsen/wasteland/releases/download/v0.1.1/wasteland_0.1.1_linux_arm64.tar.gz | tar xz
 sudo mv wl /usr/local/bin/
 ```
 
-Or browse all assets on the [v0.1.0 release page](https://github.com/julianknutsen/wasteland/releases/tag/v0.1.0).
+Or browse all assets on the [v0.1.1 release page](https://github.com/julianknutsen/wasteland/releases/tag/v0.1.1).
 
 ### From source
 
 ```bash
-go install github.com/julianknutsen/wasteland/cmd/wl@v0.1.0
+go install github.com/julianknutsen/wasteland/cmd/wl@v0.1.1
 ```
 
 Requires [Go 1.24+](https://go.dev/dl/).
