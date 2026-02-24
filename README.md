@@ -25,9 +25,11 @@ wl join hop/wl-commons
 
 ### DoltHub (default)
 
-1. Sign up at [dolthub.com](https://www.dolthub.com)
-2. Create an API token at [Settings > Tokens](https://www.dolthub.com/settings/tokens)
-3. Set environment variables and join:
+1. [Install dolt](https://docs.dolthub.com/introduction/installation)
+2. Sign up at [dolthub.com](https://www.dolthub.com)
+3. Run `dolt login` to authenticate the dolt CLI with your DoltHub account
+4. Create an API token at [Settings > Tokens](https://www.dolthub.com/settings/tokens)
+5. Set environment variables and join:
 
 ```bash
 export DOLTHUB_TOKEN=<your-api-token>
@@ -35,6 +37,10 @@ export DOLTHUB_ORG=<your-dolthub-username>
 wl join                              # joins hop/wl-commons by default
 wl join steveyegge/wl-commons        # or specify an upstream
 ```
+
+`dolt login` is required so that `dolt clone` and `dolt push` can
+authenticate with the DoltHub remote API. `DOLTHUB_TOKEN` is used
+separately by `wl` for fork and PR operations via the DoltHub REST API.
 
 The join command forks the upstream commons to your org, clones it locally,
 registers your rig, and pushes the registration.
