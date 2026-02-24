@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/julianknutsen/wasteland/internal/commons"
@@ -44,9 +45,10 @@ func runMe(cmd *cobra.Command, stdout, _ io.Writer) error {
 	dbDir := cfg.LocalDir
 
 	// Fetch both remotes (non-destructive — no merge into local main).
-	fmt.Fprintf(stdout, "Fetching upstream and origin...\n")
+	sp := style.StartSpinner(stdout, "Fetching upstream and origin...")
 	upstreamOK := commons.FetchRemote(dbDir, "upstream") == nil
 	originOK := commons.FetchRemote(dbDir, "origin") == nil
+	sp.Stop()
 
 	printed := false
 
@@ -56,7 +58,7 @@ func runMe(cmd *cobra.Command, stdout, _ io.Writer) error {
 		if len(upstreamItems) > 0 {
 			fmt.Fprintf(stdout, "\n%s\n", style.Bold.Render("On upstream (master DB):"))
 			for _, row := range upstreamItems {
-				fmt.Fprintf(stdout, "  %-12s %-30s %-12s %-4s %s\n", row[0], row[1], row[2], wlFormatPriority(row[3]), row[4])
+				fmt.Fprintf(stdout, "  %-12s %-30s %-12s %-4s %-8s%s\n", row[0], row[1], row[2], wlFormatPriority(row[3]), row[4], staleWarning(row[5]))
 			}
 			printed = true
 		}
@@ -80,7 +82,7 @@ func runMe(cmd *cobra.Command, stdout, _ io.Writer) error {
 		if len(forkOnly) > 0 {
 			fmt.Fprintf(stdout, "\n%s\n", style.Bold.Render("On origin only (your fork — not yet on upstream):"))
 			for _, row := range forkOnly {
-				fmt.Fprintf(stdout, "  %-12s %-30s %-12s %-4s %s\n", row[0], row[1], row[2], wlFormatPriority(row[3]), row[4])
+				fmt.Fprintf(stdout, "  %-12s %-30s %-12s %-4s %-8s%s\n", row[0], row[1], row[2], wlFormatPriority(row[3]), row[4], staleWarning(row[5]))
 			}
 			printed = true
 		}
@@ -178,10 +180,10 @@ func runMe(cmd *cobra.Command, stdout, _ io.Writer) error {
 }
 
 // queryClaimedAsOf queries claimed/in_review items for a handle on a specific ref.
-// Returns data rows (no header) with columns: id, title, status, priority, effort_level.
+// Returns data rows (no header) with columns: id, title, status, priority, effort_level, days_stale.
 func queryClaimedAsOf(dbDir, handle, ref string) [][]string {
 	csv, err := commons.DoltSQLQuery(dbDir, fmt.Sprintf(
-		"SELECT id, title, status, priority, effort_level FROM wanted AS OF '%s' WHERE claimed_by = '%s' AND status IN ('claimed','in_review') ORDER BY priority ASC",
+		"SELECT id, title, status, priority, effort_level, DATEDIFF(NOW(), updated_at) AS days_stale FROM wanted AS OF '%s' WHERE claimed_by = '%s' AND status IN ('claimed','in_review') ORDER BY priority ASC",
 		commons.EscapeSQL(ref), commons.EscapeSQL(handle),
 	))
 	if err != nil {
@@ -193,11 +195,20 @@ func queryClaimedAsOf(dbDir, handle, ref string) [][]string {
 	}
 	var data [][]string
 	for _, row := range rows[1:] {
-		if len(row) >= 5 {
+		if len(row) >= 6 {
 			data = append(data, row)
 		}
 	}
 	return data
+}
+
+// staleWarning returns a dimmed warning if the item has been claimed for more than 7 days.
+func staleWarning(daysStr string) string {
+	days, err := strconv.Atoi(strings.TrimSpace(daysStr))
+	if err != nil || days <= 7 {
+		return ""
+	}
+	return style.Dim.Render(fmt.Sprintf("  (%dd — consider: wl done or wl unclaim)", days))
 }
 
 // branchItem represents a wanted item found on a wl/* branch.

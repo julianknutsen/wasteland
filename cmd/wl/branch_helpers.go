@@ -1,10 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/julianknutsen/wasteland/internal/commons"
 	"github.com/julianknutsen/wasteland/internal/federation"
+	"github.com/julianknutsen/wasteland/internal/style"
 )
 
 // mutationContext wraps branch checkout/return/push logic so all mutation
@@ -37,12 +39,19 @@ func (m *mutationContext) BranchName() string {
 	return m.branch
 }
 
-// Setup prepares the branch context. In PR mode it checks out the item branch.
+// Setup prepares the mutation context: checks dolt, syncs upstream, and
+// (in PR mode) checks out the item branch.
 // The returned cleanup function must be deferred to return to main.
 func (m *mutationContext) Setup() (cleanup func(), err error) {
 	noop := func() {}
 	if err := requireDolt(); err != nil {
 		return noop, err
+	}
+	sp := style.StartSpinner(m.stdout, "Syncing with upstream...")
+	syncErr := commons.PullUpstream(m.cfg.LocalDir)
+	sp.Stop()
+	if syncErr != nil {
+		fmt.Fprintf(m.stdout, "  warning: upstream sync failed: %v\n", syncErr)
 	}
 	if m.branch == "" {
 		return noop, nil

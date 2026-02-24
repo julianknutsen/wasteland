@@ -104,9 +104,10 @@ func runBrowse(cmd *cobra.Command, stdout, _ io.Writer, filter BrowseFilter, jso
 }
 
 func runBrowseLocal(stdout io.Writer, cfg *federation.Config, query string, jsonOut bool) error {
-	fmt.Fprintf(stdout, "Syncing with upstream...\n")
-
-	if err := commons.PullUpstream(cfg.LocalDir); err != nil {
+	sp := style.StartSpinner(stdout, "Syncing with upstream...")
+	err := commons.PullUpstream(cfg.LocalDir)
+	sp.Stop()
+	if err != nil {
 		return fmt.Errorf("pulling upstream: %w", err)
 	}
 
@@ -300,15 +301,15 @@ func wlParseCSVLine(line string) []string {
 func wlFormatPriority(pri string) string {
 	switch pri {
 	case "0":
-		return "P0"
+		return style.Error.Render("P0")
 	case "1":
-		return "P1"
+		return style.Warning.Render("P1")
 	case "2":
 		return "P2"
 	case "3":
-		return "P3"
+		return style.Dim.Render("P3")
 	case "4":
-		return "P4"
+		return style.Dim.Render("P4")
 	default:
 		return pri
 	}
