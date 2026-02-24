@@ -46,6 +46,11 @@ func runDelete(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush 
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
 
+	wantedID, err = resolveWantedArg(wlCfg, wantedID)
+	if err != nil {
+		return err
+	}
+
 	mc := newMutationContext(wlCfg, wantedID, noPush, stdout)
 	cleanup, err := mc.Setup()
 	if err != nil {

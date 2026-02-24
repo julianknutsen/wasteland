@@ -335,7 +335,7 @@ func QueryWanted(dbDir, wantedID string) (*WantedItem, error) {
 	query := fmt.Sprintf(`SELECT id, title, status, COALESCE(claimed_by, '') as claimed_by, COALESCE(posted_by, '') as posted_by FROM wanted WHERE id='%s';`,
 		EscapeSQL(wantedID))
 
-	output, err := doltSQLQuery(dbDir, query)
+	output, err := DoltSQLQuery(dbDir, query)
 	if err != nil {
 		return nil, err
 	}
@@ -417,7 +417,7 @@ func QueryCompletion(dbDir, wantedID string) (*CompletionRecord, error) {
 	query := fmt.Sprintf(`SELECT id, wanted_id, completed_by, COALESCE(evidence, '') as evidence, COALESCE(stamp_id, '') as stamp_id, COALESCE(validated_by, '') as validated_by FROM completions WHERE wanted_id='%s';`,
 		EscapeSQL(wantedID))
 
-	output, err := doltSQLQuery(dbDir, query)
+	output, err := DoltSQLQuery(dbDir, query)
 	if err != nil {
 		return nil, err
 	}
@@ -444,7 +444,7 @@ func QueryWantedDetail(dbDir, wantedID string) (*WantedItem, error) {
 	query := fmt.Sprintf(`SELECT id, title, COALESCE(description,'') as description, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(tags,'') as tags, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level, COALESCE(created_at,'') as created_at, COALESCE(updated_at,'') as updated_at FROM wanted WHERE id='%s';`,
 		EscapeSQL(wantedID))
 
-	output, err := doltSQLQuery(dbDir, query)
+	output, err := DoltSQLQuery(dbDir, query)
 	if err != nil {
 		return nil, err
 	}
@@ -480,7 +480,7 @@ func QueryStamp(dbDir, stampID string) (*Stamp, error) {
 	query := fmt.Sprintf(`SELECT id, author, subject, valence, severity, COALESCE(context_id,'') as context_id, COALESCE(context_type,'') as context_type, COALESCE(skill_tags,'') as skill_tags, COALESCE(message,'') as message FROM stamps WHERE id='%s';`,
 		EscapeSQL(stampID))
 
-	output, err := doltSQLQuery(dbDir, query)
+	output, err := DoltSQLQuery(dbDir, query)
 	if err != nil {
 		return nil, err
 	}

@@ -17,12 +17,16 @@ import (
 
 func newBrowseCmd(stdout, stderr io.Writer) *cobra.Command {
 	var (
-		project  string
-		status   string
-		itemType string
-		priority int
-		limit    int
-		jsonOut  bool
+		project   string
+		status    string
+		itemType  string
+		priority  int
+		limit     int
+		jsonOut   bool
+		ephemeral bool
+		postedBy  string
+		claimedBy string
+		search    string
 	)
 
 	cmd := &cobra.Command{
@@ -31,9 +35,8 @@ func newBrowseCmd(stdout, stderr io.Writer) *cobra.Command {
 		Args:  cobra.NoArgs,
 		Long: `Browse the Wasteland wanted board.
 
-Clones the upstream commons database to a temporary directory, queries it,
-then deletes the clone. Works with all provider types (DoltHub, GitHub,
-file, git).
+Pulls the latest upstream changes into your local clone and queries it.
+Use --ephemeral to clone to a temp dir instead (slower, for edge cases).
 
 EXAMPLES:
   wl browse                          # All open wanted items
@@ -42,9 +45,22 @@ EXAMPLES:
   wl browse --status claimed         # Claimed items
   wl browse --priority 0             # Critical priority only
   wl browse --limit 5               # Show 5 items
-  wl browse --json                   # JSON output`,
+  wl browse --json                   # JSON output
+  wl browse --posted-by alice        # Items posted by alice
+  wl browse --claimed-by bob         # Items claimed by bob
+  wl browse --search auth            # Search in title
+  wl browse --ephemeral              # Clone upstream (slow)`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runBrowse(cmd, stdout, stderr, project, status, itemType, priority, limit, jsonOut)
+			return runBrowse(cmd, stdout, stderr, BrowseFilter{
+				Status:    status,
+				Project:   project,
+				Type:      itemType,
+				Priority:  priority,
+				Limit:     limit,
+				PostedBy:  postedBy,
+				ClaimedBy: claimedBy,
+				Search:    search,
+			}, jsonOut, ephemeral)
 		},
 	}
 
@@ -54,6 +70,10 @@ EXAMPLES:
 	cmd.Flags().IntVar(&priority, "priority", -1, "Filter by priority (0=critical, 2=medium, 4=backlog)")
 	cmd.Flags().IntVar(&limit, "limit", 50, "Maximum items to display")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output as JSON")
+	cmd.Flags().BoolVar(&ephemeral, "ephemeral", false, "Clone upstream to temp dir instead of querying local (slow)")
+	cmd.Flags().StringVar(&postedBy, "posted-by", "", "Filter by poster's rig handle")
+	cmd.Flags().StringVar(&claimedBy, "claimed-by", "", "Filter by claimer's rig handle")
+	cmd.Flags().StringVar(&search, "search", "", "Search in title")
 	_ = cmd.RegisterFlagCompletionFunc("status", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"open", "claimed", "in_review", "completed", "withdrawn"}, cobra.ShellCompDirectiveNoFileComp
 	})
@@ -64,21 +84,55 @@ EXAMPLES:
 	return cmd
 }
 
-func runBrowse(cmd *cobra.Command, stdout, _ io.Writer, project, status, itemType string, priority, limit int, jsonOut bool) error {
+func runBrowse(cmd *cobra.Command, stdout, _ io.Writer, filter BrowseFilter, jsonOut, ephemeral bool) error {
 	cfg, err := resolveWasteland(cmd)
 	if err != nil {
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
 
-	doltPath, err := exec.LookPath("dolt")
-	if err != nil {
-		return fmt.Errorf("dolt not found in PATH — install from https://docs.dolthub.com/introduction/installation")
+	if err := requireDolt(); err != nil {
+		return err
 	}
+
+	query := buildBrowseQuery(filter)
+
+	if ephemeral {
+		return runBrowseEphemeral(stdout, cfg, query, jsonOut)
+	}
+
+	return runBrowseLocal(stdout, cfg, query, jsonOut)
+}
+
+func runBrowseLocal(stdout io.Writer, cfg *federation.Config, query string, jsonOut bool) error {
+	fmt.Fprintf(stdout, "Syncing with upstream...\n")
+
+	if err := commons.PullUpstream(cfg.LocalDir); err != nil {
+		return fmt.Errorf("pulling upstream: %w", err)
+	}
+
+	if jsonOut {
+		doltPath, _ := exec.LookPath("dolt")
+		sqlCmd := exec.Command(doltPath, "sql", "-q", query, "-r", "json")
+		sqlCmd.Dir = cfg.LocalDir
+		sqlCmd.Stdout = stdout
+		sqlCmd.Stderr = os.Stderr
+		return sqlCmd.Run()
+	}
+
+	csvData, err := commons.DoltSQLQuery(cfg.LocalDir, query)
+	if err != nil {
+		return fmt.Errorf("querying local database: %w", err)
+	}
+
+	return renderBrowseCSV(stdout, csvData)
+}
+
+func runBrowseEphemeral(stdout io.Writer, cfg *federation.Config, query string, jsonOut bool) error {
+	doltPath, _ := exec.LookPath("dolt")
 
 	_, commonsDB, _ := federation.ParseUpstream(cfg.Upstream)
 	cloneURL := cfg.UpstreamURL
 	if cloneURL == "" {
-		// Backward compat: old configs without UpstreamURL.
 		cloneURL = cfg.Upstream
 	}
 
@@ -99,14 +153,6 @@ func runBrowse(cmd *cobra.Command, stdout, _ io.Writer, project, status, itemTyp
 	}
 	fmt.Fprintf(stdout, "%s Cloned successfully\n\n", style.Bold.Render("✓"))
 
-	query := buildBrowseQuery(BrowseFilter{
-		Status:   status,
-		Project:  project,
-		Type:     itemType,
-		Priority: priority,
-		Limit:    limit,
-	})
-
 	if jsonOut {
 		sqlCmd := exec.Command(doltPath, "sql", "-q", query, "-r", "json")
 		sqlCmd.Dir = cloneDir
@@ -120,11 +166,14 @@ func runBrowse(cmd *cobra.Command, stdout, _ io.Writer, project, status, itemTyp
 
 // BrowseFilter holds filter parameters for building a browse query.
 type BrowseFilter struct {
-	Status   string
-	Project  string
-	Type     string
-	Priority int
-	Limit    int
+	Status    string
+	Project   string
+	Type      string
+	Priority  int
+	Limit     int
+	PostedBy  string
+	ClaimedBy string
+	Search    string
 }
 
 func buildBrowseQuery(f BrowseFilter) string {
@@ -142,6 +191,15 @@ func buildBrowseQuery(f BrowseFilter) string {
 	if f.Priority >= 0 {
 		conditions = append(conditions, fmt.Sprintf("priority = %d", f.Priority))
 	}
+	if f.PostedBy != "" {
+		conditions = append(conditions, fmt.Sprintf("posted_by = '%s'", commons.EscapeSQL(f.PostedBy)))
+	}
+	if f.ClaimedBy != "" {
+		conditions = append(conditions, fmt.Sprintf("claimed_by = '%s'", commons.EscapeSQL(f.ClaimedBy)))
+	}
+	if f.Search != "" {
+		conditions = append(conditions, fmt.Sprintf("title LIKE '%%%s%%'", commons.EscapeSQL(f.Search)))
+	}
 
 	query := "SELECT id, title, project, type, priority, posted_by, status, effort_level FROM wanted"
 	if len(conditions) > 0 {
@@ -153,19 +211,8 @@ func buildBrowseQuery(f BrowseFilter) string {
 	return query
 }
 
-func renderBrowseTable(stdout io.Writer, doltPath, cloneDir, query string) error {
-	sqlCmd := exec.Command(doltPath, "sql", "-q", query, "-r", "csv")
-	sqlCmd.Dir = cloneDir
-	output, err := sqlCmd.Output()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return fmt.Errorf("query failed: %s", string(exitErr.Stderr))
-		}
-		return fmt.Errorf("running query: %w", err)
-	}
-
-	rows := wlParseCSV(string(output))
+func renderBrowseCSV(stdout io.Writer, csvData string) error {
+	rows := wlParseCSV(csvData)
 	if len(rows) <= 1 {
 		fmt.Fprintln(stdout, "No wanted items found matching your filters.")
 		return nil
@@ -194,6 +241,21 @@ func renderBrowseTable(stdout io.Writer, doltPath, cloneDir, query string) error
 	fmt.Fprint(stdout, tbl.Render())
 
 	return nil
+}
+
+func renderBrowseTable(stdout io.Writer, doltPath, cloneDir, query string) error {
+	sqlCmd := exec.Command(doltPath, "sql", "-q", query, "-r", "csv")
+	sqlCmd.Dir = cloneDir
+	output, err := sqlCmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return fmt.Errorf("query failed: %s", string(exitErr.Stderr))
+		}
+		return fmt.Errorf("running query: %w", err)
+	}
+
+	return renderBrowseCSV(stdout, string(output))
 }
 
 func wlParseCSV(data string) [][]string {

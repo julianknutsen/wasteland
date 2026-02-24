@@ -54,6 +54,12 @@ func runDone(cmd *cobra.Command, stdout, _ io.Writer, wantedID, evidence string,
 	if err != nil {
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
+
+	wantedID, err = resolveWantedArg(wlCfg, wantedID)
+	if err != nil {
+		return err
+	}
+
 	rigHandle := wlCfg.RigHandle
 
 	mc := newMutationContext(wlCfg, wantedID, noPush, stdout)
@@ -83,6 +89,8 @@ func runDone(cmd *cobra.Command, stdout, _ io.Writer, wantedID, evidence string,
 		fmt.Fprintf(stdout, "\n  %s %s\n", style.Warning.Render(style.IconWarn),
 			"Push failed — changes saved locally. Run 'wl sync' to retry.")
 	}
+
+	fmt.Fprintf(stdout, "\n  %s\n", style.Dim.Render("Next: wait for review. Check: wl status "+wantedID))
 
 	return nil
 }

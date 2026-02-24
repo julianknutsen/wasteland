@@ -131,6 +131,8 @@ func runPost(cmd *cobra.Command, stdout, _ io.Writer, title, description, projec
 			"Push failed — changes saved locally. Run 'wl sync' to retry.")
 	}
 
+	fmt.Fprintf(stdout, "\n  %s\n", style.Dim.Render("Next: others can claim this. Browse: wl browse"))
+
 	return nil
 }
 

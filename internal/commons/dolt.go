@@ -71,6 +71,11 @@ func pullRemote(dbDir, remote string) error {
 	return nil
 }
 
+// PullUpstream pulls the latest changes from the upstream remote.
+func PullUpstream(dbDir string) error {
+	return pullRemote(dbDir, "upstream")
+}
+
 // doltSQLScript executes a SQL script against a dolt database directory.
 func doltSQLScript(dbDir, script string) error {
 	tmpFile, err := os.CreateTemp("", "dolt-script-*.sql")
@@ -104,7 +109,7 @@ func BranchName(rigHandle, wantedID string) string {
 
 // BranchExists checks whether a branch exists in the dolt database.
 func BranchExists(dbDir, branch string) (bool, error) {
-	out, err := doltSQLQuery(dbDir, fmt.Sprintf(
+	out, err := DoltSQLQuery(dbDir, fmt.Sprintf(
 		"SELECT COUNT(*) AS cnt FROM dolt_branches WHERE name = '%s'",
 		strings.ReplaceAll(branch, "'", "''"),
 	))
@@ -172,7 +177,7 @@ func PushBranch(dbDir, branch string, stdout io.Writer) error {
 
 // ListBranches returns branch names matching a prefix (e.g. "wl/").
 func ListBranches(dbDir, prefix string) ([]string, error) {
-	out, err := doltSQLQuery(dbDir, fmt.Sprintf(
+	out, err := DoltSQLQuery(dbDir, fmt.Sprintf(
 		"SELECT name FROM dolt_branches WHERE name LIKE '%s%%' ORDER BY name",
 		strings.ReplaceAll(prefix, "'", "''"),
 	))
@@ -279,7 +284,7 @@ func ListWantedIDs(dbDir, statusFilter string) ([]string, error) {
 		query += fmt.Sprintf(" WHERE status = '%s'", EscapeSQL(statusFilter))
 	}
 	query += " ORDER BY created_at DESC LIMIT 50"
-	out, err := doltSQLQuery(dbDir, query)
+	out, err := DoltSQLQuery(dbDir, query)
 	if err != nil {
 		return nil, err
 	}
@@ -297,8 +302,35 @@ func ListWantedIDs(dbDir, statusFilter string) ([]string, error) {
 	return ids, nil
 }
 
-// doltSQLQuery executes a SQL query and returns the raw CSV output.
-func doltSQLQuery(dbDir, query string) (string, error) {
+// ResolveWantedID resolves a wanted ID or unambiguous prefix to a full ID.
+func ResolveWantedID(dbDir, idOrPrefix string) (string, error) {
+	query := fmt.Sprintf("SELECT id FROM wanted WHERE id LIKE '%s%%' LIMIT 3", EscapeSQL(idOrPrefix))
+	out, err := DoltSQLQuery(dbDir, query)
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) < 2 {
+		return "", fmt.Errorf("no wanted item matching %q", idOrPrefix)
+	}
+	var matches []string
+	for _, line := range lines[1:] {
+		id := strings.TrimSpace(line)
+		if id != "" {
+			matches = append(matches, id)
+		}
+	}
+	if len(matches) == 0 {
+		return "", fmt.Errorf("no wanted item matching %q", idOrPrefix)
+	}
+	if len(matches) > 1 {
+		return "", fmt.Errorf("ambiguous prefix %q matches: %s", idOrPrefix, strings.Join(matches, ", "))
+	}
+	return matches[0], nil
+}
+
+// DoltSQLQuery executes a SQL query and returns the raw CSV output.
+func DoltSQLQuery(dbDir, query string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 

@@ -11,14 +11,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// withFakeStore overrides the openStore factory for the duration of the test
-// and returns the fake store for setup/assertions.
+// withFakeStore overrides the openStore factory and resolveWantedArg for the
+// duration of the test and returns the fake store for setup/assertions.
 func withFakeStore(t *testing.T) *fakeWLCommonsStore {
 	t.Helper()
 	fake := newFakeWLCommonsStore()
-	old := openStore
+	oldStore := openStore
 	openStore = func(string, bool, string) commons.WLCommonsStore { return fake }
-	t.Cleanup(func() { openStore = old })
+	oldResolve := resolveWantedArg
+	resolveWantedArg = func(_ *federation.Config, id string) (string, error) { return id, nil }
+	t.Cleanup(func() {
+		openStore = oldStore
+		resolveWantedArg = oldResolve
+	})
 	return fake
 }
 
