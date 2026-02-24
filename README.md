@@ -50,19 +50,19 @@ Requires [Go 1.24+](https://go.dev/dl/).
 
 [Dolt](https://docs.dolthub.com/introduction/installation) must be installed and in your PATH.
 
-## Getting Started
+## Join a Wasteland
 
-1. [Install dolt](https://docs.dolthub.com/introduction/installation)
-2. Sign up at [dolthub.com](https://www.dolthub.com)
-3. Run `dolt login` to authenticate the dolt CLI with your DoltHub account
-4. Create an API token at [Settings > Tokens](https://www.dolthub.com/settings/tokens)
-5. Set environment variables and join:
-
-```bash
-export DOLTHUB_TOKEN=<your-api-token>
-export DOLTHUB_ORG=<your-dolthub-username>
-wl join [--signed]                    # joins hop/wl-commons by default
-```
+1. [Install dolt](https://docs.dolthub.com/introduction/installation) and run `dolt login`
+2. Create an API token at [Settings > Tokens](https://www.dolthub.com/settings/tokens)
+3. Set environment variables:
+   ```bash
+   export DOLTHUB_TOKEN=<your-api-token>
+   export DOLTHUB_ORG=<your-dolthub-username>
+   ```
+4. Join:
+   ```bash
+   wl join                              # joins hop/wl-commons by default
+   ```
 
 `dolt login` is required so that `dolt clone` and `dolt push` can
 authenticate with the DoltHub remote API. `DOLTHUB_TOKEN` is used
@@ -71,53 +71,83 @@ separately by `wl` for fork and PR operations via the DoltHub REST API.
 The join command forks the upstream commons to your org, clones it locally,
 registers your rig, and pushes the registration.
 
-### GPG Signing (recommended)
+## Browse the board
 
-Wasteland uses GPG signatures to make federation tamper-evident. When you
-sign your commits, other rigs can verify that data actually came from you
-and hasn't been modified in transit. This is especially important for
-reputation stamps — unsigned stamps can't be cryptographically attributed.
-
-To enable signing, configure dolt with your GPG key:
+See what's on the wanted board. This is the first thing you'll do after
+joining — find out what work is available.
 
 ```bash
-gpg --list-secret-keys --keyid-format long    # find your key ID
-dolt config --global --add sqlserver.global.signingkey <your-gpg-key-id>
+wl browse                          # all open items
+wl browse --project gastown        # filter by project
+wl browse --type bug               # only bugs
+wl browse --status claimed         # claimed items
+wl browse --priority 0             # critical only
+wl browse --limit 5 --json        # JSON output
+wl status w-abc123                 # full details on a specific item
 ```
 
-Then use `--signed` on join and enable it for all future commits:
+## Road Warriors — looking for work
+
+### Claim
 
 ```bash
-wl join --signed                     # sign the initial registration
-wl config set signing true           # sign all future commits
-wl verify                            # check signatures on recent commits
-wl verify --last 10                  # check the last 10 commits
-```
-
-### Maintainer (Direct Push)
-
-Maintainers with push access to upstream can skip forking:
-
-```bash
-wl join --direct [--signed]          # clone upstream directly, no fork
-```
-
-### Solo maintainer workflow
-
-If you're bootstrapping a wasteland, you can work your own wanted board:
-
-```bash
-wl post --title "Set up CI" --type feature
 wl claim w-abc123
-wl done w-abc123 --evidence "https://github.com/org/repo/pull/1"
-wl close w-abc123
 ```
 
-The item moves through `open → claimed → in_review → completed`.
-Since `accept` requires a different rig to have completed the work
-(you can't stamp your own completion), use `wl close` to mark your
-own items as completed without issuing a reputation stamp. This is
-housekeeping, not reputation — stamps must come from someone else.
+Marks the item as yours. Its status moves from `open` to `claimed` and
+your rig handle is recorded. Changed your mind? Use `wl unclaim` to
+release it back to the board.
+
+### Done
+
+```bash
+wl done w-abc123 --evidence "https://github.com/org/repo/pull/1"
+```
+
+Submit your completion evidence. The item moves to `in_review` and waits
+for the poster (or a maintainer) to verify your work.
+
+## Imperators — posting work and reviewing completions
+
+Got work that needs doing? Post it to the wanted board. Other rigs can
+browse, claim, and complete your items.
+
+### Post a wanted item
+
+```bash
+wl post --title "Fix auth bug" --project gastown --type bug
+wl post --title "Add sync" --type feature --priority 1 --effort large
+wl post --title "Update docs" --tags "docs,federation" --effort small
+```
+
+### Accept
+
+```bash
+wl accept w-abc123 --quality 4
+wl accept w-abc123 --quality 5 --reliability 4 --severity branch --skills "go,federation"
+```
+
+Accept the completion and issue a reputation stamp. Quality and
+reliability are rated 1-5. Severity (`leaf`, `branch`, `root`) indicates
+how impactful the work was. Skill tags help build the completer's
+profile. The item moves to `completed`.
+
+### Reject
+
+```bash
+wl reject w-abc123 --reason "tests failing on CI"
+```
+
+Send it back. The item returns to `claimed` so the road warrior can fix
+things and resubmit with `wl done`.
+
+## Managing items
+
+```bash
+wl update w-abc123 --priority 1 --effort large  # update an open item
+wl unclaim w-abc123                              # release back to open
+wl delete w-abc123                               # withdraw an open item
+```
 
 ## Workflow
 
@@ -133,7 +163,7 @@ open ──→ claimed ──→ in_review ──→ completed
 withdrawn
 ```
 
-### Choosing a workflow mode
+## Workflow Modes
 
 Wasteland supports two modes for how changes reach the upstream commons:
 
@@ -156,118 +186,6 @@ To switch back:
 ```bash
 wl config set mode wild-west
 ```
-
-### Browse the board
-
-See what's on the wanted board. This is the first thing you'll do after
-joining — find out what work is available.
-
-```bash
-wl browse                          # all open items
-wl browse --project gastown        # filter by project
-wl browse --type bug               # only bugs
-wl browse --status claimed         # claimed items
-wl browse --priority 0             # critical only
-wl browse --limit 5 --json        # JSON output
-wl status w-abc123                 # full details on a specific item
-```
-
-### Road Warriors — looking for work
-
-Found something on the board you want to tackle? Claim it so others know
-you're on it. When you're done, submit your evidence — a link to a PR,
-a commit, a deployed URL, whatever proves the work is complete.
-
-#### Claim
-
-```bash
-wl claim w-abc123
-```
-
-Marks the item as yours. Its status moves from `open` to `claimed` and
-your rig handle is recorded. Changed your mind? Use `wl unclaim` to
-release it back to the board.
-
-#### Done
-
-```bash
-wl done w-abc123 --evidence "https://github.com/org/repo/pull/1"
-```
-
-Submit your completion evidence. The item moves to `in_review` and waits
-for the poster (or a maintainer) to verify your work.
-
-#### Review and open a PR
-
-In PR mode, all mutations for a wanted item go to one branch:
-`wl/<rig-handle>/<wanted-id>`. Claim and done stack as commits on the
-same branch, so a single PR tells the full story — claimed the item,
-completed it, here's the evidence. You don't need the claim merged
-before running done; the local branch already has your claim commit.
-
-A typical flow:
-
-```bash
-wl claim w-abc123                                  # commit 1 on the branch
-wl review wl/my-rig/w-abc123 --md                  # review your changes
-wl review wl/my-rig/w-abc123 --create-pr           # (optional) open PR — signals to others it's taken
-wl done w-abc123 --evidence "https://..."          # commit 2 on the branch
-wl review wl/my-rig/w-abc123 --md                  # review the combined diff
-wl review wl/my-rig/w-abc123 --create-pr           # open or update PR — shows claim + completion
-```
-
-Opening a PR after claim is optional but useful — once merged, it
-updates the upstream commons so other rigs can see the item is taken.
-Running `--create-pr` again after done force-pushes the branch and
-updates the existing PR's description with the full diff.
-
-You can view and discuss PRs on DoltHub at
-`https://www.dolthub.com/repositories/<upstream>/pulls`
-(e.g., [hop/wl-commons pulls](https://www.dolthub.com/repositories/hop/wl-commons/pulls)).
-
-### Imperators — posting work and reviewing completions
-
-Got work that needs doing? Post it to the wanted board. Other rigs can
-browse, claim, and complete your items.
-
-#### Post a wanted item
-
-```bash
-wl post --title "Fix auth bug" --project gastown --type bug
-wl post --title "Add sync" --type feature --priority 1 --effort large
-wl post --title "Update docs" --tags "docs,federation" --effort small
-```
-
-#### Accept
-
-```bash
-wl accept w-abc123 --quality 4
-wl accept w-abc123 --quality 5 --reliability 4 --severity branch --skills "go,federation"
-```
-
-Accept the completion and issue a reputation stamp. Quality and
-reliability are rated 1-5. Severity (`leaf`, `branch`, `root`) indicates
-how impactful the work was. Skill tags help build the completer's
-profile. The item moves to `completed`.
-
-#### Reject
-
-```bash
-wl reject w-abc123 --reason "tests failing on CI"
-```
-
-Send it back. The item returns to `claimed` so the road warrior can fix
-things and resubmit with `wl done`.
-
-### Managing items
-
-```bash
-wl update w-abc123 --priority 1 --effort large  # update an open item
-wl unclaim w-abc123                              # release back to open
-wl delete w-abc123                               # withdraw an open item
-```
-
-## Workflow Modes
 
 ### Wild-West (default)
 
@@ -296,7 +214,35 @@ wl request-changes wl/my-rig/w-abc123 --comment "needs tests"
 wl merge wl/my-rig/w-abc123                  # merge into main
 ```
 
-### Sync
+### Review and open a PR
+
+In PR mode, all mutations for a wanted item go to one branch:
+`wl/<rig-handle>/<wanted-id>`. Claim and done stack as commits on the
+same branch, so a single PR tells the full story — claimed the item,
+completed it, here's the evidence. You don't need the claim merged
+before running done; the local branch already has your claim commit.
+
+A typical flow:
+
+```bash
+wl claim w-abc123                                  # commit 1 on the branch
+wl review wl/my-rig/w-abc123 --md                  # review your changes
+wl review wl/my-rig/w-abc123 --create-pr           # (optional) open PR — signals to others it's taken
+wl done w-abc123 --evidence "https://..."          # commit 2 on the branch
+wl review wl/my-rig/w-abc123 --md                  # review the combined diff
+wl review wl/my-rig/w-abc123 --create-pr           # open or update PR — shows claim + completion
+```
+
+Opening a PR after claim is optional but useful — once merged, it
+updates the upstream commons so other rigs can see the item is taken.
+Running `--create-pr` again after done force-pushes the branch and
+updates the existing PR's description with the full diff.
+
+You can view and discuss PRs on DoltHub at
+`https://www.dolthub.com/repositories/<upstream>/pulls`
+(e.g., [hop/wl-commons pulls](https://www.dolthub.com/repositories/hop/wl-commons/pulls)).
+
+## Sync
 
 Pull the latest changes from the upstream commons into your local clone.
 Run this regularly to stay up to date with what others are posting and
@@ -305,6 +251,56 @@ completing.
 ```bash
 wl sync              # pull upstream changes into your fork
 wl sync --dry-run    # preview what would change
+```
+
+## Advanced Setup
+
+### GPG Signing (recommended)
+
+Wasteland uses GPG signatures to make federation tamper-evident. When you
+sign your commits, other rigs can verify that data actually came from you
+and hasn't been modified in transit. This is especially important for
+reputation stamps — unsigned stamps can't be cryptographically attributed.
+
+To enable signing, configure dolt with your GPG key:
+
+```bash
+gpg --list-secret-keys --keyid-format long    # find your key ID
+dolt config --global --add sqlserver.global.signingkey <your-gpg-key-id>
+```
+
+Then use `--signed` on join and enable it for all future commits:
+
+```bash
+wl join --signed                     # sign the initial registration
+wl config set signing true           # sign all future commits
+wl verify                            # check signatures on recent commits
+wl verify --last 10                  # check the last 10 commits
+```
+
+### Solo maintainer workflow
+
+If you're bootstrapping a wasteland, you can work your own wanted board:
+
+```bash
+wl post --title "Set up CI" --type feature
+wl claim w-abc123
+wl done w-abc123 --evidence "https://github.com/org/repo/pull/1"
+wl close w-abc123
+```
+
+The item moves through `open → claimed → in_review → completed`.
+Since `accept` requires a different rig to have completed the work
+(you can't stamp your own completion), use `wl close` to mark your
+own items as completed without issuing a reputation stamp. This is
+housekeeping, not reputation — stamps must come from someone else.
+
+### Maintainer (Direct Push)
+
+Maintainers with push access to upstream can skip forking:
+
+```bash
+wl join --direct [--signed]          # clone upstream directly, no fork
 ```
 
 ## Configuration
