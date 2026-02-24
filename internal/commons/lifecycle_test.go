@@ -65,6 +65,139 @@ func TestValidateTransition(t *testing.T) {
 	}
 }
 
+func TestCanPerformTransition(t *testing.T) {
+	item := &WantedItem{
+		ID:        "w-test",
+		Status:    "claimed",
+		PostedBy:  "poster",
+		ClaimedBy: "claimer",
+	}
+
+	tests := []struct {
+		name  string
+		t     Transition
+		actor string
+		want  bool
+	}{
+		{"claim anyone", TransitionClaim, "random", true},
+		{"unclaim by claimer", TransitionUnclaim, "claimer", true},
+		{"unclaim by poster", TransitionUnclaim, "poster", true},
+		{"unclaim by other", TransitionUnclaim, "other", false},
+		{"done by claimer", TransitionDone, "claimer", true},
+		{"done by other", TransitionDone, "other", false},
+		{"delete anyone", TransitionDelete, "random", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := CanPerformTransition(item, tc.t, tc.actor)
+			if got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	// nil item always returns false.
+	if CanPerformTransition(nil, TransitionClaim, "x") {
+		t.Error("nil item should return false")
+	}
+}
+
+func TestCanPerformTransition_Accept(t *testing.T) {
+	item := &WantedItem{
+		ID:        "w-test",
+		Status:    "in_review",
+		PostedBy:  "poster",
+		ClaimedBy: "claimer",
+	}
+
+	// Poster (non-claimer) can accept.
+	if !CanPerformTransition(item, TransitionAccept, "poster") {
+		t.Error("poster should be able to accept")
+	}
+	// Claimer cannot accept own work.
+	if CanPerformTransition(item, TransitionAccept, "claimer") {
+		t.Error("claimer should not be able to accept own work")
+	}
+	// Random cannot accept.
+	if CanPerformTransition(item, TransitionAccept, "random") {
+		t.Error("random should not be able to accept")
+	}
+}
+
+func TestTransitionLabel(t *testing.T) {
+	tests := []struct {
+		t    Transition
+		want string
+	}{
+		{TransitionClaim, "Claiming..."},
+		{TransitionUnclaim, "Unclaiming..."},
+		{TransitionReject, "Rejecting..."},
+		{TransitionClose, "Closing..."},
+		{TransitionDelete, "Deleting..."},
+	}
+	for _, tc := range tests {
+		if got := TransitionLabel(tc.t); got != tc.want {
+			t.Errorf("TransitionLabel(%v) = %q, want %q", tc.t, got, tc.want)
+		}
+	}
+	// Unknown transition returns "Working..."
+	if got := TransitionLabel(Transition(99)); got != "Working..." {
+		t.Errorf("unknown transition label = %q, want %q", got, "Working...")
+	}
+}
+
+func TestTransitionName(t *testing.T) {
+	if got := TransitionName(TransitionClaim); got != "claim" {
+		t.Errorf("got %q, want %q", got, "claim")
+	}
+	if got := TransitionName(Transition(99)); got != "unknown" {
+		t.Errorf("got %q, want %q", got, "unknown")
+	}
+}
+
+func TestTransitionRequiresInput(t *testing.T) {
+	if got := TransitionRequiresInput(TransitionDone); got == "" {
+		t.Error("done should require input")
+	}
+	if got := TransitionRequiresInput(TransitionAccept); got == "" {
+		t.Error("accept should require input")
+	}
+	if got := TransitionRequiresInput(TransitionClaim); got != "" {
+		t.Errorf("claim should not require input, got %q", got)
+	}
+}
+
+func TestAvailableTransitions(t *testing.T) {
+	// Open item, poster is "poster", actor is "random".
+	item := &WantedItem{
+		ID:       "w-test",
+		Status:   "open",
+		PostedBy: "poster",
+	}
+
+	// Random can claim and delete.
+	got := AvailableTransitions(item, "random")
+	if len(got) != 2 {
+		t.Fatalf("expected 2 transitions, got %d: %v", len(got), got)
+	}
+	if got[0] != TransitionClaim || got[1] != TransitionDelete {
+		t.Errorf("expected [claim, delete], got %v", got)
+	}
+
+	// Poster can also close/delete open items — but close is only from in_review.
+	// So poster still only gets claim + delete from open.
+	got = AvailableTransitions(item, "poster")
+	if len(got) != 2 {
+		t.Fatalf("expected 2 transitions for poster on open, got %d: %v", len(got), got)
+	}
+
+	// nil item returns nil.
+	if AvailableTransitions(nil, "x") != nil {
+		t.Error("nil item should return nil")
+	}
+}
+
 func TestResolvePushTarget_WildWest(t *testing.T) {
 	loc := &ItemLocation{
 		LocalStatus:    "claimed",

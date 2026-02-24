@@ -19,7 +19,7 @@ func TestBrowseUpdate_StatusCycle(t *testing.T) {
 		t.Fatalf("initial statusIdx = %d, want 0", m.statusIdx)
 	}
 
-	m2, cmd := m.update(keyMsg("s"), "/tmp/fake")
+	m2, cmd := m.update(keyMsg("s"), Config{DBDir: "/tmp/fake"})
 	if m2.statusIdx != 1 {
 		t.Errorf("after 's': statusIdx = %d, want 1", m2.statusIdx)
 	}
@@ -39,7 +39,7 @@ func TestBrowseUpdate_TypeCycle(t *testing.T) {
 		t.Fatalf("initial typeIdx = %d, want 0", m.typeIdx)
 	}
 
-	m2, cmd := m.update(keyMsg("t"), "/tmp/fake")
+	m2, cmd := m.update(keyMsg("t"), Config{DBDir: "/tmp/fake"})
 	if m2.typeIdx != 1 {
 		t.Errorf("after 't': typeIdx = %d, want 1", m2.typeIdx)
 	}
@@ -55,7 +55,7 @@ func TestBrowseUpdate_SearchMode(t *testing.T) {
 	m := newBrowseModel()
 	m.loading = false
 
-	m2, _ := m.update(keyMsg("/"), "/tmp/fake")
+	m2, _ := m.update(keyMsg("/"), Config{DBDir: "/tmp/fake"})
 	if !m2.searchMode {
 		t.Error("after '/': searchMode should be true")
 	}

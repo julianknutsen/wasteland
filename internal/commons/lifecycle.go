@@ -126,3 +126,92 @@ func ResolvePushTarget(mode string, loc *ItemLocation) PushTarget {
 func PushOriginMain(dbDir string, stdout io.Writer) error {
 	return PushBranchToRemoteForce(dbDir, "origin", "main", true, stdout)
 }
+
+// CanPerformTransition checks whether actor can perform transition t on item.
+func CanPerformTransition(item *WantedItem, t Transition, actor string) bool {
+	if item == nil {
+		return false
+	}
+	switch t {
+	case TransitionClaim:
+		return true // any rig can claim
+	case TransitionUnclaim:
+		return item.ClaimedBy == actor || item.PostedBy == actor
+	case TransitionDone:
+		return item.ClaimedBy == actor
+	case TransitionAccept:
+		return item.PostedBy == actor && item.ClaimedBy != actor
+	case TransitionReject:
+		return item.PostedBy == actor
+	case TransitionClose:
+		return item.PostedBy == actor
+	case TransitionDelete:
+		return true // any rig can delete
+	default:
+		return false
+	}
+}
+
+// TransitionLabel returns a human-readable in-progress label for a transition.
+func TransitionLabel(t Transition) string {
+	switch t {
+	case TransitionClaim:
+		return "Claiming..."
+	case TransitionUnclaim:
+		return "Unclaiming..."
+	case TransitionReject:
+		return "Rejecting..."
+	case TransitionClose:
+		return "Closing..."
+	case TransitionDelete:
+		return "Deleting..."
+	default:
+		return "Working..."
+	}
+}
+
+// TransitionName returns the short name for a transition (e.g. "claim").
+func TransitionName(t Transition) string {
+	if rule, ok := transitionRules[t]; ok {
+		return rule.name
+	}
+	return "unknown"
+}
+
+// TransitionRequiresInput returns a non-empty hint if a transition requires
+// additional input that can't be gathered in the TUI (must use CLI).
+func TransitionRequiresInput(t Transition) string {
+	switch t {
+	case TransitionDone:
+		return "requires evidence URL"
+	case TransitionAccept:
+		return "requires quality rating"
+	default:
+		return ""
+	}
+}
+
+// AvailableTransitions returns transitions valid for item that actor can perform.
+func AvailableTransitions(item *WantedItem, actor string) []Transition {
+	if item == nil {
+		return nil
+	}
+	all := []Transition{
+		TransitionClaim,
+		TransitionUnclaim,
+		TransitionDone,
+		TransitionAccept,
+		TransitionReject,
+		TransitionClose,
+		TransitionDelete,
+	}
+	var result []Transition
+	for _, t := range all {
+		if _, err := ValidateTransition(item.Status, t); err == nil {
+			if CanPerformTransition(item, t, actor) {
+				result = append(result, t)
+			}
+		}
+	}
+	return result
+}

@@ -3,14 +3,23 @@ package tui
 import "github.com/charmbracelet/bubbles/key"
 
 type keyMap struct {
-	Up     key.Binding
-	Down   key.Binding
-	Enter  key.Binding
-	Back   key.Binding
-	Quit   key.Binding
-	Search key.Binding
-	Status key.Binding
-	Type   key.Binding
+	Up      key.Binding
+	Down    key.Binding
+	Enter   key.Binding
+	Back    key.Binding
+	Quit    key.Binding
+	Search  key.Binding
+	Status  key.Binding
+	Type    key.Binding
+	Claim   key.Binding
+	Unclaim key.Binding
+	Done    key.Binding
+	Accept  key.Binding
+	Reject  key.Binding
+	Close   key.Binding
+	Delete  key.Binding
+	Confirm key.Binding
+	Cancel  key.Binding
 }
 
 var keys = keyMap{
@@ -45,5 +54,41 @@ var keys = keyMap{
 	Type: key.NewBinding(
 		key.WithKeys("t"),
 		key.WithHelp("t", "type"),
+	),
+	Claim: key.NewBinding(
+		key.WithKeys("c"),
+		key.WithHelp("c", "claim"),
+	),
+	Unclaim: key.NewBinding(
+		key.WithKeys("u"),
+		key.WithHelp("u", "unclaim"),
+	),
+	Done: key.NewBinding(
+		key.WithKeys("d"),
+		key.WithHelp("d", "done"),
+	),
+	Accept: key.NewBinding(
+		key.WithKeys("a"),
+		key.WithHelp("a", "accept"),
+	),
+	Reject: key.NewBinding(
+		key.WithKeys("x"),
+		key.WithHelp("x", "reject"),
+	),
+	Close: key.NewBinding(
+		key.WithKeys("X"),
+		key.WithHelp("X", "close"),
+	),
+	Delete: key.NewBinding(
+		key.WithKeys("D"),
+		key.WithHelp("D", "delete"),
+	),
+	Confirm: key.NewBinding(
+		key.WithKeys("y"),
+		key.WithHelp("y", "confirm"),
+	),
+	Cancel: key.NewBinding(
+		key.WithKeys("n"),
+		key.WithHelp("n", "cancel"),
 	),
 }

@@ -12,11 +12,6 @@ import (
 	"github.com/julianknutsen/wasteland/internal/commons"
 )
 
-var (
-	statusCycle = []string{"open", "claimed", "in_review", "completed", ""}
-	typeCycle   = []string{"", "feature", "bug", "design", "rfc", "docs"}
-)
-
 type browseModel struct {
 	items      []commons.WantedSummary
 	cursor     int
@@ -43,8 +38,8 @@ func newBrowseModel() browseModel {
 
 func (m browseModel) filter() commons.BrowseFilter {
 	return commons.BrowseFilter{
-		Status:   statusCycle[m.statusIdx],
-		Type:     typeCycle[m.typeIdx],
+		Status:   commons.ValidStatuses()[m.statusIdx],
+		Type:     commons.ValidTypes()[m.typeIdx],
 		Priority: -1,
 		Limit:    100,
 		Search:   m.search.Value(),
@@ -65,9 +60,9 @@ func (m *browseModel) setData(msg browseDataMsg) {
 	}
 }
 
-func (m browseModel) update(msg bubbletea.Msg, dbDir string) (browseModel, bubbletea.Cmd) {
+func (m browseModel) update(msg bubbletea.Msg, cfg Config) (browseModel, bubbletea.Cmd) {
 	if m.searchMode {
-		return m.updateSearch(msg, dbDir)
+		return m.updateSearch(msg, cfg)
 	}
 
 	if msg, ok := msg.(bubbletea.KeyMsg); ok {
@@ -99,23 +94,23 @@ func (m browseModel) update(msg bubbletea.Msg, dbDir string) (browseModel, bubbl
 			return m, textinput.Blink
 
 		case key.Matches(msg, keys.Status):
-			m.statusIdx = (m.statusIdx + 1) % len(statusCycle)
+			m.statusIdx = (m.statusIdx + 1) % len(commons.ValidStatuses())
 			m.cursor = 0
 			m.loading = true
-			return m, fetchBrowse(dbDir, m.filter())
+			return m, fetchBrowse(cfg, m.filter())
 
 		case key.Matches(msg, keys.Type):
-			m.typeIdx = (m.typeIdx + 1) % len(typeCycle)
+			m.typeIdx = (m.typeIdx + 1) % len(commons.ValidTypes())
 			m.cursor = 0
 			m.loading = true
-			return m, fetchBrowse(dbDir, m.filter())
+			return m, fetchBrowse(cfg, m.filter())
 		}
 	}
 
 	return m, nil
 }
 
-func (m browseModel) updateSearch(msg bubbletea.Msg, dbDir string) (browseModel, bubbletea.Cmd) {
+func (m browseModel) updateSearch(msg bubbletea.Msg, cfg Config) (browseModel, bubbletea.Cmd) {
 	if msg, ok := msg.(bubbletea.KeyMsg); ok {
 		switch msg.String() {
 		case "enter", "esc":
@@ -124,7 +119,7 @@ func (m browseModel) updateSearch(msg bubbletea.Msg, dbDir string) (browseModel,
 			if msg.String() == "enter" {
 				m.cursor = 0
 				m.loading = true
-				return m, fetchBrowse(dbDir, m.filter())
+				return m, fetchBrowse(cfg, m.filter())
 			}
 			return m, nil
 		}
@@ -143,14 +138,8 @@ func (m browseModel) view() string {
 	b.WriteByte('\n')
 
 	// Filter bar — always visible so user can see active filters.
-	statusLabel := statusCycle[m.statusIdx]
-	if statusLabel == "" {
-		statusLabel = "all"
-	}
-	typeLabel := typeCycle[m.typeIdx]
-	if typeLabel == "" {
-		typeLabel = "all"
-	}
+	statusLabel := commons.StatusLabel(commons.ValidStatuses()[m.statusIdx])
+	typeLabel := commons.TypeLabel(commons.ValidTypes()[m.typeIdx])
 	filterLine := fmt.Sprintf("  [s] Status: %-12s  [t] Type: %-10s", statusLabel, typeLabel)
 	if m.search.Value() != "" {
 		filterLine += fmt.Sprintf("  Search: %q", m.search.Value())

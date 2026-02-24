@@ -6,6 +6,7 @@ import (
 
 	bubbletea "github.com/charmbracelet/bubbletea"
 	"github.com/julianknutsen/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/julianknutsen/wasteland/internal/style"
 	"github.com/julianknutsen/wasteland/internal/tui"
 	"github.com/spf13/cobra"
@@ -41,12 +42,22 @@ func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 		return fmt.Errorf("pulling upstream: %w", err)
 	}
 
+	// PR mode: force-push main to origin so it matches upstream.
+	// Only the per-item mutation branches should differ.
+	if cfg.ResolveMode() == federation.ModePR {
+		if err := commons.PushOriginMain(cfg.LocalDir, io.Discard); err != nil {
+			fmt.Fprintf(stderr, "  warning: could not sync origin/main: %v\n", err)
+		}
+	}
+
 	upstream := cfg.Upstream
 
 	m := tui.New(tui.Config{
 		DBDir:     cfg.LocalDir,
 		RigHandle: cfg.RigHandle,
 		Upstream:  upstream,
+		Mode:      cfg.ResolveMode(),
+		Signing:   cfg.Signing,
 	})
 
 	p := bubbletea.NewProgram(m, bubbletea.WithAltScreen())
