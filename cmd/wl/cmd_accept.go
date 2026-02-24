@@ -86,7 +86,7 @@ func runAccept(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, quality
 	}
 	defer cleanup()
 
-	store := openStore(wlCfg.LocalDir, wlCfg.Signing)
+	store := openStore(wlCfg.LocalDir, wlCfg.Signing, wlCfg.HopURI)
 
 	stamp, err := acceptCompletion(store, wantedID, rigHandle, quality, reliability, severity, skillTags, message)
 	if err != nil {

@@ -99,7 +99,7 @@ func runUpdate(cmd *cobra.Command, stdout, _ io.Writer, wantedID, title, descrip
 	}
 	defer cleanup()
 
-	store := openStore(wlCfg.LocalDir, wlCfg.Signing)
+	store := openStore(wlCfg.LocalDir, wlCfg.Signing, wlCfg.HopURI)
 
 	if err := updateWanted(store, wantedID, fields); err != nil {
 		return err

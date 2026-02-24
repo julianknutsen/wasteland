@@ -56,6 +56,9 @@ type Config struct {
 	// RigHandle is the rig's handle in the registry.
 	RigHandle string `json:"rig_handle"`
 
+	// HopURI is the rig's HOP protocol URI (e.g., "hop://alice@example.com/alice-rig/").
+	HopURI string `json:"hop_uri,omitempty"`
+
 	// JoinedAt is when the rig joined the wasteland.
 	JoinedAt time.Time `json:"joined_at"`
 
@@ -271,6 +274,7 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 		}
 	}
 
+	hopURI := fmt.Sprintf("hop://%s/%s/", ownerEmail, handle)
 	cfg := &Config{
 		Upstream:     upstream,
 		ProviderType: s.Remote.Type(),
@@ -279,6 +283,7 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 		ForkDB:       upstreamDB,
 		LocalDir:     localDir,
 		RigHandle:    handle,
+		HopURI:       hopURI,
 		JoinedAt:     time.Now(),
 	}
 	if err := s.Config.Save(cfg); err != nil {
@@ -331,13 +336,15 @@ func (e *execDoltCLI) Clone(remoteURL, targetDir string) error {
 }
 
 func (e *execDoltCLI) RegisterRig(localDir, handle, dolthubOrg, displayName, ownerEmail, version string, signed bool) error {
+	hopURI := fmt.Sprintf("hop://%s/%s/", ownerEmail, handle)
 	sql := fmt.Sprintf(
-		`INSERT INTO rigs (handle, display_name, dolthub_org, owner_email, gt_version, trust_level, registered_at, last_seen) `+
-			`VALUES ('%s', '%s', '%s', '%s', '%s', 1, NOW(), NOW()) `+
+		`INSERT INTO rigs (handle, display_name, dolthub_org, hop_uri, owner_email, gt_version, trust_level, registered_at, last_seen) `+
+			`VALUES ('%s', '%s', '%s', '%s', '%s', '%s', 1, NOW(), NOW()) `+
 			`ON DUPLICATE KEY UPDATE last_seen = NOW(), gt_version = '%s'`,
 		escapeSQLString(handle),
 		escapeSQLString(displayName),
 		escapeSQLString(dolthubOrg),
+		escapeSQLString(hopURI),
 		escapeSQLString(ownerEmail),
 		escapeSQLString(version),
 		escapeSQLString(version),

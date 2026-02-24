@@ -35,6 +35,7 @@ type WLCommonsStore interface {
 type WLCommons struct {
 	dbDir  string
 	signed bool
+	hopURI string
 }
 
 // NewWLCommons creates a WLCommonsStore backed by the real Dolt CLI.
@@ -43,6 +44,9 @@ func NewWLCommons(dbDir string) *WLCommons { return &WLCommons{dbDir: dbDir} }
 
 // SetSigning enables or disables GPG-signed Dolt commits.
 func (w *WLCommons) SetSigning(enabled bool) { w.signed = enabled }
+
+// SetHopURI sets the rig's HOP protocol URI for completions and stamps.
+func (w *WLCommons) SetHopURI(uri string) { w.hopURI = uri }
 
 // InsertWanted inserts a new wanted item.
 func (w *WLCommons) InsertWanted(item *WantedItem) error {
@@ -61,7 +65,7 @@ func (w *WLCommons) UnclaimWanted(wantedID string) error {
 
 // SubmitCompletion records completion evidence for a claimed wanted item.
 func (w *WLCommons) SubmitCompletion(completionID, wantedID, rigHandle, evidence string) error {
-	return SubmitCompletion(w.dbDir, completionID, wantedID, rigHandle, evidence, w.signed)
+	return SubmitCompletion(w.dbDir, completionID, wantedID, rigHandle, evidence, w.hopURI, w.signed)
 }
 
 // QueryWanted fetches a wanted item by ID.
@@ -86,7 +90,7 @@ func (w *WLCommons) QueryStamp(stampID string) (*Stamp, error) {
 
 // AcceptCompletion validates a completion and creates a stamp.
 func (w *WLCommons) AcceptCompletion(wantedID, completionID, rigHandle string, stamp *Stamp) error {
-	return AcceptCompletion(w.dbDir, wantedID, completionID, rigHandle, stamp, w.signed)
+	return AcceptCompletion(w.dbDir, wantedID, completionID, rigHandle, w.hopURI, stamp, w.signed)
 }
 
 // UpdateWanted updates mutable fields on an open wanted item.
@@ -289,17 +293,23 @@ func UnclaimWanted(dbDir, wantedID string, signed bool) error {
 
 // SubmitCompletion inserts a completion record and updates the wanted status.
 // dbDir is the actual database directory.
-func SubmitCompletion(dbDir, completionID, wantedID, rigHandle, evidence string, signed bool) error {
+func SubmitCompletion(dbDir, completionID, wantedID, rigHandle, evidence, hopURI string, signed bool) error {
+	hopField := "NULL"
+	if hopURI != "" {
+		hopField = fmt.Sprintf("'%s'", EscapeSQL(hopURI))
+	}
+
 	script := fmt.Sprintf(`UPDATE wanted SET status='in_review', evidence_url='%s', updated_at=NOW()
   WHERE id='%s' AND status='claimed' AND claimed_by='%s';
-INSERT IGNORE INTO completions (id, wanted_id, completed_by, evidence, completed_at)
-  SELECT '%s', '%s', '%s', '%s', NOW()
+INSERT IGNORE INTO completions (id, wanted_id, completed_by, evidence, hop_uri, completed_at)
+  SELECT '%s', '%s', '%s', '%s', %s, NOW()
   FROM wanted WHERE id='%s' AND status='in_review' AND claimed_by='%s'
   AND NOT EXISTS (SELECT 1 FROM completions WHERE wanted_id='%s');
 CALL DOLT_ADD('-A');
 `,
 		EscapeSQL(evidence), EscapeSQL(wantedID), EscapeSQL(rigHandle),
 		EscapeSQL(completionID), EscapeSQL(wantedID), EscapeSQL(rigHandle), EscapeSQL(evidence),
+		hopField,
 		EscapeSQL(wantedID), EscapeSQL(rigHandle), EscapeSQL(wantedID))
 	script += commitSQL("wl done: "+wantedID, signed)
 
@@ -511,7 +521,7 @@ func parseTagsJSON(s string) []string {
 
 // AcceptCompletion validates a completion, creates a stamp, and marks the item completed.
 // dbDir is the actual database directory.
-func AcceptCompletion(dbDir, wantedID, completionID, rigHandle string, stamp *Stamp, signed bool) error {
+func AcceptCompletion(dbDir, wantedID, completionID, rigHandle, hopURI string, stamp *Stamp, signed bool) error {
 	tagsField := formatTagsJSON(stamp.SkillTags)
 
 	msgField := "NULL"
@@ -519,17 +529,22 @@ func AcceptCompletion(dbDir, wantedID, completionID, rigHandle string, stamp *St
 		msgField = fmt.Sprintf("'%s'", EscapeSQL(stamp.Message))
 	}
 
+	hopField := "NULL"
+	if hopURI != "" {
+		hopField = fmt.Sprintf("'%s'", EscapeSQL(hopURI))
+	}
+
 	valence := fmt.Sprintf(`{"quality": %d, "reliability": %d}`, stamp.Quality, stamp.Reliability)
 
-	script := fmt.Sprintf(`INSERT INTO stamps (id, author, subject, valence, confidence, severity, context_id, context_type, skill_tags, message, created_at)
-VALUES ('%s', '%s', '%s', '%s', 1.0, '%s', '%s', 'completion', %s, %s, NOW());
+	script := fmt.Sprintf(`INSERT INTO stamps (id, author, subject, valence, confidence, severity, context_id, context_type, skill_tags, message, hop_uri, created_at)
+VALUES ('%s', '%s', '%s', '%s', 1.0, '%s', '%s', 'completion', %s, %s, %s, NOW());
 UPDATE completions SET validated_by='%s', stamp_id='%s', validated_at=NOW() WHERE id='%s';
 UPDATE wanted SET status='completed', updated_at=NOW() WHERE id='%s' AND status='in_review';
 CALL DOLT_ADD('-A');
 `,
 		EscapeSQL(stamp.ID), EscapeSQL(rigHandle), EscapeSQL(stamp.Subject),
 		EscapeSQL(valence), EscapeSQL(stamp.Severity),
-		EscapeSQL(completionID), tagsField, msgField,
+		EscapeSQL(completionID), tagsField, msgField, hopField,
 		EscapeSQL(rigHandle), EscapeSQL(stamp.ID), EscapeSQL(completionID),
 		EscapeSQL(wantedID))
 	script += commitSQL("wl accept: "+wantedID, signed)

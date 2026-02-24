@@ -62,7 +62,7 @@ func runDone(cmd *cobra.Command, stdout, _ io.Writer, wantedID, evidence string,
 	}
 	defer cleanup()
 
-	store := openStore(wlCfg.LocalDir, wlCfg.Signing)
+	store := openStore(wlCfg.LocalDir, wlCfg.Signing, wlCfg.HopURI)
 	completionID := commons.GeneratePrefixedID("c", wantedID, rigHandle)
 
 	if err := submitDone(store, wantedID, rigHandle, evidence, completionID); err != nil {
