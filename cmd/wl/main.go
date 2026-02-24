@@ -97,6 +97,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		newRequestChangesCmd(stdout, stderr),
 		newMergeCmd(stdout, stderr),
 		newVerifyCmd(stdout, stderr),
+		newTUICmd(stdout, stderr),
 		newDoctorCmd(stdout, stderr),
 		newVersionCmd(stdout),
 	)

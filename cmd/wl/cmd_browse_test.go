@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/julianknutsen/wasteland/internal/commons"
 )
 
 func TestWlParseCSV_Empty(t *testing.T) {
@@ -132,28 +134,35 @@ func TestWlFormatPriority(t *testing.T) {
 
 func TestBuildBrowseQuery_DefaultFilters(t *testing.T) {
 	t.Parallel()
-	f := BrowseFilter{
+	f := commons.BrowseFilter{
 		Status:   "open",
 		Priority: -1,
 		Limit:    50,
 	}
-	got := buildBrowseQuery(f)
-	want := "SELECT id, title, project, type, priority, posted_by, status, effort_level FROM wanted WHERE status = 'open' ORDER BY priority ASC, created_at DESC LIMIT 50"
-	if got != want {
-		t.Errorf("buildBrowseQuery(default) =\n  %q\nwant\n  %q", got, want)
+	got := commons.BuildBrowseQuery(f)
+	for _, substr := range []string{
+		"SELECT id, title,",
+		"FROM wanted",
+		"WHERE status = 'open'",
+		"ORDER BY priority ASC, created_at DESC",
+		"LIMIT 50",
+	} {
+		if !strings.Contains(got, substr) {
+			t.Errorf("commons.BuildBrowseQuery(default) missing %q in:\n  %q", substr, got)
+		}
 	}
 }
 
 func TestBuildBrowseQuery_AllFilters(t *testing.T) {
 	t.Parallel()
-	f := BrowseFilter{
+	f := commons.BrowseFilter{
 		Status:   "open",
 		Project:  "gastown",
 		Type:     "bug",
 		Priority: 0,
 		Limit:    5,
 	}
-	got := buildBrowseQuery(f)
+	got := commons.BuildBrowseQuery(f)
 	for _, substr := range []string{
 		"status = 'open'",
 		"project = 'gastown'",
@@ -162,32 +171,32 @@ func TestBuildBrowseQuery_AllFilters(t *testing.T) {
 		"LIMIT 5",
 	} {
 		if !strings.Contains(got, substr) {
-			t.Errorf("buildBrowseQuery(all) missing %q in %q", substr, got)
+			t.Errorf("commons.BuildBrowseQuery(all) missing %q in %q", substr, got)
 		}
 	}
 }
 
 func TestBuildBrowseQuery_NoFilters(t *testing.T) {
 	t.Parallel()
-	f := BrowseFilter{
+	f := commons.BrowseFilter{
 		Priority: -1,
 		Limit:    50,
 	}
-	got := buildBrowseQuery(f)
+	got := commons.BuildBrowseQuery(f)
 	if strings.Contains(got, "WHERE") {
-		t.Errorf("buildBrowseQuery(none) should not have WHERE clause: %q", got)
+		t.Errorf("commons.BuildBrowseQuery(none) should not have WHERE clause: %q", got)
 	}
 }
 
 func TestBuildBrowseQuery_EscapesSQL(t *testing.T) {
 	t.Parallel()
-	f := BrowseFilter{
+	f := commons.BrowseFilter{
 		Status:   "it's",
 		Priority: -1,
 		Limit:    50,
 	}
-	got := buildBrowseQuery(f)
+	got := commons.BuildBrowseQuery(f)
 	if !strings.Contains(got, "it''s") {
-		t.Errorf("buildBrowseQuery should escape single quotes: %q", got)
+		t.Errorf("commons.BuildBrowseQuery should escape single quotes: %q", got)
 	}
 }

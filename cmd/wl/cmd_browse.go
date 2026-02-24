@@ -51,7 +51,7 @@ EXAMPLES:
   wl browse --search auth            # Search in title
   wl browse --ephemeral              # Clone upstream (slow)`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runBrowse(cmd, stdout, stderr, BrowseFilter{
+			return runBrowse(cmd, stdout, stderr, commons.BrowseFilter{
 				Status:    status,
 				Project:   project,
 				Type:      itemType,
@@ -84,7 +84,7 @@ EXAMPLES:
 	return cmd
 }
 
-func runBrowse(cmd *cobra.Command, stdout, _ io.Writer, filter BrowseFilter, jsonOut, ephemeral bool) error {
+func runBrowse(cmd *cobra.Command, stdout, _ io.Writer, filter commons.BrowseFilter, jsonOut, ephemeral bool) error {
 	cfg, err := resolveWasteland(cmd)
 	if err != nil {
 		return fmt.Errorf("loading wasteland config: %w", err)
@@ -94,7 +94,7 @@ func runBrowse(cmd *cobra.Command, stdout, _ io.Writer, filter BrowseFilter, jso
 		return err
 	}
 
-	query := buildBrowseQuery(filter)
+	query := commons.BuildBrowseQuery(filter)
 
 	if ephemeral {
 		return runBrowseEphemeral(stdout, cfg, query, jsonOut)
@@ -163,53 +163,6 @@ func runBrowseEphemeral(stdout io.Writer, cfg *federation.Config, query string, 
 	}
 
 	return renderBrowseTable(stdout, doltPath, cloneDir, query)
-}
-
-// BrowseFilter holds filter parameters for building a browse query.
-type BrowseFilter struct {
-	Status    string
-	Project   string
-	Type      string
-	Priority  int
-	Limit     int
-	PostedBy  string
-	ClaimedBy string
-	Search    string
-}
-
-func buildBrowseQuery(f BrowseFilter) string {
-	var conditions []string
-
-	if f.Status != "" {
-		conditions = append(conditions, fmt.Sprintf("status = '%s'", commons.EscapeSQL(f.Status)))
-	}
-	if f.Project != "" {
-		conditions = append(conditions, fmt.Sprintf("project = '%s'", commons.EscapeSQL(f.Project)))
-	}
-	if f.Type != "" {
-		conditions = append(conditions, fmt.Sprintf("type = '%s'", commons.EscapeSQL(f.Type)))
-	}
-	if f.Priority >= 0 {
-		conditions = append(conditions, fmt.Sprintf("priority = %d", f.Priority))
-	}
-	if f.PostedBy != "" {
-		conditions = append(conditions, fmt.Sprintf("posted_by = '%s'", commons.EscapeSQL(f.PostedBy)))
-	}
-	if f.ClaimedBy != "" {
-		conditions = append(conditions, fmt.Sprintf("claimed_by = '%s'", commons.EscapeSQL(f.ClaimedBy)))
-	}
-	if f.Search != "" {
-		conditions = append(conditions, fmt.Sprintf("title LIKE '%%%s%%'", commons.EscapeSQL(f.Search)))
-	}
-
-	query := "SELECT id, title, project, type, priority, posted_by, status, effort_level FROM wanted"
-	if len(conditions) > 0 {
-		query += " WHERE " + strings.Join(conditions, " AND ")
-	}
-	query += " ORDER BY priority ASC, created_at DESC"
-	query += fmt.Sprintf(" LIMIT %d", f.Limit)
-
-	return query
 }
 
 func renderBrowseCSV(stdout io.Writer, csvData string) error {
