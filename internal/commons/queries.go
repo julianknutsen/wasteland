@@ -125,11 +125,12 @@ func BuildBrowseQuery(f BrowseFilter) string {
 	return query
 }
 
-// BranchOverride maps a wanted ID to its status on a local mutation branch.
+// BranchOverride maps a wanted ID to its state on a local mutation branch.
 type BranchOverride struct {
-	WantedID string
-	Branch   string
-	Status   string
+	WantedID  string
+	Branch    string
+	Status    string
+	ClaimedBy string
 }
 
 // DetectBranchOverrides lists local wl/<rigHandle>/* branches and queries
@@ -145,20 +146,38 @@ func DetectBranchOverrides(dbDir, rigHandle string) []BranchOverride {
 	var overrides []BranchOverride
 	for _, branch := range branches {
 		wantedID := strings.TrimPrefix(branch, prefix)
-		branchStatus := QueryItemStatusAsOf(dbDir, wantedID, branch)
+		branchStatus, branchClaimedBy := queryItemBranchState(dbDir, wantedID, branch)
 		if branchStatus == "" {
 			continue
 		}
 		mainStatus := QueryItemStatusAsOf(dbDir, wantedID, "")
 		if branchStatus != mainStatus {
 			overrides = append(overrides, BranchOverride{
-				WantedID: wantedID,
-				Branch:   branch,
-				Status:   branchStatus,
+				WantedID:  wantedID,
+				Branch:    branch,
+				Status:    branchStatus,
+				ClaimedBy: branchClaimedBy,
 			})
 		}
 	}
 	return overrides
+}
+
+// queryItemBranchState returns (status, claimed_by) for a wanted item on a branch.
+func queryItemBranchState(dbDir, wantedID, branch string) (string, string) {
+	query := fmt.Sprintf(
+		"SELECT status, COALESCE(claimed_by,'') AS claimed_by FROM wanted AS OF '%s' WHERE id = '%s'",
+		EscapeSQL(branch), EscapeSQL(wantedID),
+	)
+	out, err := DoltSQLQuery(dbDir, query)
+	if err != nil {
+		return "", ""
+	}
+	rows := parseSimpleCSV(out)
+	if len(rows) == 0 {
+		return "", ""
+	}
+	return rows[0]["status"], rows[0]["claimed_by"]
 }
 
 // ApplyBranchOverrides adjusts browse results to reflect branch mutations.
@@ -181,6 +200,9 @@ func ApplyBranchOverrides(dbDir string, items []WantedSummary, overrides []Branc
 		if o, ok := byID[item.ID]; ok {
 			applied[item.ID] = true
 			item.Status = o.Status
+			if o.ClaimedBy != "" {
+				item.ClaimedBy = o.ClaimedBy
+			}
 			if statusFilter != "" && item.Status != statusFilter {
 				continue // override made it not match the filter
 			}
