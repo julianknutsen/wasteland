@@ -548,3 +548,117 @@ func closeGitHubPR(client GitHubPRClient, upstreamRepo, forkOrg, forkDB, branch 
 
 	fmt.Fprintf(stdout, "  Closed PR %s\n", prURL)
 }
+
+// createPRForBranch creates an upstream PR for the given branch.
+// Returns the PR URL on success. Used by both the CLI --create-pr flag
+// and the TUI submit PR flow.
+func createPRForBranch(cfg *federation.Config, branch string) (string, error) {
+	doltPath, err := exec.LookPath("dolt")
+	if err != nil {
+		return "", fmt.Errorf("dolt not found in PATH")
+	}
+	base := diffBase(cfg.LocalDir, doltPath)
+
+	switch cfg.ResolveProviderType() {
+	case "github":
+		return createPRForBranchGitHub(cfg, doltPath, branch, base)
+	case "dolthub":
+		return createPRForBranchDoltHub(cfg, doltPath, branch, base)
+	default:
+		return "", fmt.Errorf("provider %q does not support pull requests", cfg.ResolveProviderType())
+	}
+}
+
+func createPRForBranchGitHub(cfg *federation.Config, doltPath, branch, base string) (string, error) {
+	ghPath, err := exec.LookPath("gh")
+	if err != nil {
+		return "", fmt.Errorf("gh not found in PATH — install from https://cli.github.com")
+	}
+
+	// Force-push dolt branch to origin.
+	if err := commons.PushBranchToRemoteForce(cfg.LocalDir, "origin", branch, true, io.Discard); err != nil {
+		return "", fmt.Errorf("pushing to GitHub fork: %w", err)
+	}
+
+	// Generate markdown diff.
+	var mdBuf bytes.Buffer
+	if err := renderMarkdownDiff(&mdBuf, cfg.LocalDir, doltPath, branch, base); err != nil {
+		return "", fmt.Errorf("generating markdown diff: %w", err)
+	}
+
+	title := wantedTitleFromBranch(doltPath, cfg.LocalDir, branch)
+	prTitle := fmt.Sprintf("[wl] %s", title)
+
+	client := newGHClient(ghPath)
+	return createGitHubPR(client, cfg.Upstream, cfg.ForkOrg, cfg.ForkDB, branch, prTitle, mdBuf.String(), io.Discard)
+}
+
+func createPRForBranchDoltHub(cfg *federation.Config, doltPath, branch, base string) (string, error) {
+	token := os.Getenv("DOLTHUB_TOKEN")
+	if token == "" {
+		return "", fmt.Errorf("DOLTHUB_TOKEN environment variable is required for DoltHub PRs")
+	}
+
+	// Force-push dolt branch to origin.
+	if err := commons.PushBranchToRemoteForce(cfg.LocalDir, "origin", branch, true, io.Discard); err != nil {
+		return "", fmt.Errorf("pushing to DoltHub fork: %w", err)
+	}
+
+	var mdBuf bytes.Buffer
+	if err := renderMarkdownDiff(&mdBuf, cfg.LocalDir, doltPath, branch, base); err != nil {
+		return "", fmt.Errorf("generating markdown diff: %w", err)
+	}
+
+	title := wantedTitleFromBranch(doltPath, cfg.LocalDir, branch)
+	prTitle := fmt.Sprintf("[wl] %s", title)
+
+	upstreamOrg, db, err := federation.ParseUpstream(cfg.Upstream)
+	if err != nil {
+		return "", fmt.Errorf("parsing upstream: %w", err)
+	}
+
+	provider := remote.NewDoltHubProvider(token)
+	prURL, err := provider.CreatePR(cfg.ForkOrg, upstreamOrg, db, branch, prTitle, mdBuf.String())
+	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			existingURL, existingID := provider.FindPR(upstreamOrg, db, cfg.ForkOrg, branch)
+			if existingID != "" {
+				_ = provider.UpdatePR(upstreamOrg, db, existingID, prTitle, mdBuf.String())
+				return existingURL, nil
+			}
+			return fmt.Sprintf("%s/%s/%s/pulls", "https://www.dolthub.com/repositories", upstreamOrg, db), nil
+		}
+		return "", fmt.Errorf("creating DoltHub PR: %w", err)
+	}
+	return prURL, nil
+}
+
+// checkPRForBranch checks if an upstream PR already exists for the given branch.
+// Returns the PR URL or empty string. Best-effort: returns "" on any error.
+func checkPRForBranch(cfg *federation.Config, branch string) string {
+	switch cfg.ResolveProviderType() {
+	case "github":
+		ghPath, err := exec.LookPath("gh")
+		if err != nil {
+			return ""
+		}
+		client := newGHClient(ghPath)
+		head := cfg.ForkOrg + ":" + branch
+		url, _ := client.FindPR(cfg.Upstream, head)
+		return url
+	case "dolthub":
+		token := os.Getenv("DOLTHUB_TOKEN")
+		if token == "" {
+			return ""
+		}
+		upstreamOrg, db, err := federation.ParseUpstream(cfg.Upstream)
+		if err != nil {
+			return ""
+		}
+		provider := remote.NewDoltHubProvider(token)
+		url, _ := provider.FindPR(upstreamOrg, db, cfg.ForkOrg, branch)
+		return url
+	default:
+		return ""
+	}
+}

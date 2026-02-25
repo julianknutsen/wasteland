@@ -85,7 +85,8 @@ func TestCanPerformTransition(t *testing.T) {
 		{"unclaim by other", TransitionUnclaim, "other", false},
 		{"done by claimer", TransitionDone, "claimer", true},
 		{"done by other", TransitionDone, "other", false},
-		{"delete anyone", TransitionDelete, "random", true},
+		{"delete by poster", TransitionDelete, "poster", true},
+		{"delete by other", TransitionDelete, "random", false},
 	}
 
 	for _, tc := range tests {
@@ -176,20 +177,22 @@ func TestAvailableTransitions(t *testing.T) {
 		PostedBy: "poster",
 	}
 
-	// Random can claim and delete.
+	// Random can only claim (not delete — only poster can delete).
 	got := AvailableTransitions(item, "random")
-	if len(got) != 2 {
-		t.Fatalf("expected 2 transitions, got %d: %v", len(got), got)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 transition, got %d: %v", len(got), got)
 	}
-	if got[0] != TransitionClaim || got[1] != TransitionDelete {
-		t.Errorf("expected [claim, delete], got %v", got)
+	if got[0] != TransitionClaim {
+		t.Errorf("expected [claim], got %v", got)
 	}
 
-	// Poster can also close/delete open items — but close is only from in_review.
-	// So poster still only gets claim + delete from open.
+	// Poster gets claim + delete from open.
 	got = AvailableTransitions(item, "poster")
 	if len(got) != 2 {
 		t.Fatalf("expected 2 transitions for poster on open, got %d: %v", len(got), got)
+	}
+	if got[0] != TransitionClaim || got[1] != TransitionDelete {
+		t.Errorf("expected [claim, delete], got %v", got)
 	}
 
 	// nil item returns nil.

@@ -18,6 +18,7 @@ type Config struct {
 	Upstream  string // upstream identifier for display
 	Mode      string // "wild-west" or "pr"
 	Signing   bool   // GPG-signed dolt commits
+	HopURI    string // rig's HOP protocol URI for done/accept dolt commits
 
 	// Settings view: read-only context
 	ProviderType string
@@ -28,6 +29,11 @@ type Config struct {
 
 	// Settings persistence (nil = settings read-only)
 	SaveConfig func(mode string, signing bool) error
+
+	// PR submission callbacks (nil = feature disabled)
+	LoadDiff func(branch string) (string, error)
+	CreatePR func(branch string) (prURL string, err error)
+	CheckPR  func(branch string) (prURL string) // returns existing PR URL or ""
 }
 
 // Model is the root TUI model that routes between views.
@@ -192,8 +198,76 @@ func (m Model) Update(msg bubbletea.Msg) (bubbletea.Model, bubbletea.Cmd) {
 			m.detail.refreshViewport()
 			return m, nil
 		}
-		// Delta resolved — re-fetch detail from main (branch is gone).
+		if msg.hint == "discarded" {
+			// Discard resolved — navigate back to browse.
+			m.active = viewBrowse
+			return m, fetchBrowse(m.cfg, m.browse.filter(m.cfg.RigHandle))
+		}
+		// Apply resolved — re-fetch detail from main (branch is gone).
 		return m, fetchDetail(m.cfg, m.detail.item.ID)
+
+	case doneSubmitMsg:
+		m.detail.doneForm = nil
+		m.detail.executing = true
+		m.detail.executingLabel = "Submitting..."
+		m.detail.refreshViewport()
+		return m, bubbletea.Batch(
+			m.detail.spinner.Tick,
+			executeDoneMutation(m.cfg, m.detail.item.ID, msg.evidence),
+		)
+
+	case acceptSubmitMsg:
+		m.detail.acceptForm = nil
+		m.detail.executing = true
+		m.detail.executingLabel = "Accepting..."
+		m.detail.refreshViewport()
+		completionID := ""
+		if m.detail.completion != nil {
+			completionID = m.detail.completion.ID
+		}
+		return m, bubbletea.Batch(
+			m.detail.spinner.Tick,
+			executeAcceptMutation(m.cfg, m.detail.item.ID, msg, completionID),
+		)
+
+	case submitDiffMsg:
+		if m.detail.submit != nil {
+			m.detail.submit.setDiff(msg)
+		}
+		return m, nil
+
+	case submitOpenedMsg:
+		// Submit view opened — start loading diff in background.
+		return m, fetchDiff(m.cfg, msg.branch)
+
+	case submitConfirmMsg:
+		if m.detail.submit == nil {
+			return m, nil
+		}
+		m.detail.executing = true
+		m.detail.executingLabel = "Creating PR..."
+		m.detail.submit = nil
+		m.detail.refreshViewport()
+		return m, bubbletea.Batch(
+			m.detail.spinner.Tick,
+			createPR(m.cfg, m.detail.branch),
+		)
+
+	case submitResultMsg:
+		m.detail.executing = false
+		m.detail.executingLabel = ""
+		if m.detail.submit != nil {
+			m.detail.submit = nil
+		}
+		if msg.err != nil {
+			m.detail.result = styleError.Render("Error: " + msg.err.Error())
+			m.detail.refreshViewport()
+			return m, nil
+		}
+		m.detail.prURL = msg.prURL
+		m.detail.result = styleSuccess.Render("PR created: " + msg.prURL)
+		m.detail.refreshViewport()
+		return m, nil
 
 	case settingsSavedMsg:
 		if msg.err != nil {
@@ -365,6 +439,10 @@ func fetchDetail(cfg Config, wantedID string) bubbletea.Cmd {
 					detail.branch = branch
 					detail.mainStatus = mainStatus
 					_ = commons.CheckoutMain(cfg.DBDir)
+					// Check if an upstream PR already exists for this branch.
+					if cfg.CheckPR != nil {
+						detail.prURL = cfg.CheckPR(branch)
+					}
 					return detail
 				}
 			}
@@ -410,6 +488,147 @@ func executeDeltaDiscard(cfg Config, branch string) deltaResultMsg {
 	// Delete remote branch (best-effort).
 	_ = commons.DeleteRemoteBranch(cfg.DBDir, "origin", branch)
 	return deltaResultMsg{hint: "discarded"}
+}
+
+// --- done/accept mutation commands ---
+
+func applyDone(cfg Config, wantedID, evidence string) error {
+	completionID := commons.GeneratePrefixedID("c", wantedID, cfg.RigHandle)
+	return commons.SubmitCompletion(cfg.DBDir, completionID, wantedID,
+		cfg.RigHandle, evidence, cfg.HopURI, cfg.Signing)
+}
+
+func applyAccept(cfg Config, wantedID string, msg acceptSubmitMsg, completionID string) error {
+	stamp := &commons.Stamp{
+		ID:          commons.GeneratePrefixedID("s", wantedID, cfg.RigHandle),
+		Author:      cfg.RigHandle,
+		Subject:     completionID,
+		Quality:     msg.quality,
+		Reliability: msg.reliability,
+		Severity:    msg.severity,
+		ContextID:   completionID,
+		ContextType: "completion",
+		SkillTags:   msg.skills,
+		Message:     msg.message,
+	}
+	return commons.AcceptCompletion(cfg.DBDir, wantedID, completionID,
+		cfg.RigHandle, cfg.HopURI, stamp, cfg.Signing)
+}
+
+func executeDoneMutation(cfg Config, wantedID, evidence string) bubbletea.Cmd {
+	return func() bubbletea.Msg {
+		if cfg.Mode == "pr" {
+			return executePRDoneMutation(cfg, wantedID, evidence)
+		}
+		return executeWildWestDoneMutation(cfg, wantedID, evidence)
+	}
+}
+
+func executeWildWestDoneMutation(cfg Config, wantedID, evidence string) actionResultMsg {
+	if err := applyDone(cfg, wantedID, evidence); err != nil {
+		return actionResultMsg{err: err}
+	}
+	err := commons.PushWithSync(cfg.DBDir, io.Discard)
+	return actionResultMsg{err: err}
+}
+
+func executePRDoneMutation(cfg Config, wantedID, evidence string) actionResultMsg {
+	branch := commons.BranchName(cfg.RigHandle, wantedID)
+	mainStatus := commons.QueryItemStatusAsOf(cfg.DBDir, wantedID, "main")
+
+	if err := commons.CheckoutBranch(cfg.DBDir, branch); err != nil {
+		return actionResultMsg{err: fmt.Errorf("checkout branch: %w", err)}
+	}
+
+	if err := applyDone(cfg, wantedID, evidence); err != nil {
+		_ = commons.CheckoutMain(cfg.DBDir)
+		return actionResultMsg{err: err}
+	}
+
+	detail := fetchDetailSync(cfg.DBDir, wantedID)
+	detail.branch = branch
+	detail.mainStatus = mainStatus
+
+	var pushLog bytes.Buffer
+	if err := commons.PushBranch(cfg.DBDir, branch, &pushLog); err != nil {
+		_ = commons.CheckoutMain(cfg.DBDir)
+		if msg := strings.TrimSpace(pushLog.String()); msg != "" {
+			return actionResultMsg{err: fmt.Errorf("%s", msg)}
+		}
+		return actionResultMsg{err: fmt.Errorf("push branch: %w", err)}
+	}
+
+	_ = commons.CheckoutMain(cfg.DBDir)
+	return actionResultMsg{hint: branch, detail: &detail}
+}
+
+func executeAcceptMutation(cfg Config, wantedID string, msg acceptSubmitMsg, completionID string) bubbletea.Cmd {
+	return func() bubbletea.Msg {
+		if cfg.Mode == "pr" {
+			return executePRAcceptMutation(cfg, wantedID, msg, completionID)
+		}
+		return executeWildWestAcceptMutation(cfg, wantedID, msg, completionID)
+	}
+}
+
+func executeWildWestAcceptMutation(cfg Config, wantedID string, msg acceptSubmitMsg, completionID string) actionResultMsg {
+	if err := applyAccept(cfg, wantedID, msg, completionID); err != nil {
+		return actionResultMsg{err: err}
+	}
+	err := commons.PushWithSync(cfg.DBDir, io.Discard)
+	return actionResultMsg{err: err}
+}
+
+func executePRAcceptMutation(cfg Config, wantedID string, msg acceptSubmitMsg, completionID string) actionResultMsg {
+	branch := commons.BranchName(cfg.RigHandle, wantedID)
+	mainStatus := commons.QueryItemStatusAsOf(cfg.DBDir, wantedID, "main")
+
+	if err := commons.CheckoutBranch(cfg.DBDir, branch); err != nil {
+		return actionResultMsg{err: fmt.Errorf("checkout branch: %w", err)}
+	}
+
+	if err := applyAccept(cfg, wantedID, msg, completionID); err != nil {
+		_ = commons.CheckoutMain(cfg.DBDir)
+		return actionResultMsg{err: err}
+	}
+
+	detail := fetchDetailSync(cfg.DBDir, wantedID)
+	detail.branch = branch
+	detail.mainStatus = mainStatus
+
+	var pushLog bytes.Buffer
+	if err := commons.PushBranch(cfg.DBDir, branch, &pushLog); err != nil {
+		_ = commons.CheckoutMain(cfg.DBDir)
+		if msg := strings.TrimSpace(pushLog.String()); msg != "" {
+			return actionResultMsg{err: fmt.Errorf("%s", msg)}
+		}
+		return actionResultMsg{err: fmt.Errorf("push branch: %w", err)}
+	}
+
+	_ = commons.CheckoutMain(cfg.DBDir)
+	return actionResultMsg{hint: branch, detail: &detail}
+}
+
+// --- submit PR commands ---
+
+func fetchDiff(cfg Config, branch string) bubbletea.Cmd {
+	return func() bubbletea.Msg {
+		if cfg.LoadDiff == nil {
+			return submitDiffMsg{err: fmt.Errorf("diff loading not available")}
+		}
+		diff, err := cfg.LoadDiff(branch)
+		return submitDiffMsg{diff: diff, err: err}
+	}
+}
+
+func createPR(cfg Config, branch string) bubbletea.Cmd {
+	return func() bubbletea.Msg {
+		if cfg.CreatePR == nil {
+			return submitResultMsg{err: fmt.Errorf("PR creation not available")}
+		}
+		prURL, err := cfg.CreatePR(branch)
+		return submitResultMsg{prURL: prURL, err: err}
+	}
 }
 
 // fetchDetailSync queries detail data from the current working copy.

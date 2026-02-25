@@ -306,33 +306,45 @@ func TestDetail_InvalidTransition_ShowsError(t *testing.T) {
 	}
 }
 
-func TestDetail_DoneKey_ShowsCLIHint(t *testing.T) {
-	// Item is "claimed" by me → done is valid, but needs CLI.
+func TestDetail_DoneKey_OpensDoneForm(t *testing.T) {
+	// Item is "claimed" by me → done is valid, opens form.
 	m := newDetailForTest("claimed", "other-rig", "test-rig", "wild-west")
 
-	result, cmd := m.Update(keyMsg("d"))
+	result, _ := m.Update(keyMsg("d"))
 	m2 := result.(Model)
 
-	if cmd != nil {
-		t.Error("'d' key should not return a cmd (needs CLI)")
+	if m2.detail.doneForm == nil {
+		t.Fatal("'d' key should open done form")
 	}
-	if !strings.Contains(m2.detail.result, "wl done") {
-		t.Errorf("result should contain CLI hint, got: %q", m2.detail.result)
+	if !m2.detail.doneForm.active {
+		t.Error("done form should be active")
+	}
+
+	// View should contain done form elements.
+	v := m2.View()
+	if !strings.Contains(v, "Done:") {
+		t.Errorf("view should contain 'Done:', got:\n%s", v)
 	}
 }
 
-func TestDetail_AcceptKey_ShowsCLIHint(t *testing.T) {
+func TestDetail_AcceptKey_OpensAcceptForm(t *testing.T) {
 	// Item is "in_review", posted by me, claimed by other.
 	m := newDetailForTest("in_review", "test-rig", "other-rig", "wild-west")
 
-	result, cmd := m.Update(keyMsg("a"))
+	result, _ := m.Update(keyMsg("a"))
 	m2 := result.(Model)
 
-	if cmd != nil {
-		t.Error("'a' key should not return a cmd (needs CLI)")
+	if m2.detail.acceptForm == nil {
+		t.Fatal("'a' key should open accept form")
 	}
-	if !strings.Contains(m2.detail.result, "wl accept") {
-		t.Errorf("result should contain CLI hint, got: %q", m2.detail.result)
+	if !m2.detail.acceptForm.active {
+		t.Error("accept form should be active")
+	}
+
+	// View should contain accept form elements.
+	v := m2.View()
+	if !strings.Contains(v, "Accept:") {
+		t.Errorf("view should contain 'Accept:', got:\n%s", v)
 	}
 }
 
@@ -428,18 +440,23 @@ func TestDetail_PermissionDenied_Unclaim(t *testing.T) {
 }
 
 func TestDetail_ActionHints_PermissionFiltered(t *testing.T) {
-	// Open item, posted by someone else — I can claim and delete, but not close/reject.
+	// Open item, posted by someone else — I can claim, but not delete/close/reject.
 	m := newDetailForTest("open", "other-rig", "", "wild-west")
 	hints := m.detail.actionHints()
 
 	if !strings.Contains(hints, "c:claim") {
 		t.Errorf("hints should contain 'c:claim', got: %q", hints)
 	}
-	if !strings.Contains(hints, "D:delete") {
-		t.Errorf("hints should contain 'D:delete', got: %q", hints)
+	if strings.Contains(hints, "D:delete") {
+		t.Errorf("hints should NOT contain 'D:delete' for non-poster, got: %q", hints)
 	}
-	// close requires PostedBy == me, which is false here — but close is for in_review anyway.
-	// For open items, only claim and delete are valid transitions.
+
+	// Poster should see both claim and delete.
+	m2 := newDetailForTest("open", "test-rig", "", "wild-west")
+	hints2 := m2.detail.actionHints()
+	if !strings.Contains(hints2, "D:delete") {
+		t.Errorf("poster hints should contain 'D:delete', got: %q", hints2)
+	}
 }
 
 func TestDetail_ExecutingState_IgnoresKeys(t *testing.T) {
@@ -807,7 +824,7 @@ func TestDelta_ResultMsg_Error(t *testing.T) {
 	}
 }
 
-func TestDelta_ResultMsg_Success_RefetchesDetail(t *testing.T) {
+func TestDelta_ResultMsg_Applied_RefetchesDetail(t *testing.T) {
 	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
 	m.detail.executing = true
 	m.detail.executingLabel = "Applying..."
@@ -818,9 +835,32 @@ func TestDelta_ResultMsg_Success_RefetchesDetail(t *testing.T) {
 	if m2.detail.executing {
 		t.Error("executing should be false after result")
 	}
-	// Success should re-fetch detail (branch is gone).
+	// Apply should re-fetch detail (branch is gone, item on main).
 	if cmd == nil {
-		t.Error("success result should return fetchDetail cmd")
+		t.Error("apply result should return fetchDetail cmd")
+	}
+	if m2.active != viewDetail {
+		t.Errorf("should stay on detail view, got %d", m2.active)
+	}
+}
+
+func TestDelta_ResultMsg_Discarded_NavigatesToBrowse(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
+	m.detail.executing = true
+	m.detail.executingLabel = "Discarding..."
+
+	result, cmd := m.Update(deltaResultMsg{hint: "discarded"})
+	m2 := result.(Model)
+
+	if m2.detail.executing {
+		t.Error("executing should be false after result")
+	}
+	// Discard should navigate back to browse.
+	if m2.active != viewBrowse {
+		t.Errorf("should navigate to browse, got %d", m2.active)
+	}
+	if cmd == nil {
+		t.Error("discard should return fetchBrowse cmd")
 	}
 }
 
@@ -972,5 +1012,263 @@ func TestSettings_BrowseHints_ShowsSettingsKey(t *testing.T) {
 	v := m.View()
 	if !strings.Contains(v, "S: settings") {
 		t.Errorf("browse hints should contain 'S: settings', got:\n%s", v)
+	}
+}
+
+// --- Done/Accept/Submit integration tests ---
+
+func TestDetail_DoneSubmitMsg_SetsExecuting(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "wild-west")
+	m.detail.doneForm = newDoneForm()
+
+	result, cmd := m.Update(doneSubmitMsg{evidence: "https://example.com/pr/1"})
+	m2 := result.(Model)
+
+	if m2.detail.doneForm != nil {
+		t.Error("doneForm should be cleared after doneSubmitMsg")
+	}
+	if !m2.detail.executing {
+		t.Error("executing should be true")
+	}
+	if m2.detail.executingLabel != "Submitting..." {
+		t.Errorf("executingLabel = %q, want %q", m2.detail.executingLabel, "Submitting...")
+	}
+	if cmd == nil {
+		t.Error("should return executeDoneMutation cmd")
+	}
+}
+
+func TestDetail_AcceptSubmitMsg_SetsExecuting(t *testing.T) {
+	m := newDetailForTest("in_review", "test-rig", "other-rig", "wild-west")
+	m.detail.completion = &commons.CompletionRecord{ID: "c-test"}
+	m.detail.acceptForm = newAcceptForm()
+
+	result, cmd := m.Update(acceptSubmitMsg{
+		quality:     4,
+		reliability: 4,
+		severity:    "leaf",
+		skills:      []string{"go"},
+		message:     "good work",
+	})
+	m2 := result.(Model)
+
+	if m2.detail.acceptForm != nil {
+		t.Error("acceptForm should be cleared after acceptSubmitMsg")
+	}
+	if !m2.detail.executing {
+		t.Error("executing should be true")
+	}
+	if m2.detail.executingLabel != "Accepting..." {
+		t.Errorf("executingLabel = %q, want %q", m2.detail.executingLabel, "Accepting...")
+	}
+	if cmd == nil {
+		t.Error("should return executeAcceptMutation cmd")
+	}
+}
+
+func TestDetail_DoneFormEsc_ClearsForm(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "wild-west")
+
+	// Open done form.
+	result, _ := m.Update(keyMsg("d"))
+	m2 := result.(Model)
+	if m2.detail.doneForm == nil {
+		t.Fatal("done form should be open")
+	}
+
+	// Press esc to cancel.
+	result, _ = m2.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEsc})
+	m3 := result.(Model)
+	if m3.detail.doneForm != nil {
+		t.Error("esc should clear done form")
+	}
+}
+
+func TestDetail_AcceptFormEsc_ClearsForm(t *testing.T) {
+	m := newDetailForTest("in_review", "test-rig", "other-rig", "wild-west")
+
+	// Open accept form.
+	result, _ := m.Update(keyMsg("a"))
+	m2 := result.(Model)
+	if m2.detail.acceptForm == nil {
+		t.Fatal("accept form should be open")
+	}
+
+	// Press esc to cancel.
+	result, _ = m2.Update(bubbletea.KeyMsg{Type: bubbletea.KeyEsc})
+	m3 := result.(Model)
+	if m3.detail.acceptForm != nil {
+		t.Error("esc should clear accept form")
+	}
+}
+
+func TestDetail_SubmitDiffMsg_SetsDiff(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
+	m.detail.branch = "wl/test-rig/w-abc123"
+	m.detail.mainStatus = "open"
+	m.detail.submit = newSubmitModel(m.detail.item, m.detail.branch, m.detail.mainStatus, 80, 22)
+
+	result, _ := m.Update(submitDiffMsg{diff: "diff content here"})
+	m2 := result.(Model)
+
+	if m2.detail.submit == nil {
+		t.Fatal("submit should still be active")
+	}
+	if !m2.detail.submit.diffLoaded {
+		t.Error("diff should be loaded")
+	}
+	if m2.detail.submit.diff != "diff content here" {
+		t.Errorf("diff = %q, want %q", m2.detail.submit.diff, "diff content here")
+	}
+}
+
+func TestDetail_SubmitConfirmMsg_CreatesExecuting(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
+	m.detail.branch = "wl/test-rig/w-abc123"
+	m.detail.mainStatus = "open"
+	m.detail.submit = newSubmitModel(m.detail.item, m.detail.branch, m.detail.mainStatus, 80, 22)
+
+	result, cmd := m.Update(submitConfirmMsg{})
+	m2 := result.(Model)
+
+	if m2.detail.submit != nil {
+		t.Error("submit should be cleared after confirm")
+	}
+	if !m2.detail.executing {
+		t.Error("executing should be true")
+	}
+	if m2.detail.executingLabel != "Creating PR..." {
+		t.Errorf("executingLabel = %q, want %q", m2.detail.executingLabel, "Creating PR...")
+	}
+	if cmd == nil {
+		t.Error("should return createPR cmd")
+	}
+}
+
+func TestDetail_SubmitResultMsg_Success(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
+	m.detail.executing = true
+	m.detail.executingLabel = "Creating PR..."
+
+	result, _ := m.Update(submitResultMsg{prURL: "https://github.com/org/repo/pull/42"})
+	m2 := result.(Model)
+
+	if m2.detail.executing {
+		t.Error("executing should be false")
+	}
+	if !strings.Contains(m2.detail.result, "PR created") {
+		t.Errorf("result should contain 'PR created', got: %q", m2.detail.result)
+	}
+	if !strings.Contains(m2.detail.result, "https://github.com/org/repo/pull/42") {
+		t.Errorf("result should contain PR URL, got: %q", m2.detail.result)
+	}
+	// prURL should be stored so M key won't offer submit again.
+	if m2.detail.prURL != "https://github.com/org/repo/pull/42" {
+		t.Errorf("prURL should be stored, got: %q", m2.detail.prURL)
+	}
+}
+
+func TestDetail_SubmitResultMsg_Error(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
+	m.detail.executing = true
+
+	result, _ := m.Update(submitResultMsg{err: fmt.Errorf("gh not found")})
+	m2 := result.(Model)
+
+	if m2.detail.executing {
+		t.Error("executing should be false")
+	}
+	if !strings.Contains(m2.detail.result, "gh not found") {
+		t.Errorf("result should contain error, got: %q", m2.detail.result)
+	}
+}
+
+func TestDetail_SubmitOpenedMsg_DispatchesFetchDiff(t *testing.T) {
+	diffCalled := false
+	m := New(Config{
+		DBDir:     "/tmp/fake",
+		RigHandle: "test-rig",
+		Upstream:  "test/db",
+		Mode:      "pr",
+		LoadDiff: func(_ string) (string, error) {
+			diffCalled = true
+			return "mock diff", nil
+		},
+	})
+	m.active = viewDetail
+
+	result, cmd := m.Update(submitOpenedMsg{branch: "wl/test-rig/w-abc123"})
+	_ = result.(Model)
+
+	if cmd == nil {
+		t.Fatal("submitOpenedMsg should return fetchDiff cmd")
+	}
+
+	// Execute the cmd.
+	msg := cmd()
+	diffMsg, ok := msg.(submitDiffMsg)
+	if !ok {
+		t.Fatalf("expected submitDiffMsg, got %T", msg)
+	}
+	if !diffCalled {
+		t.Error("LoadDiff callback should have been called")
+	}
+	if diffMsg.diff != "mock diff" {
+		t.Errorf("diff = %q, want %q", diffMsg.diff, "mock diff")
+	}
+}
+
+func TestDetail_DoneKey_InvalidTransition_ShowsError(t *testing.T) {
+	// Item is "open", done requires "claimed".
+	m := newDetailForTest("open", "other-rig", "", "wild-west")
+
+	result, _ := m.Update(keyMsg("d"))
+	m2 := result.(Model)
+
+	if m2.detail.doneForm != nil {
+		t.Error("done form should not open for invalid transition")
+	}
+	if !strings.Contains(m2.detail.result, "cannot") {
+		t.Errorf("result should contain error, got: %q", m2.detail.result)
+	}
+}
+
+func TestDetail_AcceptKey_PermissionDenied(t *testing.T) {
+	// Item is "in_review", but I'm the claimant (not poster) — self-accept blocked.
+	m := newDetailForTest("in_review", "other-poster", "test-rig", "wild-west")
+
+	result, _ := m.Update(keyMsg("a"))
+	m2 := result.(Model)
+
+	if m2.detail.acceptForm != nil {
+		t.Error("accept form should not open when self-accepting")
+	}
+	if !strings.Contains(m2.detail.result, "permission denied") {
+		t.Errorf("result should contain permission denied, got: %q", m2.detail.result)
+	}
+}
+
+func TestDetail_SetData_ClearsForms(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "wild-west")
+	m.detail.doneForm = newDoneForm()
+	m.detail.acceptForm = newAcceptForm()
+	m.detail.submit = newSubmitModel(m.detail.item, "wl/test-rig/w-abc123", "open", 80, 22)
+
+	m.detail.setData(detailDataMsg{
+		item: &commons.WantedItem{
+			ID:     "w-abc123",
+			Title:  "Test Item",
+			Status: "in_review",
+		},
+	})
+
+	if m.detail.doneForm != nil {
+		t.Error("setData should clear doneForm")
+	}
+	if m.detail.acceptForm != nil {
+		t.Error("setData should clear acceptForm")
+	}
+	if m.detail.submit != nil {
+		t.Error("setData should clear submit")
 	}
 }

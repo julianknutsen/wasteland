@@ -46,16 +46,33 @@ func TestDetail_PendingLine_HiddenWhenStatusesSame(t *testing.T) {
 	}
 }
 
-func TestDetail_DeltaHints_PRMode_DiscardOnly(t *testing.T) {
+func TestDetail_DeltaHints_PRMode_SubmitAndDiscard(t *testing.T) {
 	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
 	m.detail.branch = "wl/test-rig/w-abc123"
 	m.detail.mainStatus = "open"
 
 	hints := m.detail.actionHints()
-	// PR mode: apply is not available — deltas resolve via upstream PR.
-	if strings.Contains(hints, "M:apply") {
-		t.Errorf("PR mode hints should NOT contain 'M:apply', got: %q", hints)
+	// PR mode without existing PR: M opens submit PR view.
+	if !strings.Contains(hints, "M:submit PR") {
+		t.Errorf("PR mode hints should contain 'M:submit PR', got: %q", hints)
 	}
+	if !strings.Contains(hints, "b:discard (→ open)") {
+		t.Errorf("hints should contain 'b:discard (→ open)', got: %q", hints)
+	}
+}
+
+func TestDetail_DeltaHints_PRMode_ExistingPR_HidesSubmit(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
+	m.detail.branch = "wl/test-rig/w-abc123"
+	m.detail.mainStatus = "open"
+	m.detail.prURL = "https://github.com/org/repo/pull/42"
+
+	hints := m.detail.actionHints()
+	// PR already exists: submit hint should NOT appear.
+	if strings.Contains(hints, "M:submit") {
+		t.Errorf("hints should NOT contain submit when PR exists, got: %q", hints)
+	}
+	// Discard should still be available.
 	if !strings.Contains(hints, "b:discard (→ open)") {
 		t.Errorf("hints should contain 'b:discard (→ open)', got: %q", hints)
 	}
@@ -120,16 +137,54 @@ func TestDetail_TryDelta_NoBranch_NoOp(t *testing.T) {
 	}
 }
 
-func TestDetail_TryDelta_Apply_PRMode_NoOp(t *testing.T) {
+func TestDetail_TryDelta_Apply_PRMode_OpensSubmit(t *testing.T) {
 	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
 	m.detail.branch = "wl/test-rig/w-abc123"
 	m.detail.mainStatus = "open"
 
-	// M key in PR mode should be a no-op — deltas resolve via upstream PR.
+	// M key in PR mode opens the submit PR view.
 	result, cmd := m.Update(keyMsg("M"))
-	_ = result.(Model)
+	m2 := result.(Model)
+	if m2.detail.submit == nil {
+		t.Fatal("M key in PR mode should open submit view")
+	}
+	if m2.detail.submit.branch != "wl/test-rig/w-abc123" {
+		t.Errorf("submit branch = %q, want %q", m2.detail.submit.branch, "wl/test-rig/w-abc123")
+	}
+	// Should return a cmd to trigger diff loading.
+	if cmd == nil {
+		t.Fatal("M key should return submitOpenedMsg cmd")
+	}
+	msg := cmd()
+	opened, ok := msg.(submitOpenedMsg)
+	if !ok {
+		t.Fatalf("expected submitOpenedMsg, got %T", msg)
+	}
+	if opened.branch != "wl/test-rig/w-abc123" {
+		t.Errorf("submitOpenedMsg branch = %q, want %q", opened.branch, "wl/test-rig/w-abc123")
+	}
+}
+
+func TestDetail_TryDelta_Apply_PRMode_ExistingPR_ShowsURL(t *testing.T) {
+	m := newDetailForTest("claimed", "other-rig", "test-rig", "pr")
+	m.detail.branch = "wl/test-rig/w-abc123"
+	m.detail.mainStatus = "open"
+	m.detail.prURL = "https://github.com/org/repo/pull/42"
+
+	// M key when PR exists should NOT open submit view.
+	result, cmd := m.Update(keyMsg("M"))
+	m2 := result.(Model)
+	if m2.detail.submit != nil {
+		t.Error("M key should NOT open submit when PR already exists")
+	}
 	if cmd != nil {
-		t.Error("M key in PR mode should not return a cmd")
+		t.Error("should not return a cmd when PR already exists")
+	}
+	if !strings.Contains(m2.detail.result, "PR already open") {
+		t.Errorf("result should indicate PR already open, got: %q", m2.detail.result)
+	}
+	if !strings.Contains(m2.detail.result, "https://github.com/org/repo/pull/42") {
+		t.Errorf("result should contain PR URL, got: %q", m2.detail.result)
 	}
 }
 
@@ -201,5 +256,29 @@ func TestDetail_SetData_StoresMainStatus(t *testing.T) {
 	}
 	if m.detail.branch != "wl/test-rig/w-abc123" {
 		t.Errorf("branch = %q, want %q", m.detail.branch, "wl/test-rig/w-abc123")
+	}
+}
+
+func TestDetail_SetData_StoresPRURL(t *testing.T) {
+	m := newDetailForTest("open", "other-rig", "", "pr")
+	m.detail.setData(detailDataMsg{
+		item: &commons.WantedItem{
+			ID:     "w-abc123",
+			Title:  "Test",
+			Status: "claimed",
+		},
+		branch:     "wl/test-rig/w-abc123",
+		mainStatus: "open",
+		prURL:      "https://github.com/org/repo/pull/42",
+	})
+
+	if m.detail.prURL != "https://github.com/org/repo/pull/42" {
+		t.Errorf("prURL = %q, want %q", m.detail.prURL, "https://github.com/org/repo/pull/42")
+	}
+
+	// View should show the PR line.
+	v := m.View()
+	if !strings.Contains(v, "PR:") {
+		t.Errorf("view should contain 'PR:' line, got:\n%s", v)
 	}
 }

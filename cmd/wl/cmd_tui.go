@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"os/exec"
 
 	bubbletea "github.com/charmbracelet/bubbletea"
 	"github.com/julianknutsen/wasteland/internal/commons"
@@ -58,6 +60,7 @@ func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 		Upstream:     upstream,
 		Mode:         cfg.ResolveMode(),
 		Signing:      cfg.Signing,
+		HopURI:       cfg.HopURI,
 		ProviderType: cfg.ResolveProviderType(),
 		ForkOrg:      cfg.ForkOrg,
 		ForkDB:       cfg.ForkDB,
@@ -72,6 +75,24 @@ func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 			c.Mode = mode
 			c.Signing = signing
 			return store.Save(c)
+		},
+		LoadDiff: func(branch string) (string, error) {
+			doltPath, err := exec.LookPath("dolt")
+			if err != nil {
+				return "", err
+			}
+			base := diffBase(cfg.LocalDir, doltPath)
+			var buf bytes.Buffer
+			if err := renderMarkdownDiff(&buf, cfg.LocalDir, doltPath, branch, base); err != nil {
+				return "", err
+			}
+			return buf.String(), nil
+		},
+		CreatePR: func(branch string) (string, error) {
+			return createPRForBranch(cfg, branch)
+		},
+		CheckPR: func(branch string) string {
+			return checkPRForBranch(cfg, branch)
 		},
 	})
 

@@ -56,6 +56,7 @@ type WantedSummary struct {
 	Type        string
 	Priority    int
 	PostedBy    string
+	ClaimedBy   string
 	Status      string
 	EffortLevel string
 }
@@ -102,7 +103,7 @@ func BuildBrowseQuery(f BrowseFilter) string {
 		conditions = append(conditions, fmt.Sprintf("title LIKE '%%%s%%'", EscapeSQL(f.Search)))
 	}
 
-	query := "SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted"
+	query := "SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted"
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
@@ -204,6 +205,7 @@ func ApplyBranchOverrides(dbDir string, items []WantedSummary, overrides []Branc
 				Type:        item.Type,
 				Priority:    item.Priority,
 				PostedBy:    item.PostedBy,
+				ClaimedBy:   item.ClaimedBy,
 				Status:      o.Status,
 				EffortLevel: item.EffortLevel,
 			})
@@ -277,7 +279,7 @@ func QueryMyDashboard(dbDir, handle string) (*DashboardData, error) {
 
 	// Claimed items.
 	claimedQ := fmt.Sprintf(
-		"SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted WHERE status = 'claimed' AND claimed_by = '%s' ORDER BY priority ASC, created_at DESC LIMIT 50",
+		"SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted WHERE status = 'claimed' AND claimed_by = '%s' ORDER BY priority ASC, created_at DESC LIMIT 50",
 		escaped)
 	csv, err := DoltSQLQuery(dbDir, claimedQ)
 	if err != nil {
@@ -287,7 +289,7 @@ func QueryMyDashboard(dbDir, handle string) (*DashboardData, error) {
 
 	// In-review items (posted by me, awaiting my review).
 	reviewQ := fmt.Sprintf(
-		"SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted WHERE status = 'in_review' AND posted_by = '%s' ORDER BY priority ASC, created_at DESC LIMIT 50",
+		"SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted WHERE status = 'in_review' AND posted_by = '%s' ORDER BY priority ASC, created_at DESC LIMIT 50",
 		escaped)
 	csv, err = DoltSQLQuery(dbDir, reviewQ)
 	if err != nil {
@@ -297,7 +299,7 @@ func QueryMyDashboard(dbDir, handle string) (*DashboardData, error) {
 
 	// Recent completions.
 	completedQ := fmt.Sprintf(
-		"SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted WHERE status = 'completed' AND claimed_by = '%s' ORDER BY created_at DESC LIMIT 5",
+		"SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted WHERE status = 'completed' AND claimed_by = '%s' ORDER BY created_at DESC LIMIT 5",
 		escaped)
 	csv, err = DoltSQLQuery(dbDir, completedQ)
 	if err != nil {
@@ -366,6 +368,7 @@ func parseWantedSummaries(csvData string) []WantedSummary {
 			Type:        row["type"],
 			Priority:    pri,
 			PostedBy:    row["posted_by"],
+			ClaimedBy:   row["claimed_by"],
 			Status:      row["status"],
 			EffortLevel: row["effort_level"],
 		})

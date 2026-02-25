@@ -39,12 +39,18 @@ type detailModel struct {
 	mode           string
 	branch         string              // non-empty when showing branch state
 	mainStatus     string              // status on main when showing branch state
+	prURL          string              // non-empty when upstream PR already exists
 	confirming     *confirmAction      // non-nil → showing confirmation prompt
 	deltaConfirm   *deltaConfirmAction // non-nil → showing delta confirmation prompt
 	executing      bool                // true → showing spinner
 	executingLabel string              // e.g. "Claiming..."
 	spinner        spinner.Model
 	result         string // brief success/error message
+
+	// Sub-state forms.
+	submit     *submitModel
+	doneForm   *doneFormModel
+	acceptForm *acceptFormModel
 }
 
 func newDetailModel(dbDir, rigHandle, mode string) detailModel {
@@ -79,12 +85,16 @@ func (m *detailModel) setData(msg detailDataMsg) {
 	m.stamp = msg.stamp
 	m.branch = msg.branch
 	m.mainStatus = msg.mainStatus
+	m.prURL = msg.prURL
 	// Clear mutation state so stale results don't mask action hints.
 	m.confirming = nil
 	m.deltaConfirm = nil
 	m.executing = false
 	m.executingLabel = ""
 	m.result = ""
+	m.submit = nil
+	m.doneForm = nil
+	m.acceptForm = nil
 	if m.item != nil {
 		m.viewport.SetContent(m.renderContent())
 		m.viewport.GotoTop()
@@ -139,6 +149,39 @@ func (m detailModel) update(msg bubbletea.Msg) (detailModel, bubbletea.Cmd) {
 			return m, nil
 		}
 
+		// Submit view active: route to submit model.
+		if m.submit != nil {
+			var cmd bubbletea.Cmd
+			m.submit, cmd = m.submit.update(msg)
+			if m.submit == nil {
+				// Canceled — restore viewport content.
+				m.refreshViewport()
+			}
+			return m, cmd
+		}
+
+		// Done form active: route to done form.
+		if m.doneForm != nil {
+			var cmd bubbletea.Cmd
+			m.doneForm, cmd = m.doneForm.update(msg)
+			if m.doneForm == nil {
+				// Canceled — restore viewport.
+				m.refreshViewport()
+			}
+			return m, cmd
+		}
+
+		// Accept form active: route to accept form.
+		if m.acceptForm != nil {
+			var cmd bubbletea.Cmd
+			m.acceptForm, cmd = m.acceptForm.update(msg)
+			if m.acceptForm == nil {
+				// Canceled — restore viewport.
+				m.refreshViewport()
+			}
+			return m, cmd
+		}
+
 		// Normal key handling.
 		switch {
 		case key.Matches(msg, keys.Back):
@@ -148,11 +191,11 @@ func (m detailModel) update(msg bubbletea.Msg) (detailModel, bubbletea.Cmd) {
 		case key.Matches(msg, keys.Quit):
 			return m, bubbletea.Quit
 
-		// Actions requiring text input — show CLI hint.
+		// Done/accept inline forms.
 		case key.Matches(msg, keys.Done):
-			return m.tryTextAction(commons.TransitionDone)
+			return m.tryDoneForm()
 		case key.Matches(msg, keys.Accept):
-			return m.tryTextAction(commons.TransitionAccept)
+			return m.tryAcceptForm()
 
 		// Executable actions.
 		case key.Matches(msg, keys.Claim):
@@ -203,20 +246,71 @@ func (m detailModel) tryAction(t commons.Transition) (detailModel, bubbletea.Cmd
 	}
 }
 
-// tryTextAction handles transitions that require additional CLI input.
-func (m detailModel) tryTextAction(t commons.Transition) (detailModel, bubbletea.Cmd) {
+// tryDoneForm validates the done transition and opens the evidence input form.
+func (m detailModel) tryDoneForm() (detailModel, bubbletea.Cmd) {
 	if m.item == nil {
 		return m, nil
 	}
-	if _, err := commons.ValidateTransition(m.item.Status, t); err == nil {
-		if commons.CanPerformTransition(m.item, t, m.rigHandle) {
-			name := commons.TransitionName(t)
-			hint := commons.TransitionRequiresInput(t)
-			m.result = styleDim.Render(fmt.Sprintf("use `wl %s %s` — %s", name, m.item.ID, hint))
-			m.viewport.SetContent(m.renderContent())
-		}
+	if _, err := commons.ValidateTransition(m.item.Status, commons.TransitionDone); err != nil {
+		m.result = styleError.Render(err.Error())
+		m.viewport.SetContent(m.renderContent())
+		return m, nil
 	}
+	if !commons.CanPerformTransition(m.item, commons.TransitionDone, m.rigHandle) {
+		m.result = styleError.Render("cannot done: permission denied")
+		m.viewport.SetContent(m.renderContent())
+		return m, nil
+	}
+	m.result = ""
+	m.doneForm = newDoneForm()
+	m.viewport.SetContent(m.renderContent())
 	return m, nil
+}
+
+// tryAcceptForm validates the accept transition and opens the stamp form.
+func (m detailModel) tryAcceptForm() (detailModel, bubbletea.Cmd) {
+	if m.item == nil {
+		return m, nil
+	}
+	if _, err := commons.ValidateTransition(m.item.Status, commons.TransitionAccept); err != nil {
+		m.result = styleError.Render(err.Error())
+		m.viewport.SetContent(m.renderContent())
+		return m, nil
+	}
+	if !commons.CanPerformTransition(m.item, commons.TransitionAccept, m.rigHandle) {
+		m.result = styleError.Render("cannot accept: permission denied")
+		m.viewport.SetContent(m.renderContent())
+		return m, nil
+	}
+	m.result = ""
+	m.acceptForm = newAcceptForm()
+	m.viewport.SetContent(m.renderContent())
+	return m, nil
+}
+
+// submitOpenedMsg signals to the root that the submit view was opened
+// and diff loading should begin.
+type submitOpenedMsg struct {
+	branch string
+}
+
+// trySubmit opens the submit PR view (M key in PR mode with a branch).
+func (m detailModel) trySubmit() (detailModel, bubbletea.Cmd) {
+	if m.branch == "" || m.item == nil {
+		return m, nil
+	}
+	// PR already submitted — show the URL instead.
+	if m.prURL != "" {
+		m.result = styleDim.Render(fmt.Sprintf("PR already open: %s", m.prURL))
+		m.viewport.SetContent(m.renderContent())
+		return m, nil
+	}
+	m.result = ""
+	m.submit = newSubmitModel(m.item, m.branch, m.mainStatus, m.width, m.height-2)
+	branch := m.branch
+	return m, func() bubbletea.Msg {
+		return submitOpenedMsg{branch: branch}
+	}
 }
 
 // tryDelta validates that a branch exists, computes a label, and returns a deltaRequestMsg.
@@ -224,9 +318,9 @@ func (m detailModel) tryDelta(action branchDeltaAction) (detailModel, bubbletea.
 	if m.branch == "" || m.item == nil {
 		return m, nil
 	}
-	// Apply is not available in PR mode — deltas resolve via upstream PR merge.
+	// PR mode: M opens the submit PR view instead of applying locally.
 	if action == deltaApply && m.mode == "pr" {
-		return m, nil
+		return m.trySubmit()
 	}
 	delta := commons.DeltaLabel(m.mainStatus, m.item.Status)
 	var label string
@@ -252,6 +346,11 @@ func (m detailModel) view() string {
 		return styleDim.Render("  No item loaded.")
 	}
 
+	// Submit view replaces the entire viewport content.
+	if m.submit != nil {
+		return m.submit.view()
+	}
+
 	title := styleTitle.Render(fmt.Sprintf("%s: %s", m.item.ID, m.item.Title))
 	return title + "\n" + m.viewport.View()
 }
@@ -265,7 +364,10 @@ func (m detailModel) renderContent() string {
 		b.WriteString(fmt.Sprintf("  Pending:     %s → %s\n", m.mainStatus, item.Status))
 	}
 	if m.branch != "" {
-		b.WriteString(styleDim.Render(fmt.Sprintf("  Branch:      %s\n", m.branch)))
+		b.WriteString(styleDim.Render(fmt.Sprintf("  Branch:      %s", m.branch)) + "\n")
+	}
+	if m.prURL != "" {
+		b.WriteString(styleSuccess.Render(fmt.Sprintf("  PR:          %s", m.prURL)) + "\n")
 	}
 
 	if item.Type != "" {
@@ -329,9 +431,15 @@ func (m detailModel) renderContent() string {
 		}
 	}
 
-	// Status line: confirmation, executing, result, or action hints.
+	// Status line: confirmation, executing, result, forms, or action hints.
 	b.WriteByte('\n')
 	switch {
+	case m.doneForm != nil:
+		b.WriteString(m.doneForm.view())
+		return b.String()
+	case m.acceptForm != nil:
+		b.WriteString(m.acceptForm.view())
+		return b.String()
 	case m.confirming != nil:
 		b.WriteString(styleConfirm.Render(fmt.Sprintf(
 			"  %s Pushes to upstream. [y/n]", m.confirming.label)))
@@ -382,8 +490,10 @@ func (m detailModel) actionHints() string {
 	if m.branch != "" && m.mainStatus != "" && m.mainStatus != m.item.Status {
 		delta := commons.DeltaLabel(m.mainStatus, m.item.Status)
 		var deltaHints []string
-		if m.mode != "pr" {
-			// Apply only in wild-west mode — PR mode resolves via upstream PR.
+		if m.mode == "pr" && m.prURL == "" {
+			// Only show submit hint when no PR exists yet.
+			deltaHints = append(deltaHints, fmt.Sprintf("M:submit PR (%s)", delta))
+		} else if m.mode != "pr" {
 			deltaHints = append(deltaHints, fmt.Sprintf("M:apply %s", delta))
 		}
 		deltaHints = append(deltaHints, fmt.Sprintf("b:discard (→ %s)", m.mainStatus))

@@ -33,6 +33,7 @@ type detailDataMsg struct {
 	err        error
 	branch     string // non-empty when detail was read from a PR branch
 	mainStatus string // status on main when detail was read from a branch
+	prURL      string // non-empty when an upstream PR already exists for this branch
 }
 
 // meDataMsg carries dashboard query results.
@@ -87,6 +88,32 @@ type deltaConfirmedMsg struct {
 type deltaResultMsg struct {
 	err  error
 	hint string
+}
+
+// doneSubmitMsg is sent when the user submits the done form.
+type doneSubmitMsg struct {
+	evidence string
+}
+
+// acceptSubmitMsg is sent when the user submits the accept form.
+type acceptSubmitMsg struct {
+	quality     int
+	reliability int
+	severity    string
+	skills      []string
+	message     string
+}
+
+// submitDiffMsg carries the async-loaded diff for the submit PR view.
+type submitDiffMsg struct {
+	diff string
+	err  error
+}
+
+// submitResultMsg carries the result of creating an upstream PR.
+type submitResultMsg struct {
+	prURL string
+	err   error
 }
 
 // settingsSavedMsg carries the result of saving settings.

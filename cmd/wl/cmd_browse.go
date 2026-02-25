@@ -184,11 +184,11 @@ func renderBrowseCSV(stdout io.Writer, csvData string) error {
 	)
 
 	for _, row := range rows[1:] {
-		if len(row) < 8 {
+		if len(row) < 9 {
 			continue
 		}
 		pri := wlFormatPriority(row[4])
-		tbl.AddRow(row[0], row[1], row[2], row[3], pri, row[5], row[6], row[7])
+		tbl.AddRow(row[0], row[1], row[2], row[3], pri, row[5], row[7], row[8])
 	}
 
 	fmt.Fprintf(stdout, "Wanted items (%d):\n\n", len(rows)-1)

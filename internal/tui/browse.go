@@ -263,14 +263,14 @@ func (m browseModel) view() string {
 		b.WriteByte('\n')
 	}
 
-	// Column headers — replace EFFORT with STATUS, add POSTED BY for wide terminals.
+	// Column headers — add POSTED BY and CLAIMED BY for wide terminals.
 	wide := m.width > 100
 	var colHeader string
 	if wide {
-		colHeader = fmt.Sprintf("  %-12s %-30s %-10s %-8s %-4s %-10s %-12s",
-			"ID", "TITLE", "PROJECT", "TYPE", "PRI", "STATUS", "POSTED BY")
+		colHeader = fmt.Sprintf("  %-12s %-30s %-10s %-8s %-3s %-10s %-12s %s",
+			"ID", "TITLE", "PROJECT", "TYPE", "PRI", "STATUS", "POSTED BY", "CLAIMED BY")
 	} else {
-		colHeader = fmt.Sprintf("  %-12s %-30s %-10s %-8s %-4s %-10s",
+		colHeader = fmt.Sprintf("  %-12s %-30s %-10s %-8s %-3s %-10s",
 			"ID", "TITLE", "PROJECT", "TYPE", "PRI", "STATUS")
 	}
 	b.WriteString(styleDim.Render(colHeader))
@@ -329,17 +329,22 @@ func (m browseModel) view() string {
 		if len(title) > titleMax {
 			title = title[:titleMax-3] + "..."
 		}
-		pri := colorizePriority(item.Priority)
+		pri := padANSI(colorizePriority(item.Priority), 3)
 		status := colorizeStatus(item.Status)
 		if m.branchIDs[item.ID] {
 			status += "*"
 		}
+		status = padANSI(status, 10)
+		claimedBy := item.ClaimedBy
+		if wide && claimedBy == "" {
+			claimedBy = styleDim.Render("—")
+		}
 		var line string
 		if wide {
-			line = fmt.Sprintf("  %-12s %-30s %-10s %-8s %-4s %-10s %-12s",
-				item.ID, title, item.Project, item.Type, pri, status, item.PostedBy)
+			line = fmt.Sprintf("  %-12s %-30s %-10s %-8s %s %s %-12s %s",
+				item.ID, title, item.Project, item.Type, pri, status, item.PostedBy, claimedBy)
 		} else {
-			line = fmt.Sprintf("  %-12s %-30s %-10s %-8s %-4s %-10s",
+			line = fmt.Sprintf("  %-12s %-30s %-10s %-8s %s %s",
 				item.ID, title, item.Project, item.Type, pri, status)
 		}
 
@@ -351,4 +356,13 @@ func (m browseModel) view() string {
 	}
 
 	return b.String()
+}
+
+// padANSI right-pads an ANSI-styled string to width based on visible characters.
+func padANSI(s string, width int) string {
+	visible := lipgloss.Width(s)
+	if visible >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-visible)
 }

@@ -146,7 +146,7 @@ func CanPerformTransition(item *WantedItem, t Transition, actor string) bool {
 	case TransitionClose:
 		return item.PostedBy == actor
 	case TransitionDelete:
-		return true // any rig can delete
+		return item.PostedBy == actor
 	default:
 		return false
 	}
