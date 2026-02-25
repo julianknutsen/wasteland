@@ -164,10 +164,7 @@ func (m detailModel) update(msg bubbletea.Msg) (detailModel, bubbletea.Cmd) {
 		if m.doneForm != nil {
 			var cmd bubbletea.Cmd
 			m.doneForm, cmd = m.doneForm.update(msg)
-			if m.doneForm == nil {
-				// Canceled — restore viewport.
-				m.refreshViewport()
-			}
+			m.refreshViewport()
 			return m, cmd
 		}
 
@@ -175,10 +172,7 @@ func (m detailModel) update(msg bubbletea.Msg) (detailModel, bubbletea.Cmd) {
 		if m.acceptForm != nil {
 			var cmd bubbletea.Cmd
 			m.acceptForm, cmd = m.acceptForm.update(msg)
-			if m.acceptForm == nil {
-				// Canceled — restore viewport.
-				m.refreshViewport()
-			}
+			m.refreshViewport()
 			return m, cmd
 		}
 

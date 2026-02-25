@@ -218,8 +218,12 @@ func ApplyBranchOverrides(dbDir string, items []WantedSummary, overrides []Branc
 		if statusFilter != "" && o.Status != statusFilter {
 			continue
 		}
-		// Fetch summary from main (metadata is the same) and override status.
-		if item, err := QueryWantedDetail(dbDir, o.WantedID); err == nil {
+		// Try main first; fall back to branch (item may only exist there).
+		item, err := QueryWantedDetail(dbDir, o.WantedID)
+		if err != nil {
+			item, err = QueryWantedDetailAsOf(dbDir, o.WantedID, o.Branch)
+		}
+		if err == nil {
 			result = append(result, WantedSummary{
 				ID:          item.ID,
 				Title:       item.Title,
@@ -330,6 +334,96 @@ func QueryMyDashboard(dbDir, handle string) (*DashboardData, error) {
 	data.Completed = parseWantedSummaries(csv)
 
 	return data, nil
+}
+
+// QueryMyDashboardBranchAware wraps QueryMyDashboard with branch overlay in PR mode.
+func QueryMyDashboardBranchAware(dbDir, mode, rigHandle string) (*DashboardData, error) {
+	data, err := QueryMyDashboard(dbDir, rigHandle)
+	if err != nil {
+		return nil, err
+	}
+	if mode != "pr" {
+		return data, nil
+	}
+
+	overrides := DetectBranchOverrides(dbDir, rigHandle)
+	if len(overrides) == 0 {
+		return data, nil
+	}
+
+	// Apply overrides to each section with its status+person filter.
+	data.Claimed = applyDashboardOverrides(dbDir, data.Claimed, overrides, "claimed", "claimed_by", rigHandle)
+	data.InReview = applyDashboardOverrides(dbDir, data.InReview, overrides, "in_review", "posted_by", rigHandle)
+	data.Completed = applyDashboardOverrides(dbDir, data.Completed, overrides, "completed", "claimed_by", rigHandle)
+
+	return data, nil
+}
+
+// applyDashboardOverrides applies branch overrides to a dashboard section.
+// statusFilter is the required status, personField/personValue filter by role.
+func applyDashboardOverrides(dbDir string, items []WantedSummary, overrides []BranchOverride, statusFilter, personField, personValue string) []WantedSummary {
+	if len(overrides) == 0 {
+		return items
+	}
+
+	byID := make(map[string]BranchOverride, len(overrides))
+	for _, o := range overrides {
+		byID[o.WantedID] = o
+	}
+
+	applied := make(map[string]bool)
+	var result []WantedSummary
+	for _, item := range items {
+		if o, ok := byID[item.ID]; ok {
+			applied[item.ID] = true
+			item.Status = o.Status
+			if o.ClaimedBy != "" {
+				item.ClaimedBy = o.ClaimedBy
+			}
+			if item.Status != statusFilter {
+				continue // override made it not match
+			}
+		}
+		result = append(result, item)
+	}
+
+	// Add branch-only items that now match this section.
+	for _, o := range overrides {
+		if applied[o.WantedID] || o.Status != statusFilter {
+			continue
+		}
+		item, err := QueryWantedDetail(dbDir, o.WantedID)
+		if err != nil {
+			item, err = QueryWantedDetailAsOf(dbDir, o.WantedID, o.Branch)
+		}
+		if err != nil {
+			continue
+		}
+		// Check person filter.
+		match := false
+		switch personField {
+		case "claimed_by":
+			match = item.ClaimedBy == personValue || o.ClaimedBy == personValue
+		case "posted_by":
+			match = item.PostedBy == personValue
+		}
+		if !match {
+			continue
+		}
+		result = append(result, WantedSummary{
+			ID:          item.ID,
+			Title:       item.Title,
+			Project:     item.Project,
+			Type:        item.Type,
+			Priority:    item.Priority,
+			PostedBy:    item.PostedBy,
+			ClaimedBy:   item.ClaimedBy,
+			Status:      o.Status,
+			EffortLevel: item.EffortLevel,
+		})
+	}
+
+	return result
 }
 
 // BrowseWantedBranchAware wraps BrowseWanted with branch overlay in PR mode.

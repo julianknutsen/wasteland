@@ -474,6 +474,41 @@ func QueryWantedDetail(dbDir, wantedID string) (*WantedItem, error) {
 	}, nil
 }
 
+// QueryWantedDetailAsOf fetches a wanted item from a specific branch/ref.
+func QueryWantedDetailAsOf(dbDir, wantedID, ref string) (*WantedItem, error) {
+	query := fmt.Sprintf(`SELECT id, title, COALESCE(description,'') as description, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(tags,'') as tags, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level, COALESCE(created_at,'') as created_at, COALESCE(updated_at,'') as updated_at FROM wanted AS OF '%s' WHERE id='%s';`,
+		EscapeSQL(ref), EscapeSQL(wantedID))
+
+	output, err := DoltSQLQuery(dbDir, query)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := parseSimpleCSV(output)
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("wanted item %q not found on ref %s", wantedID, ref)
+	}
+
+	row := rows[0]
+	priority, _ := strconv.Atoi(row["priority"])
+
+	return &WantedItem{
+		ID:          row["id"],
+		Title:       row["title"],
+		Description: row["description"],
+		Project:     row["project"],
+		Type:        row["type"],
+		Priority:    priority,
+		Tags:        parseTagsJSON(row["tags"]),
+		PostedBy:    row["posted_by"],
+		ClaimedBy:   row["claimed_by"],
+		Status:      row["status"],
+		EffortLevel: row["effort_level"],
+		CreatedAt:   row["created_at"],
+		UpdatedAt:   row["updated_at"],
+	}, nil
+}
+
 // QueryStamp fetches a stamp by ID.
 // dbDir is the actual database directory.
 func QueryStamp(dbDir, stampID string) (*Stamp, error) {

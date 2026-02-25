@@ -183,23 +183,19 @@ func CheckoutBranch(dbDir, branch string) error {
 	return doltExec(dbDir, "checkout", branch)
 }
 
-// CheckoutBranchFrom creates a branch from startPoint (deleting any existing
-// branch first), then checks it out. Used in PR mode to ensure branches start
-// from a clean upstream-aligned base rather than a potentially dirty HEAD.
+// CheckoutBranchFrom checks out a branch if it exists, or creates it from
+// startPoint if it doesn't. Used in PR mode so new branches start from a
+// clean upstream-aligned main, while existing branches (with pending
+// multi-step mutations like claim→done→accept) are preserved.
 func CheckoutBranchFrom(dbDir, branch, startPoint string) error {
 	exists, err := BranchExists(dbDir, branch)
 	if err != nil {
 		return fmt.Errorf("checking branch %s: %w", branch, err)
 	}
-	if exists {
-		// Delete and recreate from the specified start point so the branch
-		// doesn't carry stale commits from a previous dirty main.
-		if err := doltExec(dbDir, "branch", "-D", branch); err != nil {
-			return fmt.Errorf("deleting stale branch %s: %w", branch, err)
+	if !exists {
+		if err := doltExec(dbDir, "branch", branch, startPoint); err != nil {
+			return fmt.Errorf("creating branch %s from %s: %w", branch, startPoint, err)
 		}
-	}
-	if err := doltExec(dbDir, "branch", branch, startPoint); err != nil {
-		return fmt.Errorf("creating branch %s from %s: %w", branch, startPoint, err)
 	}
 	return doltExec(dbDir, "checkout", branch)
 }

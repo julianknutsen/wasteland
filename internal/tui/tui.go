@@ -352,7 +352,7 @@ func fetchBrowse(cfg Config, f commons.BrowseFilter) bubbletea.Cmd {
 
 func fetchMe(cfg Config) bubbletea.Cmd {
 	return func() bubbletea.Msg {
-		data, err := commons.QueryMyDashboard(cfg.DBDir, cfg.RigHandle)
+		data, err := commons.QueryMyDashboardBranchAware(cfg.DBDir, cfg.Mode, cfg.RigHandle)
 		return meDataMsg{data: data, err: err}
 	}
 }
