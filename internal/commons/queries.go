@@ -296,7 +296,7 @@ func PriorityLabel(pri int) string {
 // DashboardData holds the sections for the "me" dashboard view.
 type DashboardData struct {
 	Claimed   []WantedSummary // status=claimed, claimed_by=me
-	InReview  []WantedSummary // status=in_review, posted_by=me
+	InReview  []WantedSummary // status=in_review, posted_by=me OR claimed_by=me
 	Completed []WantedSummary // status=completed, claimed_by=me, limit 5
 }
 
@@ -315,10 +315,10 @@ func QueryMyDashboard(db DB, handle string) (*DashboardData, error) {
 	}
 	data.Claimed = parseWantedSummaries(csv)
 
-	// In-review items (posted by me, awaiting my review).
+	// In-review items (posted by me or claimed by me).
 	reviewQ := fmt.Sprintf(
-		"SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted WHERE status = 'in_review' AND posted_by = '%s' ORDER BY priority ASC, created_at DESC LIMIT 50",
-		escaped)
+		"SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted WHERE status = 'in_review' AND (posted_by = '%s' OR claimed_by = '%s') ORDER BY priority ASC, created_at DESC LIMIT 50",
+		escaped, escaped)
 	csv, err = db.Query(reviewQ, "")
 	if err != nil {
 		return nil, fmt.Errorf("dashboard in_review: %w", err)
@@ -355,7 +355,7 @@ func QueryMyDashboardBranchAware(db DB, mode, rigHandle string) (*DashboardData,
 
 	// Apply overrides to each section with its status+person filter.
 	data.Claimed = applyDashboardOverrides(db, data.Claimed, overrides, "claimed", "claimed_by", rigHandle)
-	data.InReview = applyDashboardOverrides(db, data.InReview, overrides, "in_review", "posted_by", rigHandle)
+	data.InReview = applyDashboardOverrides(db, data.InReview, overrides, "in_review", "either", rigHandle)
 	data.Completed = applyDashboardOverrides(db, data.Completed, overrides, "completed", "claimed_by", rigHandle)
 
 	return data, nil
@@ -407,6 +407,8 @@ func applyDashboardOverrides(db DB, items []WantedSummary, overrides []BranchOve
 			match = item.ClaimedBy == personValue || o.ClaimedBy == personValue
 		case "posted_by":
 			match = item.PostedBy == personValue
+		case "either":
+			match = item.PostedBy == personValue || item.ClaimedBy == personValue || o.ClaimedBy == personValue
 		}
 		if !match {
 			continue

@@ -62,6 +62,8 @@ export interface DetailResponse {
   pr_url?: string;
   delta?: string;
   actions: string[];
+  branch_actions: string[];
+  mode: string;
 }
 
 export interface MutationResponse {

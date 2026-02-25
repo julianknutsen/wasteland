@@ -1,6 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { detail, claim, unclaim, reject, close, deleteItem } from '../api/client';
+import {
+  detail, claim, unclaim, reject, close, deleteItem,
+  done, accept, submitPR, applyBranch, discardBranch, branchDiff,
+} from '../api/client';
 import type { DetailResponse } from '../api/types';
 import { ayu, statusColor } from '../styles/theme';
 import { StatusBadge } from './StatusBadge';
@@ -8,15 +11,7 @@ import { PriorityBadge } from './PriorityBadge';
 import { ActionButton } from './ActionButton';
 import { ConfirmDialog } from './ConfirmDialog';
 
-const actionHandlers: Record<string, (id: string) => Promise<unknown>> = {
-  claim: (id) => claim(id),
-  unclaim: (id) => unclaim(id),
-  reject: (id) => reject(id),
-  close: (id) => close(id),
-  delete: (id) => deleteItem(id),
-};
-
-const destructiveActions = new Set(['delete', 'close', 'reject']);
+const destructiveActions = new Set(['delete', 'close', 'reject', 'discard']);
 
 export function DetailView() {
   const { id } = useParams<{ id: string }>();
@@ -25,6 +20,10 @@ export function DetailView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [confirm, setConfirm] = useState<string | null>(null);
+  const [diffContent, setDiffContent] = useState<string | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [evidenceInput, setEvidenceInput] = useState('');
+  const [showDoneForm, setShowDoneForm] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -44,22 +43,72 @@ export function DetailView() {
   }, [load]);
 
   const handleAction = async (action: string) => {
-    if (!id) return;
-    const handler = actionHandlers[action];
-    if (!handler) return;
+    if (!id || !data) return;
     try {
-      await handler(id);
-      if (action === 'delete') {
-        navigate('/');
-      } else {
-        await load();
+      switch (action) {
+        case 'claim': await claim(id); break;
+        case 'unclaim': await unclaim(id); break;
+        case 'reject': await reject(id); break;
+        case 'close': await close(id); break;
+        case 'delete':
+          await deleteItem(id);
+          navigate('/');
+          return;
+        case 'accept': await accept(id); break;
+        case 'submit_pr':
+          if (data.branch) {
+            const resp = await submitPR(data.branch);
+            setData({ ...data, pr_url: resp.url });
+          }
+          return;
+        case 'apply':
+          if (data.branch) {
+            await applyBranch(data.branch);
+          }
+          break;
+        case 'discard':
+          if (data.branch) {
+            await discardBranch(data.branch);
+          }
+          break;
+        default: return;
       }
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : `Failed to ${action}`);
     }
   };
 
+  const handleDone = async () => {
+    if (!id || !evidenceInput.trim()) return;
+    try {
+      await done(id, evidenceInput.trim());
+      setShowDoneForm(false);
+      setEvidenceInput('');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to submit');
+    }
+  };
+
+  const handleLoadDiff = async () => {
+    if (!data?.branch) return;
+    setDiffLoading(true);
+    try {
+      const resp = await branchDiff(data.branch);
+      setDiffContent(resp.diff);
+    } catch (e) {
+      setDiffContent(`Error loading diff: ${e instanceof Error ? e.message : 'unknown error'}`);
+    } finally {
+      setDiffLoading(false);
+    }
+  };
+
   const onActionClick = (action: string) => {
+    if (action === 'done') {
+      setShowDoneForm(true);
+      return;
+    }
     if (destructiveActions.has(action)) {
       setConfirm(action);
     } else {
@@ -71,7 +120,10 @@ export function DetailView() {
   if (error) return <p style={{ color: ayu.red }}>{error}</p>;
   if (!data) return <p style={{ color: ayu.dim }}>Not found.</p>;
 
-  const { item, completion, stamp, branch, delta, actions } = data;
+  const { item, completion, stamp, branch, main_status, pr_url, delta, actions, branch_actions } = data;
+
+  // Branch actions are computed by the SDK (mode-aware: submit_pr/apply/discard).
+  const branchActions = branch_actions || [];
 
   return (
     <div style={{ maxWidth: '720px' }}>
@@ -140,10 +192,29 @@ export function DetailView() {
             <span style={{ color: ayu.fg }}>{item.tags.join(', ')}</span>
           </>
         )}
+        {branch && main_status && main_status !== item.status && (
+          <>
+            <span style={{ color: ayu.dim }}>Pending</span>
+            <span style={{ color: ayu.accent }}>{main_status} &rarr; {item.status}</span>
+          </>
+        )}
         {branch && (
           <>
             <span style={{ color: ayu.dim }}>Branch</span>
             <span style={{ color: ayu.purple }}>{branch}</span>
+          </>
+        )}
+        {pr_url && (
+          <>
+            <span style={{ color: ayu.dim }}>PR</span>
+            <a
+              href={pr_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: ayu.green, textDecoration: 'none' }}
+            >
+              {pr_url}
+            </a>
           </>
         )}
       </div>
@@ -194,15 +265,112 @@ export function DetailView() {
           >
             {delta}
           </pre>
+          {branch && diffContent === null && (
+            <button
+              onClick={handleLoadDiff}
+              disabled={diffLoading}
+              style={{
+                marginTop: '8px',
+                padding: '4px 12px',
+                background: 'transparent',
+                border: `1px solid ${ayu.border}`,
+                borderRadius: '4px',
+                color: ayu.dim,
+                cursor: diffLoading ? 'wait' : 'pointer',
+                fontSize: '12px',
+              }}
+            >
+              {diffLoading ? 'Loading diff...' : 'View diff'}
+            </button>
+          )}
+          {diffContent && (
+            <pre
+              style={{
+                marginTop: '8px',
+                fontSize: '12px',
+                color: ayu.fg,
+                whiteSpace: 'pre-wrap',
+                fontFamily: 'inherit',
+              }}
+            >
+              {diffContent}
+            </pre>
+          )}
         </Section>
       )}
 
-      {actions.length > 0 && (
+      {showDoneForm && (
+        <Section title="Submit for Review">
+          <div style={{ fontSize: '13px' }}>
+            <label style={{ color: ayu.dim, display: 'block', marginBottom: '4px' }}>
+              Evidence (URL or description)
+            </label>
+            <input
+              type="text"
+              value={evidenceInput}
+              onChange={(e) => setEvidenceInput(e.target.value)}
+              placeholder="https://github.com/..."
+              style={{
+                width: '100%',
+                padding: '6px 8px',
+                background: ayu.bg,
+                border: `1px solid ${ayu.border}`,
+                borderRadius: '4px',
+                color: ayu.fg,
+                fontSize: '13px',
+                boxSizing: 'border-box',
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleDone(); }}
+            />
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+              <button
+                onClick={handleDone}
+                disabled={!evidenceInput.trim()}
+                style={{
+                  padding: '4px 12px',
+                  background: 'transparent',
+                  border: `1px solid ${ayu.green}`,
+                  borderRadius: '4px',
+                  color: ayu.green,
+                  cursor: evidenceInput.trim() ? 'pointer' : 'not-allowed',
+                  fontSize: '13px',
+                  opacity: evidenceInput.trim() ? 1 : 0.5,
+                }}
+              >
+                Submit
+              </button>
+              <button
+                onClick={() => { setShowDoneForm(false); setEvidenceInput(''); }}
+                style={{
+                  padding: '4px 12px',
+                  background: 'transparent',
+                  border: `1px solid ${ayu.border}`,
+                  borderRadius: '4px',
+                  color: ayu.dim,
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Section>
+      )}
+
+      {(actions.length > 0 || branchActions.length > 0) && (
         <div style={{ display: 'flex', gap: '8px', marginTop: '16px', flexWrap: 'wrap' }}>
           {actions.map((action) => (
             <ActionButton
               key={action}
               action={action}
+              onAction={async () => onActionClick(action)}
+            />
+          ))}
+          {branchActions.map((action) => (
+            <ActionButton
+              key={action}
+              action={action.replace('_', ' ')}
               onAction={async () => onActionClick(action)}
             />
           ))}

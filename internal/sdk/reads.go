@@ -20,6 +20,9 @@ type DetailResult struct {
 	PRURL      string // existing PR URL ("" if none)
 	Delta      string // human-readable delta label ("" if none)
 	Actions    []commons.Transition
+	// BranchActions are mode-aware branch operations: "submit_pr", "apply", "discard".
+	// Computed by the SDK based on mode, branch state, delta, and existing PR.
+	BranchActions []string
 }
 
 // Browse queries the wanted board with filters, applying branch overlays in PR mode.
@@ -64,6 +67,7 @@ func (c *Client) detailPR(wantedID string) (*DetailResult, error) {
 	if state.BranchName != "" && c.CheckPR != nil {
 		result.PRURL = c.CheckPR(state.BranchName)
 	}
+	result.BranchActions = c.computeBranchActions(result)
 	return result, nil
 }
 
@@ -78,6 +82,28 @@ func (c *Client) detailWildWest(wantedID string) (*DetailResult, error) {
 		Stamp:      stamp,
 		Actions:    commons.AvailableTransitions(item, c.rigHandle),
 	}, nil
+}
+
+// computeBranchActions returns the mode-aware branch operations available for a detail result.
+// This mirrors the TUI's actionHints() logic for delta resolution:
+//   - PR mode with delta and no existing PR: ["submit_pr", "discard"]
+//   - PR mode with delta and existing PR: ["discard"]
+//   - Wild-west mode with delta: ["apply", "discard"]
+//   - No branch or no delta: []
+func (c *Client) computeBranchActions(r *DetailResult) []string {
+	if r.Branch == "" || r.Delta == "" {
+		return nil
+	}
+	var actions []string
+	if c.mode == "pr" {
+		if r.PRURL == "" {
+			actions = append(actions, "submit_pr")
+		}
+	} else {
+		actions = append(actions, "apply")
+	}
+	actions = append(actions, "discard")
+	return actions
 }
 
 // Dashboard fetches the personal dashboard for the current rig handle.

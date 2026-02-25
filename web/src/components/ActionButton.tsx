@@ -4,9 +4,14 @@ import { ayu, statusColor } from '../styles/theme';
 const actionColors: Record<string, string> = {
   claim: statusColor.claimed,
   unclaim: statusColor.open,
+  done: ayu.green,
+  accept: ayu.green,
   reject: ayu.red,
   close: statusColor.completed,
   delete: ayu.red,
+  'submit pr': ayu.accent,
+  apply: ayu.green,
+  discard: ayu.red,
 };
 
 interface ActionButtonProps {

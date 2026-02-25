@@ -117,11 +117,11 @@ func (f *fakeDB) queryWantedByID(sql, ref string) (string, error) { //nolint:unp
 		return "status\n", nil
 	}
 
-	if strings.Contains(sql, "SELECT status,") || (strings.Contains(sql, "SELECT status") && !strings.Contains(sql, "title")) {
-		return fmt.Sprintf("status,claimed_by\n%s,%s\n", item.Status, item.ClaimedBy), nil
-	}
 	if strings.Contains(sql, "SELECT status FROM") {
 		return fmt.Sprintf("status\n%s\n", item.Status), nil
+	}
+	if strings.Contains(sql, "SELECT status,") || (strings.Contains(sql, "SELECT status") && !strings.Contains(sql, "title")) {
+		return fmt.Sprintf("status,claimed_by\n%s,%s\n", item.Status, item.ClaimedBy), nil
 	}
 	return f.itemDetailCSV(item), nil
 }
@@ -355,17 +355,7 @@ func (f *fakeDB) itemDetailCSV(item *fakeItem) string {
 // --- helpers for parsing SQL strings in tests ---
 
 func extractWhereID(sql string) string {
-	// Find id='...' in WHERE clause.
-	idx := strings.Index(sql, "id='")
-	if idx < 0 {
-		return ""
-	}
-	rest := sql[idx+4:]
-	end := strings.Index(rest, "'")
-	if end < 0 {
-		return ""
-	}
-	return rest[:end]
+	return extractEqValue(sql, "id")
 }
 
 func extractEqValue(sql, field string) string {
@@ -744,6 +734,96 @@ func TestBranchDiff(t *testing.T) {
 	}
 	if diff != "diff content" {
 		t.Errorf("expected diff content, got %s", diff)
+	}
+}
+
+func TestBranchActions_PRMode_NoPR(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", Priority: 1, PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{DB: db, RigHandle: "bob", Mode: "pr"})
+
+	// Claim creates a branch with a delta (open → claimed).
+	result, err := c.Claim("w-1")
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	d := result.Detail
+	if d.Branch == "" {
+		t.Fatal("expected branch")
+	}
+	if d.Delta == "" {
+		t.Fatal("expected delta")
+	}
+	// PR mode + delta + no PR → submit_pr, discard
+	if len(d.BranchActions) != 2 {
+		t.Fatalf("expected 2 branch actions, got %v", d.BranchActions)
+	}
+	if d.BranchActions[0] != "submit_pr" {
+		t.Errorf("expected submit_pr, got %s", d.BranchActions[0])
+	}
+	if d.BranchActions[1] != "discard" {
+		t.Errorf("expected discard, got %s", d.BranchActions[1])
+	}
+}
+
+func TestBranchActions_PRMode_WithPR(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", Priority: 1, PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "bob",
+		Mode:      "pr",
+		CheckPR: func(_ string) string {
+			return "https://example.com/pr/1"
+		},
+	})
+
+	// Claim creates a branch with a delta.
+	result, err := c.Claim("w-1")
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	d := result.Detail
+	// PR mode + delta + existing PR → discard only
+	if len(d.BranchActions) != 1 {
+		t.Fatalf("expected 1 branch action, got %v", d.BranchActions)
+	}
+	if d.BranchActions[0] != "discard" {
+		t.Errorf("expected discard, got %s", d.BranchActions[0])
+	}
+}
+
+func TestBranchActions_WildWest(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", Priority: 1, PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{DB: db, RigHandle: "bob", Mode: "wild-west"})
+
+	// Wild-west Detail doesn't produce branches, so no branch actions.
+	result, err := c.Detail("w-1")
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if len(result.BranchActions) != 0 {
+		t.Errorf("expected no branch actions in wild-west, got %v", result.BranchActions)
+	}
+}
+
+func TestBranchActions_NoBranch(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", Priority: 1, PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{DB: db, RigHandle: "bob", Mode: "pr"})
+
+	// No branch exists, so no branch actions.
+	result, err := c.Detail("w-1")
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if len(result.BranchActions) != 0 {
+		t.Errorf("expected no branch actions, got %v", result.BranchActions)
 	}
 }
 

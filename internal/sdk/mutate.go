@@ -67,6 +67,10 @@ func (c *Client) mutatePR(wantedID, commitMsg string, stmts ...string) (*Mutatio
 			detail.Delta = commons.DeltaLabel(mainStatus, item.Status)
 		}
 	}
+	if branch != "" && c.CheckPR != nil {
+		detail.PRURL = c.CheckPR(branch)
+	}
+	detail.BranchActions = c.computeBranchActions(detail)
 
 	// Push the branch.
 	var pushLog bytes.Buffer

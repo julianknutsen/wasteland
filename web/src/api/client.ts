@@ -76,8 +76,46 @@ export async function close(id: string): Promise<MutationResponse> {
   return request<MutationResponse>(`/api/wanted/${id}/close`, { method: 'POST' });
 }
 
+export async function done(id: string, evidence: string): Promise<MutationResponse> {
+  return request<MutationResponse>(`/api/wanted/${id}/done`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ evidence }),
+  });
+}
+
+export async function accept(id: string, stamp?: {
+  quality?: number;
+  reliability?: number;
+  severity?: string;
+  skill_tags?: string[];
+  message?: string;
+}): Promise<MutationResponse> {
+  return request<MutationResponse>(`/api/wanted/${id}/accept`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(stamp || {}),
+  });
+}
+
 export async function deleteItem(id: string): Promise<MutationResponse> {
   return request<MutationResponse>(`/api/wanted/${id}`, { method: 'DELETE' });
+}
+
+export async function submitPR(branch: string): Promise<{ url: string }> {
+  return request<{ url: string }>(`/api/branches/pr/${branch}`, { method: 'POST' });
+}
+
+export async function applyBranch(branch: string): Promise<void> {
+  await request<Record<string, string>>(`/api/branches/apply/${branch}`, { method: 'POST' });
+}
+
+export async function discardBranch(branch: string): Promise<void> {
+  await request<Record<string, string>>(`/api/branches/${branch}`, { method: 'DELETE' });
+}
+
+export async function branchDiff(branch: string): Promise<{ diff: string }> {
+  return request<{ diff: string }>(`/api/branches/diff/${branch}`);
 }
 
 export async function sync(): Promise<void> {

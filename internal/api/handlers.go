@@ -26,7 +26,7 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toDetailResponse(result))
+	writeJSON(w, http.StatusOK, toDetailResponse(result, s.client.Mode()))
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, _ *http.Request) {
@@ -70,7 +70,7 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, toMutationResponse(result))
+	writeJSON(w, http.StatusCreated, toMutationResponse(result, s.client.Mode()))
 }
 
 func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +98,7 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
 }
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +108,7 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
 }
 
 func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
@@ -118,7 +118,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
 }
 
 func (s *Server) handleUnclaim(w http.ResponseWriter, r *http.Request) {
@@ -128,7 +128,7 @@ func (s *Server) handleUnclaim(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
 }
 
 func (s *Server) handleDone(w http.ResponseWriter, r *http.Request) {
@@ -147,7 +147,7 @@ func (s *Server) handleDone(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
 }
 
 func (s *Server) handleAccept(w http.ResponseWriter, r *http.Request) {
@@ -168,7 +168,7 @@ func (s *Server) handleAccept(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
 }
 
 func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +183,7 @@ func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
 }
 
 func (s *Server) handleClose(w http.ResponseWriter, r *http.Request) {
@@ -193,7 +193,7 @@ func (s *Server) handleClose(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
 }
 
 // --- Branch handlers ---

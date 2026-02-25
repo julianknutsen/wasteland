@@ -69,14 +69,16 @@ type StampJSON struct {
 
 // DetailResponse is the JSON response for GET /api/wanted/{id}.
 type DetailResponse struct {
-	Item       *WantedItemJSON `json:"item"`
-	Completion *CompletionJSON `json:"completion,omitempty"`
-	Stamp      *StampJSON      `json:"stamp,omitempty"`
-	Branch     string          `json:"branch,omitempty"`
-	MainStatus string          `json:"main_status,omitempty"`
-	PRURL      string          `json:"pr_url,omitempty"`
-	Delta      string          `json:"delta,omitempty"`
-	Actions    []string        `json:"actions"`
+	Item          *WantedItemJSON `json:"item"`
+	Completion    *CompletionJSON `json:"completion,omitempty"`
+	Stamp         *StampJSON      `json:"stamp,omitempty"`
+	Branch        string          `json:"branch,omitempty"`
+	MainStatus    string          `json:"main_status,omitempty"`
+	PRURL         string          `json:"pr_url,omitempty"`
+	Delta         string          `json:"delta,omitempty"`
+	Actions       []string        `json:"actions"`
+	BranchActions []string        `json:"branch_actions"`
+	Mode          string          `json:"mode"`
 }
 
 // MutationResponse is the JSON response for mutation endpoints.
@@ -219,7 +221,7 @@ func toStampJSON(s *commons.Stamp) *StampJSON {
 	}
 }
 
-func toDetailResponse(d *sdk.DetailResult) *DetailResponse {
+func toDetailResponse(d *sdk.DetailResult, mode string) *DetailResponse {
 	if d == nil {
 		return nil
 	}
@@ -228,23 +230,25 @@ func toDetailResponse(d *sdk.DetailResult) *DetailResponse {
 		actions[i] = commons.TransitionName(t)
 	}
 	return &DetailResponse{
-		Item:       toWantedItemJSON(d.Item),
-		Completion: toCompletionJSON(d.Completion),
-		Stamp:      toStampJSON(d.Stamp),
-		Branch:     d.Branch,
-		MainStatus: d.MainStatus,
-		PRURL:      d.PRURL,
-		Delta:      d.Delta,
-		Actions:    actions,
+		Item:          toWantedItemJSON(d.Item),
+		Completion:    toCompletionJSON(d.Completion),
+		Stamp:         toStampJSON(d.Stamp),
+		Branch:        d.Branch,
+		MainStatus:    d.MainStatus,
+		PRURL:         d.PRURL,
+		Delta:         d.Delta,
+		Actions:       actions,
+		BranchActions: d.BranchActions,
+		Mode:          mode,
 	}
 }
 
-func toMutationResponse(r *sdk.MutationResult) *MutationResponse {
+func toMutationResponse(r *sdk.MutationResult, mode string) *MutationResponse {
 	if r == nil {
 		return nil
 	}
 	return &MutationResponse{
-		Detail: toDetailResponse(r.Detail),
+		Detail: toDetailResponse(r.Detail, mode),
 		Branch: r.Branch,
 		Hint:   r.Hint,
 	}

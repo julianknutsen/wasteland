@@ -43,7 +43,7 @@ func TestRemoteDB_Query_Main(t *testing.T) {
 	})
 	defer cleanup()
 
-	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons")
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
 	db.client = srv.Client()
 
 	csv, err := db.Query("SELECT id, status FROM wanted", "")
@@ -79,7 +79,7 @@ func TestRemoteDB_Query_Branch(t *testing.T) {
 	})
 	defer cleanup()
 
-	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons")
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
 	db.client = srv.Client()
 
 	csv, err := db.Query("SELECT status FROM wanted WHERE id='w-001'", "wl/alice/w-001")
@@ -111,7 +111,7 @@ func TestRemoteDB_Exec(t *testing.T) {
 	})
 	defer cleanup()
 
-	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons")
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
 	db.client = srv.Client()
 
 	err := db.Exec("wl/alice/w-001", "wl claim: w-001", false,
@@ -134,7 +134,7 @@ func TestRemoteDB_Exec_MainBranch(t *testing.T) {
 	})
 	defer cleanup()
 
-	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons")
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
 	db.client = srv.Client()
 
 	err := db.Exec("", "wl claim: w-001", false,
@@ -160,7 +160,7 @@ func TestRemoteDB_Branches(t *testing.T) {
 	})
 	defer cleanup()
 
-	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons")
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
 	db.client = srv.Client()
 
 	branches, err := db.Branches("wl/alice/")
@@ -175,24 +175,15 @@ func TestRemoteDB_Branches(t *testing.T) {
 	}
 }
 
-func TestRemoteDB_NoOps(t *testing.T) {
+func TestRemoteDB_PushNoOps(t *testing.T) {
 	t.Parallel()
-	db := NewRemoteDB("token", "up", "db", "fork", "db")
+	db := NewRemoteDB("token", "up", "db", "fork", "db", "pr")
 
 	if err := db.PushBranch("branch", nil); err != nil {
 		t.Errorf("PushBranch should be no-op, got: %v", err)
 	}
 	if err := db.PushMain(nil); err != nil {
 		t.Errorf("PushMain should be no-op, got: %v", err)
-	}
-	if err := db.Sync(); err != nil {
-		t.Errorf("Sync should be no-op, got: %v", err)
-	}
-	if err := db.MergeBranch("branch"); err != nil {
-		t.Errorf("MergeBranch should be no-op, got: %v", err)
-	}
-	if err := db.DeleteRemoteBranch("branch"); err != nil {
-		t.Errorf("DeleteRemoteBranch should be no-op, got: %v", err)
 	}
 	if err := db.PushWithSync(nil); err != nil {
 		t.Errorf("PushWithSync should be no-op, got: %v", err)
@@ -225,7 +216,7 @@ func TestRemoteDB_Exec_Poll(t *testing.T) {
 	})
 	defer cleanup()
 
-	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons")
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
 	db.client = srv.Client()
 
 	err := db.Exec("main", "test", false, "UPDATE wanted SET status='open'")
@@ -244,11 +235,354 @@ func TestRemoteDB_Query_Error(t *testing.T) {
 	})
 	defer cleanup()
 
-	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons")
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
 	db.client = srv.Client()
 
 	_, err := db.Query("SELECT 1", "")
 	if err == nil {
 		t.Fatal("expected error for 500 response")
+	}
+}
+
+func TestRemoteDB_Sync_PR(t *testing.T) {
+	// Track the sequence of API calls.
+	var calls []string
+
+	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("q")
+
+		if r.Method == "GET" {
+			// queryForkMain calls: dolt_remotes check.
+			if strings.Contains(q, "dolt_remotes") {
+				calls = append(calls, "query:dolt_remotes")
+				// Return upstream already exists.
+				resp := map[string]any{
+					"query_execution_status": "Success",
+					"schema_fragment": []map[string]string{
+						{"columnName": "name", "columnType": "varchar(255)"},
+					},
+					"rows": []map[string]string{
+						{"name": "upstream"},
+					},
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+				return
+			}
+			t.Errorf("unexpected GET: %s", r.URL.String())
+			return
+		}
+
+		// POST = write API calls.
+		switch {
+		case strings.Contains(q, "DOLT_FETCH"):
+			calls = append(calls, "exec:DOLT_FETCH")
+		case strings.Contains(q, "DOLT_RESET"):
+			calls = append(calls, "exec:DOLT_RESET")
+		case strings.Contains(q, "DOLT_MERGE"):
+			calls = append(calls, "exec:DOLT_MERGE")
+		default:
+			calls = append(calls, "exec:"+q)
+		}
+
+		// Verify write path targets fork main.
+		if !strings.Contains(r.URL.Path, "/fork-org/wl-commons/write/main/main") {
+			t.Errorf("expected write on fork main, got: %s", r.URL.Path)
+		}
+
+		resp := map[string]string{"query_execution_status": "Success"}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+	defer cleanup()
+
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
+	db.client = srv.Client()
+
+	if err := db.Sync(); err != nil {
+		t.Fatalf("Sync error: %v", err)
+	}
+
+	// PR mode: should query remotes, fetch, then reset (not merge).
+	expected := []string{"query:dolt_remotes", "exec:DOLT_FETCH", "exec:DOLT_RESET"}
+	if len(calls) != len(expected) {
+		t.Fatalf("calls = %v, want %v", calls, expected)
+	}
+	for i := range expected {
+		if calls[i] != expected[i] {
+			t.Errorf("call[%d] = %q, want %q", i, calls[i], expected[i])
+		}
+	}
+}
+
+func TestRemoteDB_Sync_WildWest(t *testing.T) {
+	var calls []string
+
+	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("q")
+
+		if r.Method == "GET" {
+			if strings.Contains(q, "dolt_remotes") {
+				calls = append(calls, "query:dolt_remotes")
+				resp := map[string]any{
+					"query_execution_status": "Success",
+					"schema_fragment": []map[string]string{
+						{"columnName": "name", "columnType": "varchar(255)"},
+					},
+					"rows": []map[string]string{
+						{"name": "upstream"},
+					},
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+				return
+			}
+			return
+		}
+
+		switch {
+		case strings.Contains(q, "DOLT_FETCH"):
+			calls = append(calls, "exec:DOLT_FETCH")
+		case strings.Contains(q, "DOLT_MERGE"):
+			calls = append(calls, "exec:DOLT_MERGE")
+		default:
+			calls = append(calls, "exec:"+q)
+		}
+
+		resp := map[string]string{"query_execution_status": "Success"}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+	defer cleanup()
+
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "wild-west")
+	db.client = srv.Client()
+
+	if err := db.Sync(); err != nil {
+		t.Fatalf("Sync error: %v", err)
+	}
+
+	// Wild-west mode: should query remotes, fetch, then merge (not reset).
+	expected := []string{"query:dolt_remotes", "exec:DOLT_FETCH", "exec:DOLT_MERGE"}
+	if len(calls) != len(expected) {
+		t.Fatalf("calls = %v, want %v", calls, expected)
+	}
+	for i := range expected {
+		if calls[i] != expected[i] {
+			t.Errorf("call[%d] = %q, want %q", i, calls[i], expected[i])
+		}
+	}
+}
+
+func TestRemoteDB_Sync_AddsUpstreamRemote(t *testing.T) {
+	var calls []string
+
+	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("q")
+
+		if r.Method == "GET" {
+			if strings.Contains(q, "dolt_remotes") {
+				calls = append(calls, "query:dolt_remotes")
+				// Return empty result — no upstream remote.
+				resp := map[string]any{
+					"query_execution_status": "Success",
+					"schema_fragment": []map[string]string{
+						{"columnName": "name", "columnType": "varchar(255)"},
+					},
+					"rows": []map[string]string{},
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+				return
+			}
+			return
+		}
+
+		switch {
+		case strings.Contains(q, "DOLT_REMOTE"):
+			calls = append(calls, "exec:DOLT_REMOTE")
+			// Verify it adds upstream pointing to the read (upstream) database.
+			if !strings.Contains(q, "upstream-org/wl-commons") {
+				t.Errorf("expected upstream URL to contain upstream-org/wl-commons, got: %s", q)
+			}
+		case strings.Contains(q, "DOLT_FETCH"):
+			calls = append(calls, "exec:DOLT_FETCH")
+		case strings.Contains(q, "DOLT_RESET"):
+			calls = append(calls, "exec:DOLT_RESET")
+		}
+
+		resp := map[string]string{"query_execution_status": "Success"}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+	defer cleanup()
+
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
+	db.client = srv.Client()
+
+	if err := db.Sync(); err != nil {
+		t.Fatalf("Sync error: %v", err)
+	}
+
+	// Should add remote before fetch.
+	if len(calls) < 2 || calls[0] != "query:dolt_remotes" || calls[1] != "exec:DOLT_REMOTE" {
+		t.Errorf("expected remote add after query, got calls: %v", calls)
+	}
+}
+
+func TestRemoteDB_MergeBranch(t *testing.T) {
+	var writtenSQL string
+
+	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			writtenSQL = r.URL.Query().Get("q")
+			if !strings.Contains(r.URL.Path, "/write/main/main") {
+				t.Errorf("expected write on main, got: %s", r.URL.Path)
+			}
+			resp := map[string]string{"query_execution_status": "Success"}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		t.Errorf("unexpected method: %s", r.Method)
+	})
+	defer cleanup()
+
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
+	db.client = srv.Client()
+
+	if err := db.MergeBranch("wl/alice/w-001"); err != nil {
+		t.Fatalf("MergeBranch error: %v", err)
+	}
+
+	if !strings.Contains(writtenSQL, "DOLT_MERGE") {
+		t.Errorf("expected DOLT_MERGE in SQL, got: %s", writtenSQL)
+	}
+	if !strings.Contains(writtenSQL, "wl/alice/w-001") {
+		t.Errorf("expected branch name in SQL, got: %s", writtenSQL)
+	}
+}
+
+func TestRemoteDB_DeleteRemoteBranch(t *testing.T) {
+	var writtenSQL string
+
+	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			writtenSQL = r.URL.Query().Get("q")
+			resp := map[string]string{"query_execution_status": "Success"}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		t.Errorf("unexpected method: %s", r.Method)
+	})
+	defer cleanup()
+
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
+	db.client = srv.Client()
+
+	if err := db.DeleteRemoteBranch("wl/alice/w-001"); err != nil {
+		t.Fatalf("DeleteRemoteBranch error: %v", err)
+	}
+
+	// Should delegate to DeleteBranch, which uses DOLT_BRANCH('-D', ...).
+	if !strings.Contains(writtenSQL, "DOLT_BRANCH") {
+		t.Errorf("expected DOLT_BRANCH in SQL, got: %s", writtenSQL)
+	}
+	if !strings.Contains(writtenSQL, "wl/alice/w-001") {
+		t.Errorf("expected branch name in SQL, got: %s", writtenSQL)
+	}
+}
+
+func TestRemoteDB_Diff(t *testing.T) {
+	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("q")
+
+		if strings.Contains(q, "dolt_diff(") {
+			// Return one changed table.
+			resp := map[string]any{
+				"query_execution_status": "Success",
+				"schema_fragment": []map[string]string{
+					{"columnName": "table_name", "columnType": "varchar(255)"},
+					{"columnName": "diff_type", "columnType": "varchar(20)"},
+				},
+				"rows": []map[string]string{
+					{"table_name": "wanted", "diff_type": "modified"},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		if strings.Contains(q, "dolt_diff_wanted") {
+			// Return one modified row.
+			resp := map[string]any{
+				"query_execution_status": "Success",
+				"schema_fragment": []map[string]string{
+					{"columnName": "diff_type", "columnType": "varchar(20)"},
+					{"columnName": "from_id", "columnType": "varchar(20)"},
+					{"columnName": "to_id", "columnType": "varchar(20)"},
+					{"columnName": "from_status", "columnType": "varchar(20)"},
+					{"columnName": "to_status", "columnType": "varchar(20)"},
+					{"columnName": "from_commit", "columnType": "varchar(64)"},
+					{"columnName": "to_commit", "columnType": "varchar(64)"},
+				},
+				"rows": []map[string]string{
+					{
+						"diff_type":   "modified",
+						"from_id":     "w-001",
+						"to_id":       "w-001",
+						"from_status": "open",
+						"to_status":   "claimed",
+						"from_commit": "abc123",
+						"to_commit":   "def456",
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		w.WriteHeader(500)
+		fmt.Fprint(w, "unexpected query: "+q)
+	})
+	defer cleanup()
+
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
+	db.client = srv.Client()
+
+	diff, err := db.Diff("wl/alice/w-001")
+	if err != nil {
+		t.Fatalf("Diff error: %v", err)
+	}
+
+	if !strings.Contains(diff, "wanted") {
+		t.Errorf("expected 'wanted' table in diff, got: %q", diff)
+	}
+	if !strings.Contains(diff, "modified") {
+		t.Errorf("expected 'modified' in diff, got: %q", diff)
+	}
+	if !strings.Contains(diff, "open") && !strings.Contains(diff, "claimed") {
+		t.Errorf("expected status change in diff, got: %q", diff)
+	}
+}
+
+func TestRemoteDB_Diff_NoChanges(t *testing.T) {
+	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		// Return empty diff.
+		resp := map[string]any{
+			"query_execution_status": "Success",
+			"schema_fragment": []map[string]string{
+				{"columnName": "table_name", "columnType": "varchar(255)"},
+				{"columnName": "diff_type", "columnType": "varchar(20)"},
+			},
+			"rows": []map[string]string{},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+	defer cleanup()
+
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
+	db.client = srv.Client()
+
+	diff, err := db.Diff("wl/alice/w-001")
+	if err != nil {
+		t.Fatalf("Diff error: %v", err)
+	}
+
+	if !strings.Contains(diff, "no changes") {
+		t.Errorf("expected 'no changes' message, got: %q", diff)
 	}
 }

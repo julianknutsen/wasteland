@@ -65,7 +65,35 @@ func runServe(cmd *cobra.Command, stdout, stderr io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("parsing upstream: %w", err)
 		}
-		db = backend.NewRemoteDB(commons.DoltHubToken(), upOrg, upDB, cfg.ForkOrg, cfg.ForkDB)
+		remoteDB := backend.NewRemoteDB(commons.DoltHubToken(), upOrg, upDB, cfg.ForkOrg, cfg.ForkDB, cfg.ResolveMode())
+		db = remoteDB
+
+		sp := style.StartSpinner(stderr, "Syncing fork with upstream...")
+		err = remoteDB.Sync()
+		sp.Stop()
+		if err != nil {
+			fmt.Fprintf(stderr, "  warning: fork sync skipped: %v\n", err)
+		}
+	}
+
+	// Build LoadDiff callback based on backend type.
+	loadDiff := func(branch string) (string, error) {
+		if cfg.ResolveBackend() != federation.BackendLocal {
+			if rdb, ok := db.(*backend.RemoteDB); ok {
+				return rdb.Diff(branch)
+			}
+			return "", fmt.Errorf("diff view requires local backend")
+		}
+		doltPath, err := exec.LookPath("dolt")
+		if err != nil {
+			return "", err
+		}
+		base := diffBase(cfg.LocalDir, doltPath)
+		var buf bytes.Buffer
+		if err := renderMarkdownDiff(&buf, cfg.LocalDir, doltPath, branch, base); err != nil {
+			return "", err
+		}
+		return buf.String(), nil
 	}
 
 	client := sdk.New(sdk.ClientConfig{
@@ -84,21 +112,7 @@ func runServe(cmd *cobra.Command, stdout, stderr io.Writer) error {
 			c.Signing = signing
 			return store.Save(c)
 		},
-		LoadDiff: func(branch string) (string, error) {
-			if cfg.ResolveBackend() != federation.BackendLocal {
-				return "", fmt.Errorf("diff view requires local backend")
-			}
-			doltPath, err := exec.LookPath("dolt")
-			if err != nil {
-				return "", err
-			}
-			base := diffBase(cfg.LocalDir, doltPath)
-			var buf bytes.Buffer
-			if err := renderMarkdownDiff(&buf, cfg.LocalDir, doltPath, branch, base); err != nil {
-				return "", err
-			}
-			return buf.String(), nil
-		},
+		LoadDiff: loadDiff,
 		CreatePR: func(branch string) (string, error) {
 			if cfg.ResolveBackend() != federation.BackendLocal {
 				return createPRForBranchRemote(cfg, branch)
