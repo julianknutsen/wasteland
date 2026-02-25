@@ -97,7 +97,9 @@ func (m *mutationContext) Push() error {
 
 	// PR mode on main — use location-aware push.
 	// Re-read local status after the mutation has been applied.
-	m.location.LocalStatus = commons.QueryItemStatusAsOf(m.cfg.LocalDir, m.wantedID, "")
+	if status, found, err := commons.QueryItemStatus(m.cfg.LocalDir, m.wantedID, ""); err == nil && found {
+		m.location.LocalStatus = status
+	}
 	target := commons.ResolvePushTarget("pr", m.location)
 
 	if target.PushUpstream {

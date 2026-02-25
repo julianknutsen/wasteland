@@ -438,6 +438,71 @@ func QueryCompletion(dbDir, wantedID string) (*CompletionRecord, error) {
 	}, nil
 }
 
+// QueryCompletionAsOf fetches the completion record for a wanted item from a specific ref.
+func QueryCompletionAsOf(dbDir, wantedID, ref string) (*CompletionRecord, error) {
+	query := fmt.Sprintf(`SELECT id, wanted_id, completed_by, COALESCE(evidence, '') as evidence, COALESCE(stamp_id, '') as stamp_id, COALESCE(validated_by, '') as validated_by FROM completions AS OF '%s' WHERE wanted_id='%s';`,
+		EscapeSQL(ref), EscapeSQL(wantedID))
+
+	output, err := DoltSQLQuery(dbDir, query)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := parseSimpleCSV(output)
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("no completion found for wanted item %q on ref %s", wantedID, ref)
+	}
+
+	row := rows[0]
+	return &CompletionRecord{
+		ID:          row["id"],
+		WantedID:    row["wanted_id"],
+		CompletedBy: row["completed_by"],
+		Evidence:    row["evidence"],
+		StampID:     row["stamp_id"],
+		ValidatedBy: row["validated_by"],
+	}, nil
+}
+
+// QueryStampAsOf fetches a stamp by ID from a specific ref.
+func QueryStampAsOf(dbDir, stampID, ref string) (*Stamp, error) {
+	query := fmt.Sprintf(`SELECT id, author, subject, valence, severity, COALESCE(context_id,'') as context_id, COALESCE(context_type,'') as context_type, COALESCE(skill_tags,'') as skill_tags, COALESCE(message,'') as message FROM stamps AS OF '%s' WHERE id='%s';`,
+		EscapeSQL(ref), EscapeSQL(stampID))
+
+	output, err := DoltSQLQuery(dbDir, query)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := parseSimpleCSV(output)
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("stamp %q not found on ref %s", stampID, ref)
+	}
+
+	row := rows[0]
+
+	var valence struct {
+		Quality     int `json:"quality"`
+		Reliability int `json:"reliability"`
+	}
+	if v := row["valence"]; v != "" {
+		_ = json.Unmarshal([]byte(v), &valence)
+	}
+
+	return &Stamp{
+		ID:          row["id"],
+		Author:      row["author"],
+		Subject:     row["subject"],
+		Quality:     valence.Quality,
+		Reliability: valence.Reliability,
+		Severity:    row["severity"],
+		ContextID:   row["context_id"],
+		ContextType: row["context_type"],
+		SkillTags:   parseTagsJSON(row["skill_tags"]),
+		Message:     row["message"],
+	}, nil
+}
+
 // QueryWantedDetail fetches a wanted item with all display fields.
 // dbDir is the actual database directory.
 func QueryWantedDetail(dbDir, wantedID string) (*WantedItem, error) {

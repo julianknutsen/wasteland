@@ -388,25 +388,21 @@ func executeWildWestMutation(cfg Config, wantedID string, t commons.Transition) 
 	return actionResultMsg{err: err}
 }
 
-func executePRMutation(cfg Config, wantedID string, t commons.Transition) actionResultMsg {
+// mutateOnBranch is the common pattern for all PR-mode mutations:
+// checkout branch → apply closure → read detail → push → return to main.
+func mutateOnBranch(cfg Config, wantedID string, apply func() error) actionResultMsg {
 	branch := commons.BranchName(cfg.RigHandle, wantedID)
+	mainStatus, _, _ := commons.QueryItemStatus(cfg.DBDir, wantedID, "main")
 
-	// Query main status before checking out the branch.
-	mainStatus := commons.QueryItemStatusAsOf(cfg.DBDir, wantedID, "main")
-
-	// Create branch from main (which is reset to upstream at TUI startup).
-	// This ensures the branch only contains this item's mutation, not stale
-	// local-only commits from previous operations.
 	if err := commons.CheckoutBranchFrom(cfg.DBDir, branch, "main"); err != nil {
 		return actionResultMsg{err: fmt.Errorf("checkout branch: %w", err)}
 	}
 
-	if err := applyTransition(cfg, wantedID, t); err != nil {
+	if err := apply(); err != nil {
 		_ = commons.CheckoutMain(cfg.DBDir)
 		return actionResultMsg{err: err}
 	}
 
-	// Read updated detail while still on the branch.
 	detail := fetchDetailSync(cfg.DBDir, wantedID)
 	detail.branch = branch
 	detail.mainStatus = mainStatus
@@ -414,7 +410,6 @@ func executePRMutation(cfg Config, wantedID string, t commons.Transition) action
 	var pushLog bytes.Buffer
 	if err := commons.PushBranch(cfg.DBDir, branch, &pushLog); err != nil {
 		_ = commons.CheckoutMain(cfg.DBDir)
-		// PushBranch writes the dolt error to stdout; surface it.
 		if msg := strings.TrimSpace(pushLog.String()); msg != "" {
 			return actionResultMsg{err: fmt.Errorf("%s", msg)}
 		}
@@ -423,6 +418,12 @@ func executePRMutation(cfg Config, wantedID string, t commons.Transition) action
 
 	_ = commons.CheckoutMain(cfg.DBDir)
 	return actionResultMsg{hint: branch, detail: &detail}
+}
+
+func executePRMutation(cfg Config, wantedID string, t commons.Transition) actionResultMsg {
+	return mutateOnBranch(cfg, wantedID, func() error {
+		return applyTransition(cfg, wantedID, t)
+	})
 }
 
 func applyTransition(cfg Config, wantedID string, t commons.Transition) error {
@@ -444,23 +445,22 @@ func applyTransition(cfg Config, wantedID string, t commons.Transition) error {
 
 func fetchDetail(cfg Config, wantedID string) bubbletea.Cmd {
 	return func() bubbletea.Msg {
-		// In PR mode, check if a mutation branch exists for this item.
-		// If so, checkout the branch to read its state, then return to main.
 		if cfg.Mode == "pr" {
-			if branch := commons.FindBranchForItem(cfg.DBDir, cfg.RigHandle, wantedID); branch != "" {
-				// Query main status before checking out the branch.
-				mainStatus := commons.QueryItemStatusAsOf(cfg.DBDir, wantedID, "main")
-				if err := commons.CheckoutBranch(cfg.DBDir, branch); err == nil {
-					detail := fetchDetailSync(cfg.DBDir, wantedID)
-					detail.branch = branch
-					detail.mainStatus = mainStatus
-					_ = commons.CheckoutMain(cfg.DBDir)
-					// Check if an upstream PR already exists for this branch.
-					if cfg.CheckPR != nil {
-						detail.prURL = cfg.CheckPR(branch)
-					}
-					return detail
+			state, _ := commons.ResolveItemState(cfg.DBDir, cfg.RigHandle, wantedID)
+			if state != nil && state.Effective() != nil {
+				detail := detailDataMsg{
+					item:       state.Effective(),
+					completion: state.Completion,
+					stamp:      state.Stamp,
+					branch:     state.BranchName,
 				}
+				if state.Main != nil {
+					detail.mainStatus = state.Main.Status
+				}
+				if state.BranchName != "" && cfg.CheckPR != nil {
+					detail.prURL = cfg.CheckPR(state.BranchName)
+				}
+				return detail
 			}
 		}
 		return fetchDetailSync(cfg.DBDir, wantedID)
@@ -549,33 +549,9 @@ func executeWildWestDoneMutation(cfg Config, wantedID, evidence string) actionRe
 }
 
 func executePRDoneMutation(cfg Config, wantedID, evidence string) actionResultMsg {
-	branch := commons.BranchName(cfg.RigHandle, wantedID)
-	mainStatus := commons.QueryItemStatusAsOf(cfg.DBDir, wantedID, "main")
-
-	if err := commons.CheckoutBranchFrom(cfg.DBDir, branch, "main"); err != nil {
-		return actionResultMsg{err: fmt.Errorf("checkout branch: %w", err)}
-	}
-
-	if err := applyDone(cfg, wantedID, evidence); err != nil {
-		_ = commons.CheckoutMain(cfg.DBDir)
-		return actionResultMsg{err: err}
-	}
-
-	detail := fetchDetailSync(cfg.DBDir, wantedID)
-	detail.branch = branch
-	detail.mainStatus = mainStatus
-
-	var pushLog bytes.Buffer
-	if err := commons.PushBranch(cfg.DBDir, branch, &pushLog); err != nil {
-		_ = commons.CheckoutMain(cfg.DBDir)
-		if msg := strings.TrimSpace(pushLog.String()); msg != "" {
-			return actionResultMsg{err: fmt.Errorf("%s", msg)}
-		}
-		return actionResultMsg{err: fmt.Errorf("push branch: %w", err)}
-	}
-
-	_ = commons.CheckoutMain(cfg.DBDir)
-	return actionResultMsg{hint: branch, detail: &detail}
+	return mutateOnBranch(cfg, wantedID, func() error {
+		return applyDone(cfg, wantedID, evidence)
+	})
 }
 
 func executeAcceptMutation(cfg Config, wantedID string, msg acceptSubmitMsg, completionID string) bubbletea.Cmd {
@@ -596,33 +572,9 @@ func executeWildWestAcceptMutation(cfg Config, wantedID string, msg acceptSubmit
 }
 
 func executePRAcceptMutation(cfg Config, wantedID string, msg acceptSubmitMsg, completionID string) actionResultMsg {
-	branch := commons.BranchName(cfg.RigHandle, wantedID)
-	mainStatus := commons.QueryItemStatusAsOf(cfg.DBDir, wantedID, "main")
-
-	if err := commons.CheckoutBranchFrom(cfg.DBDir, branch, "main"); err != nil {
-		return actionResultMsg{err: fmt.Errorf("checkout branch: %w", err)}
-	}
-
-	if err := applyAccept(cfg, wantedID, msg, completionID); err != nil {
-		_ = commons.CheckoutMain(cfg.DBDir)
-		return actionResultMsg{err: err}
-	}
-
-	detail := fetchDetailSync(cfg.DBDir, wantedID)
-	detail.branch = branch
-	detail.mainStatus = mainStatus
-
-	var pushLog bytes.Buffer
-	if err := commons.PushBranch(cfg.DBDir, branch, &pushLog); err != nil {
-		_ = commons.CheckoutMain(cfg.DBDir)
-		if msg := strings.TrimSpace(pushLog.String()); msg != "" {
-			return actionResultMsg{err: fmt.Errorf("%s", msg)}
-		}
-		return actionResultMsg{err: fmt.Errorf("push branch: %w", err)}
-	}
-
-	_ = commons.CheckoutMain(cfg.DBDir)
-	return actionResultMsg{hint: branch, detail: &detail}
+	return mutateOnBranch(cfg, wantedID, func() error {
+		return applyAccept(cfg, wantedID, msg, completionID)
+	})
 }
 
 // --- submit PR commands ---

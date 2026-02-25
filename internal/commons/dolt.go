@@ -418,10 +418,11 @@ func ResolveWantedID(dbDir, idOrPrefix string) (string, error) {
 	return matches[0], nil
 }
 
-// QueryItemStatusAsOf returns the status of a wanted item at a specific ref.
-// If ref is empty, queries the working copy. Returns "" if the item doesn't
-// exist at that ref or if the query fails.
-func QueryItemStatusAsOf(dbDir, wantedID, ref string) string {
+// QueryItemStatus returns the status of a wanted item at a specific ref.
+// If ref is empty, queries the working copy.
+// Returns (status, true, nil) if found, ("", false, nil) if not found,
+// or ("", false, err) if the query failed.
+func QueryItemStatus(dbDir, wantedID, ref string) (string, bool, error) {
 	query := fmt.Sprintf(
 		"SELECT status FROM wanted WHERE id = '%s'",
 		EscapeSQL(wantedID),
@@ -434,13 +435,21 @@ func QueryItemStatusAsOf(dbDir, wantedID, ref string) string {
 	}
 	out, err := DoltSQLQuery(dbDir, query)
 	if err != nil {
-		return ""
+		return "", false, err
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	if len(lines) < 2 {
-		return ""
+		return "", false, nil
 	}
-	return strings.TrimSpace(lines[1])
+	return strings.TrimSpace(lines[1]), true, nil
+}
+
+// QueryItemStatusAsOf is a convenience wrapper that returns "" on not-found or error.
+//
+// Deprecated: prefer QueryItemStatus for explicit error handling.
+func QueryItemStatusAsOf(dbDir, wantedID, ref string) string {
+	status, _, _ := QueryItemStatus(dbDir, wantedID, ref)
+	return status
 }
 
 // DoltSQLQuery executes a SQL query and returns the raw CSV output.

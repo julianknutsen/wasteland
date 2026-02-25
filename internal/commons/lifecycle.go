@@ -73,14 +73,20 @@ func DetectItemLocation(dbDir, wantedID string) (*ItemLocation, error) {
 	}
 
 	// Query local status (working copy).
-	loc.LocalStatus = QueryItemStatusAsOf(dbDir, wantedID, "")
+	if status, found, err := QueryItemStatus(dbDir, wantedID, ""); err == nil && found {
+		loc.LocalStatus = status
+	}
 
 	// Query remote statuses using AS OF.
 	if loc.FetchedOrigin {
-		loc.OriginStatus = QueryItemStatusAsOf(dbDir, wantedID, "origin/main")
+		if status, found, err := QueryItemStatus(dbDir, wantedID, "origin/main"); err == nil && found {
+			loc.OriginStatus = status
+		}
 	}
 	if loc.FetchedUpstream {
-		loc.UpstreamStatus = QueryItemStatusAsOf(dbDir, wantedID, "upstream/main")
+		if status, found, err := QueryItemStatus(dbDir, wantedID, "upstream/main"); err == nil && found {
+			loc.UpstreamStatus = status
+		}
 	}
 
 	return loc, nil

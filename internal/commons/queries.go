@@ -150,7 +150,7 @@ func DetectBranchOverrides(dbDir, rigHandle string) []BranchOverride {
 		if branchStatus == "" {
 			continue
 		}
-		mainStatus := QueryItemStatusAsOf(dbDir, wantedID, "")
+		mainStatus, _, _ := QueryItemStatus(dbDir, wantedID, "")
 		if branchStatus != mainStatus {
 			overrides = append(overrides, BranchOverride{
 				WantedID:  wantedID,
@@ -466,6 +466,113 @@ func QueryFullDetail(dbDir, wantedID string) (*WantedItem, *CompletionRecord, *S
 	}
 
 	return item, completion, stamp, nil
+}
+
+// QueryFullDetailAsOf fetches a wanted item with all related records from a specific ref.
+func QueryFullDetailAsOf(dbDir, wantedID, ref string) (*WantedItem, *CompletionRecord, *Stamp, error) {
+	item, err := QueryWantedDetailAsOf(dbDir, wantedID, ref)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	var completion *CompletionRecord
+	var stamp *Stamp
+
+	if item.Status == "in_review" || item.Status == "completed" {
+		if c, err := QueryCompletionAsOf(dbDir, wantedID, ref); err == nil {
+			completion = c
+			if c.StampID != "" {
+				if s, err := QueryStampAsOf(dbDir, c.StampID, ref); err == nil {
+					stamp = s
+				}
+			}
+		}
+	}
+
+	return item, completion, stamp, nil
+}
+
+// ItemState captures the complete picture of an item across main and branch.
+type ItemState struct {
+	WantedID   string
+	Main       *WantedItem       // item as on main (nil if not found)
+	Branch     *WantedItem       // item as on mutation branch (nil if no branch)
+	BranchName string            // "" if no branch exists
+	Completion *CompletionRecord // from effective source
+	Stamp      *Stamp            // from effective source
+}
+
+// Effective returns the branch item if present, otherwise the main item.
+func (s *ItemState) Effective() *WantedItem {
+	if s.Branch != nil {
+		return s.Branch
+	}
+	return s.Main
+}
+
+// EffectiveStatus returns the status from the effective item, or "".
+func (s *ItemState) EffectiveStatus() string {
+	if e := s.Effective(); e != nil {
+		return e.Status
+	}
+	return ""
+}
+
+// Delta returns the human-readable delta label, or "" if no delta.
+func (s *ItemState) Delta() string {
+	if s.Main == nil || s.Branch == nil {
+		return ""
+	}
+	if s.Main.Status == s.Branch.Status {
+		return ""
+	}
+	return DeltaLabel(s.Main.Status, s.Branch.Status)
+}
+
+// ResolveItemState gives the complete picture of an item without checkout.
+// Uses AS OF queries exclusively — never mutates the working copy.
+func ResolveItemState(dbDir, rigHandle, wantedID string) (*ItemState, error) {
+	state := &ItemState{WantedID: wantedID}
+
+	// Main state.
+	if item, err := QueryWantedDetail(dbDir, wantedID); err == nil {
+		state.Main = item
+	}
+
+	// Branch state (if exists).
+	branch := FindBranchForItem(dbDir, rigHandle, wantedID)
+	if branch != "" {
+		state.BranchName = branch
+		if item, err := QueryWantedDetailAsOf(dbDir, wantedID, branch); err == nil {
+			state.Branch = item
+		}
+	}
+
+	// Completion + stamp from effective source.
+	effective := state.Effective()
+	if effective != nil && (effective.Status == "in_review" || effective.Status == "completed") {
+		if branch != "" {
+			if c, err := QueryCompletionAsOf(dbDir, wantedID, branch); err == nil {
+				state.Completion = c
+				if c.StampID != "" {
+					if s, err := QueryStampAsOf(dbDir, c.StampID, branch); err == nil {
+						state.Stamp = s
+					}
+				}
+			}
+		} else {
+			if c, err := QueryCompletion(dbDir, wantedID); err == nil {
+				state.Completion = c
+				if c.StampID != "" {
+					if s, err := QueryStamp(dbDir, c.StampID); err == nil {
+						state.Stamp = s
+					}
+				}
+			}
+		}
+	}
+
+	return state, nil
 }
 
 // parseWantedSummaries parses CSV output into WantedSummary structs.

@@ -229,6 +229,73 @@ func TestDeltaLabel(t *testing.T) {
 	}
 }
 
+func TestItemState_Effective_BranchOverMain(t *testing.T) {
+	s := &ItemState{
+		Main:   &WantedItem{ID: "w-1", Status: "open"},
+		Branch: &WantedItem{ID: "w-1", Status: "claimed"},
+	}
+	if e := s.Effective(); e.Status != "claimed" {
+		t.Errorf("Effective() = %q, want branch status %q", e.Status, "claimed")
+	}
+}
+
+func TestItemState_Effective_MainOnly(t *testing.T) {
+	s := &ItemState{
+		Main: &WantedItem{ID: "w-1", Status: "open"},
+	}
+	if e := s.Effective(); e.Status != "open" {
+		t.Errorf("Effective() = %q, want main status %q", e.Status, "open")
+	}
+}
+
+func TestItemState_Effective_Nil(t *testing.T) {
+	s := &ItemState{}
+	if s.Effective() != nil {
+		t.Error("Effective() should be nil when both Main and Branch are nil")
+	}
+}
+
+func TestItemState_EffectiveStatus(t *testing.T) {
+	s := &ItemState{Main: &WantedItem{Status: "open"}}
+	if got := s.EffectiveStatus(); got != "open" {
+		t.Errorf("EffectiveStatus() = %q, want %q", got, "open")
+	}
+	empty := &ItemState{}
+	if got := empty.EffectiveStatus(); got != "" {
+		t.Errorf("EffectiveStatus() on empty = %q, want %q", got, "")
+	}
+}
+
+func TestItemState_Delta(t *testing.T) {
+	tests := []struct {
+		name string
+		s    ItemState
+		want string
+	}{
+		{"no branch", ItemState{Main: &WantedItem{Status: "open"}}, ""},
+		{"no main", ItemState{Branch: &WantedItem{Status: "claimed"}}, ""},
+		{"same status", ItemState{
+			Main:   &WantedItem{Status: "open"},
+			Branch: &WantedItem{Status: "open"},
+		}, ""},
+		{"claim delta", ItemState{
+			Main:   &WantedItem{Status: "open"},
+			Branch: &WantedItem{Status: "claimed"},
+		}, "claim"},
+		{"done delta", ItemState{
+			Main:   &WantedItem{Status: "claimed"},
+			Branch: &WantedItem{Status: "in_review"},
+		}, "done"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.s.Delta(); got != tc.want {
+				t.Errorf("Delta() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestResolvePushTarget_WildWest(t *testing.T) {
 	loc := &ItemLocation{
 		LocalStatus:    "claimed",
