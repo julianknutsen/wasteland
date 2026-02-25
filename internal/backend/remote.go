@@ -2,6 +2,7 @@ package backend
 
 import (
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -240,16 +241,15 @@ func (r *RemoteDB) Diff(branch string) (string, error) {
 			continue
 		}
 
-		lines := strings.Split(strings.TrimSpace(rowCSV), "\n")
-		if len(lines) < 2 {
+		records, err := csv.NewReader(strings.NewReader(rowCSV)).ReadAll()
+		if err != nil || len(records) < 2 {
 			fmt.Fprintf(&buf, "(no row changes)\n\n")
 			continue
 		}
 
-		header := strings.Split(lines[0], ",")
+		header := records[0]
 		buf.WriteString("```\n")
-		for _, row := range lines[1:] {
-			fields := strings.Split(row, ",")
+		for _, fields := range records[1:] {
 			formatDiffRow(&buf, header, fields)
 		}
 		buf.WriteString("```\n\n")

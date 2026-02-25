@@ -561,6 +561,83 @@ func TestRemoteDB_Diff(t *testing.T) {
 	}
 }
 
+func TestRemoteDB_Diff_FieldsWithCommas(t *testing.T) {
+	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("q")
+
+		if strings.Contains(q, "dolt_diff_stat(") {
+			resp := map[string]any{
+				"query_execution_status": "Success",
+				"schema_fragment": []map[string]string{
+					{"columnName": "table_name", "columnType": "varchar(255)"},
+					{"columnName": "rows_added", "columnType": "int"},
+					{"columnName": "rows_modified", "columnType": "int"},
+					{"columnName": "rows_deleted", "columnType": "int"},
+				},
+				"rows": []map[string]string{
+					{"table_name": "wanted", "rows_added": "0", "rows_modified": "1", "rows_deleted": "0"},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		if strings.Contains(q, "dolt_diff(") {
+			// Return a row with commas in description and JSON array in tags.
+			resp := map[string]any{
+				"query_execution_status": "Success",
+				"schema_fragment": []map[string]string{
+					{"columnName": "diff_type", "columnType": "varchar(20)"},
+					{"columnName": "from_id", "columnType": "varchar(20)"},
+					{"columnName": "to_id", "columnType": "varchar(20)"},
+					{"columnName": "from_status", "columnType": "varchar(20)"},
+					{"columnName": "to_status", "columnType": "varchar(20)"},
+					{"columnName": "from_description", "columnType": "text"},
+					{"columnName": "to_description", "columnType": "text"},
+					{"columnName": "from_tags", "columnType": "text"},
+					{"columnName": "to_tags", "columnType": "text"},
+				},
+				"rows": []map[string]string{
+					{
+						"diff_type":        "modified",
+						"from_id":          "w-001",
+						"to_id":            "w-001",
+						"from_status":      "open",
+						"to_status":        "claimed",
+						"from_description": "Design the YAML format for roles, capabilities, and constraints.",
+						"to_description":   "Design the YAML format for roles, capabilities, and constraints.",
+						"from_tags":        `["design","roles","YAML"]`,
+						"to_tags":          `["design","roles","YAML"]`,
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		w.WriteHeader(500)
+		fmt.Fprint(w, "unexpected query: "+q)
+	})
+	defer cleanup()
+
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
+	db.client = srv.Client()
+
+	diff, err := db.Diff("wl/alice/w-001")
+	if err != nil {
+		t.Fatalf("Diff error: %v", err)
+	}
+
+	// Status should show the change correctly.
+	if !strings.Contains(diff, "open") || !strings.Contains(diff, "claimed") {
+		t.Errorf("expected status change in diff, got: %q", diff)
+	}
+	// Tags with commas should not corrupt column alignment.
+	if strings.Contains(diff, "→ claimed\n  project:") {
+		t.Error("garbled output detected: tag commas corrupted column alignment")
+	}
+}
+
 func TestRemoteDB_Diff_NoChanges(t *testing.T) {
 	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		// Return empty diff_stat.
