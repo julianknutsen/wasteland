@@ -33,12 +33,12 @@ export function BrowseList() {
   return (
     <div>
       <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ color: ayu.fg, fontSize: '16px', fontWeight: 600 }}>Wanted Board</h2>
+        <h2 style={{ color: ayu.fg, fontSize: '20px', fontWeight: 700 }}>Wanted Board</h2>
       </div>
 
       <FilterBar filter={filter} onChange={setFilter} />
 
-      {error && <p style={{ color: ayu.red, marginTop: '12px' }}>{error}</p>}
+      {error && <p style={{ color: ayu.accent, marginTop: '12px' }}>{error}</p>}
 
       {loading ? (
         <p style={{ color: ayu.dim, marginTop: '12px' }}>Loading...</p>
@@ -50,11 +50,21 @@ export function BrowseList() {
             width: '100%',
             marginTop: '12px',
             borderCollapse: 'collapse',
-            fontSize: '13px',
+            fontSize: '14px',
           }}
         >
           <thead>
-            <tr style={{ borderBottom: `1px solid ${ayu.border}`, color: ayu.dim, textAlign: 'left' }}>
+            <tr
+              style={{
+                borderBottom: `2px solid ${ayu.border}`,
+                color: ayu.dim,
+                textAlign: 'left',
+                fontFamily: "'Cinzel', 'Times New Roman', serif",
+                fontSize: '11px',
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+              }}
+            >
               <th style={{ padding: '8px 12px' }}>Priority</th>
               <th style={{ padding: '8px 12px' }}>Title</th>
               <th style={{ padding: '8px 12px' }}>Status</th>
@@ -88,7 +98,7 @@ export function BrowseList() {
                   >
                     {item.title}
                     {item.has_branch && (
-                      <span style={{ color: ayu.purple, marginLeft: '6px', fontSize: '11px' }}>branch</span>
+                      <span style={{ color: ayu.brass, marginLeft: '6px', fontSize: '11px' }}>branch</span>
                     )}
                   </Link>
                 </td>

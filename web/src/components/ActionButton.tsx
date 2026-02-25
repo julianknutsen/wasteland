@@ -6,12 +6,12 @@ const actionColors: Record<string, string> = {
   unclaim: statusColor.open,
   done: ayu.green,
   accept: ayu.green,
-  reject: ayu.red,
+  reject: ayu.accent,
   close: statusColor.completed,
-  delete: ayu.red,
-  'submit pr': ayu.accent,
+  delete: ayu.accent,
+  'submit pr': ayu.brass,
   apply: ayu.green,
-  discard: ayu.red,
+  discard: ayu.accent,
 };
 
 interface ActionButtonProps {
@@ -37,13 +37,18 @@ export function ActionButton({ action, onAction }: ActionButtonProps) {
       onClick={handleClick}
       disabled={loading}
       style={{
-        padding: '6px 16px',
+        padding: '6px 18px',
         borderRadius: '4px',
         border: `1px solid ${color}`,
         background: 'transparent',
         color,
         opacity: loading ? 0.5 : 1,
         cursor: loading ? 'wait' : 'pointer',
+        fontFamily: "'Cinzel', 'Times New Roman', serif",
+        fontSize: '12px',
+        fontWeight: 600,
+        letterSpacing: '0.05em',
+        textTransform: 'uppercase',
       }}
     >
       {loading ? `${action}...` : action}

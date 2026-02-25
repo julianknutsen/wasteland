@@ -1,9 +1,9 @@
 import { ayu } from '../styles/theme';
 
 const priorityColors: Record<number, string> = {
-  0: ayu.red,
-  1: ayu.orange,
-  2: ayu.accent,
+  0: ayu.accent,
+  1: ayu.brass,
+  2: ayu.copper,
   3: ayu.green,
   4: ayu.dim,
 };
@@ -16,8 +16,10 @@ export function PriorityBadge({ priority }: { priority: number }) {
         display: 'inline-block',
         padding: '2px 6px',
         borderRadius: '4px',
-        fontSize: '12px',
-        fontWeight: 600,
+        fontSize: '11px',
+        fontWeight: 700,
+        fontFamily: "'Cinzel', 'Times New Roman', serif",
+        letterSpacing: '0.05em',
         color,
         border: `1px solid ${color}`,
       }}

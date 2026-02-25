@@ -24,12 +24,12 @@ export function Dashboard() {
   }, []);
 
   if (loading) return <p style={{ color: ayu.dim }}>Loading...</p>;
-  if (error) return <p style={{ color: ayu.red }}>{error}</p>;
+  if (error) return <p style={{ color: ayu.accent }}>{error}</p>;
   if (!data) return <p style={{ color: ayu.dim }}>No data.</p>;
 
   return (
     <div>
-      <h2 style={{ color: ayu.fg, fontSize: '16px', fontWeight: 600, marginBottom: '16px' }}>
+      <h2 style={{ color: ayu.fg, fontSize: '20px', fontWeight: 700, marginBottom: '20px' }}>
         My Dashboard
       </h2>
       <DashboardSection title="Claimed" color={statusColor.claimed} items={data.claimed} />
@@ -49,23 +49,25 @@ function DashboardSection({
   items: WantedSummary[];
 }) {
   return (
-    <div style={{ marginBottom: '20px' }}>
+    <div style={{ marginBottom: '24px' }}>
       <h3
         style={{
           color,
           fontSize: '14px',
-          fontWeight: 600,
+          fontWeight: 700,
           marginBottom: '8px',
-          paddingBottom: '4px',
-          borderBottom: `1px solid ${ayu.border}`,
+          paddingBottom: '6px',
+          borderBottom: `2px solid ${ayu.border}`,
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
         }}
       >
         {title} ({items.length})
       </h3>
       {items.length === 0 ? (
-        <p style={{ color: ayu.dim, fontSize: '13px' }}>None</p>
+        <p style={{ color: ayu.dim, fontSize: '14px' }}>None</p>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
           <tbody>
             {items.map((item) => (
               <tr

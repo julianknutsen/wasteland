@@ -213,10 +213,10 @@ func (r *RemoteDB) DeleteRemoteBranch(branch string) error {
 func (r *RemoteDB) Diff(branch string) (string, error) {
 	escaped := strings.ReplaceAll(branch, "'", "''")
 
-	// Query changed tables via dolt_diff table function.
+	// List changed tables via dolt_diff_stat (2-arg form: from, to).
 	tableSQL := fmt.Sprintf(
-		"SELECT table_name, diff_type FROM dolt_diff('main', '%s')", escaped)
-	tableCSV, err := r.queryForkMain(tableSQL)
+		"SELECT table_name, rows_added, rows_modified, rows_deleted FROM dolt_diff_stat('main', '%s')", escaped)
+	tableCSV, err := r.queryForkBranch(tableSQL, branch)
 	if err != nil {
 		return "", fmt.Errorf("diff: listing changed tables: %w", err)
 	}
@@ -230,10 +230,10 @@ func (r *RemoteDB) Diff(branch string) (string, error) {
 	for _, tbl := range tables {
 		fmt.Fprintf(&buf, "## %s\n\n", tbl)
 
-		// Query row-level changes for this table.
+		// Query row-level changes via dolt_diff (3-arg form: from, to, table).
 		rowSQL := fmt.Sprintf(
-			"SELECT * FROM dolt_diff_%s WHERE from_commit = HASHOF('main') AND to_commit = HASHOF('%s')",
-			tbl, escaped)
+			"SELECT * FROM dolt_diff('main', '%s', '%s')",
+			escaped, strings.ReplaceAll(tbl, "'", "''"))
 		rowCSV, err := r.queryForkBranch(rowSQL, branch)
 		if err != nil {
 			fmt.Fprintf(&buf, "(error reading diff: %v)\n\n", err)

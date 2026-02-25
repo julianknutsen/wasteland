@@ -490,23 +490,25 @@ func TestRemoteDB_Diff(t *testing.T) {
 	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
 
-		if strings.Contains(q, "dolt_diff(") {
+		if strings.Contains(q, "dolt_diff_stat(") {
 			// Return one changed table.
 			resp := map[string]any{
 				"query_execution_status": "Success",
 				"schema_fragment": []map[string]string{
 					{"columnName": "table_name", "columnType": "varchar(255)"},
-					{"columnName": "diff_type", "columnType": "varchar(20)"},
+					{"columnName": "rows_added", "columnType": "int"},
+					{"columnName": "rows_modified", "columnType": "int"},
+					{"columnName": "rows_deleted", "columnType": "int"},
 				},
 				"rows": []map[string]string{
-					{"table_name": "wanted", "diff_type": "modified"},
+					{"table_name": "wanted", "rows_added": "0", "rows_modified": "1", "rows_deleted": "0"},
 				},
 			}
 			_ = json.NewEncoder(w).Encode(resp)
 			return
 		}
 
-		if strings.Contains(q, "dolt_diff_wanted") {
+		if strings.Contains(q, "dolt_diff(") {
 			// Return one modified row.
 			resp := map[string]any{
 				"query_execution_status": "Success",
@@ -561,12 +563,14 @@ func TestRemoteDB_Diff(t *testing.T) {
 
 func TestRemoteDB_Diff_NoChanges(t *testing.T) {
 	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		// Return empty diff.
+		// Return empty diff_stat.
 		resp := map[string]any{
 			"query_execution_status": "Success",
 			"schema_fragment": []map[string]string{
 				{"columnName": "table_name", "columnType": "varchar(255)"},
-				{"columnName": "diff_type", "columnType": "varchar(20)"},
+				{"columnName": "rows_added", "columnType": "int"},
+				{"columnName": "rows_modified", "columnType": "int"},
+				{"columnName": "rows_deleted", "columnType": "int"},
 			},
 			"rows": []map[string]string{},
 		}

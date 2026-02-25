@@ -117,7 +117,7 @@ export function DetailView() {
   };
 
   if (loading) return <p style={{ color: ayu.dim }}>Loading...</p>;
-  if (error) return <p style={{ color: ayu.red }}>{error}</p>;
+  if (error) return <p style={{ color: ayu.accent }}>{error}</p>;
   if (!data) return <p style={{ color: ayu.dim }}>Not found.</p>;
 
   const { item, completion, stamp, branch, main_status, pr_url, delta, actions, branch_actions } = data;
@@ -137,33 +137,47 @@ export function DetailView() {
           padding: 0,
           marginBottom: '12px',
           fontSize: '13px',
+          fontFamily: "'Cinzel', 'Times New Roman', serif",
+          letterSpacing: '0.05em',
         }}
       >
         &larr; back
       </button>
 
       <div style={{ marginBottom: '16px' }}>
-        <h2 style={{ color: ayu.fg, fontSize: '18px', fontWeight: 600, margin: 0 }}>
+        <h2 style={{ color: ayu.fg, fontSize: '22px', fontWeight: 700, margin: 0 }}>
           {item.title}
         </h2>
         <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center' }}>
           <PriorityBadge priority={item.priority} />
           <StatusBadge status={item.status} />
-          {item.type && <span style={{ color: ayu.dim, fontSize: '12px' }}>{item.type}</span>}
+          {item.type && (
+            <span
+              style={{
+                color: ayu.dim,
+                fontSize: '12px',
+                fontFamily: "'Cinzel', 'Times New Roman', serif",
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+              }}
+            >
+              {item.type}
+            </span>
+          )}
         </div>
       </div>
 
       {item.description && (
         <div
           style={{
-            padding: '12px',
+            padding: '14px',
             background: ayu.surface,
             borderRadius: '6px',
             border: `1px solid ${ayu.border}`,
             marginBottom: '16px',
             whiteSpace: 'pre-wrap',
             color: ayu.fg,
-            fontSize: '13px',
+            fontSize: '14px',
             lineHeight: 1.6,
           }}
         >
@@ -176,7 +190,7 @@ export function DetailView() {
           display: 'grid',
           gridTemplateColumns: '120px 1fr',
           gap: '6px 12px',
-          fontSize: '13px',
+          fontSize: '14px',
           marginBottom: '16px',
         }}
       >
@@ -195,13 +209,13 @@ export function DetailView() {
         {branch && main_status && main_status !== item.status && (
           <>
             <span style={{ color: ayu.dim }}>Pending</span>
-            <span style={{ color: ayu.accent }}>{main_status} &rarr; {item.status}</span>
+            <span style={{ color: ayu.brass }}>{main_status} &rarr; {item.status}</span>
           </>
         )}
         {branch && (
           <>
             <span style={{ color: ayu.dim }}>Branch</span>
-            <span style={{ color: ayu.purple }}>{branch}</span>
+            <span style={{ color: ayu.brass, fontFamily: "'JetBrains Mono', 'Courier New', monospace", fontSize: '13px' }}>{branch}</span>
           </>
         )}
         {pr_url && (
@@ -221,9 +235,9 @@ export function DetailView() {
 
       {completion && (
         <Section title="Completion">
-          <div style={{ fontSize: '13px' }}>
+          <div style={{ fontSize: '14px' }}>
             <p style={{ color: ayu.fg, margin: '0 0 4px' }}>
-              Completed by: <span style={{ color: ayu.accent }}>{completion.completed_by}</span>
+              Completed by: <span style={{ color: ayu.brass }}>{completion.completed_by}</span>
             </p>
             {completion.evidence && (
               <p style={{ color: ayu.fg, margin: '0 0 4px' }}>Evidence: {completion.evidence}</p>
@@ -239,9 +253,9 @@ export function DetailView() {
 
       {stamp && (
         <Section title="Stamp">
-          <div style={{ fontSize: '13px', color: ayu.fg }}>
+          <div style={{ fontSize: '14px', color: ayu.fg }}>
             <p style={{ margin: '0 0 4px' }}>
-              Author: <span style={{ color: ayu.accent }}>{stamp.author}</span>
+              Author: <span style={{ color: ayu.brass }}>{stamp.author}</span>
             </p>
             <p style={{ margin: '0 0 4px' }}>Subject: {stamp.subject}</p>
             <p style={{ margin: '0 0 4px' }}>
@@ -256,11 +270,11 @@ export function DetailView() {
         <Section title="Branch Delta">
           <pre
             style={{
-              fontSize: '12px',
+              fontSize: '13px',
               color: ayu.fg,
               margin: 0,
               whiteSpace: 'pre-wrap',
-              fontFamily: 'inherit',
+              fontFamily: "'JetBrains Mono', 'Courier New', monospace",
             }}
           >
             {delta}
@@ -271,13 +285,16 @@ export function DetailView() {
               disabled={diffLoading}
               style={{
                 marginTop: '8px',
-                padding: '4px 12px',
+                padding: '4px 14px',
                 background: 'transparent',
                 border: `1px solid ${ayu.border}`,
                 borderRadius: '4px',
                 color: ayu.dim,
                 cursor: diffLoading ? 'wait' : 'pointer',
                 fontSize: '12px',
+                fontFamily: "'Cinzel', 'Times New Roman', serif",
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
               }}
             >
               {diffLoading ? 'Loading diff...' : 'View diff'}
@@ -287,10 +304,10 @@ export function DetailView() {
             <pre
               style={{
                 marginTop: '8px',
-                fontSize: '12px',
+                fontSize: '13px',
                 color: ayu.fg,
                 whiteSpace: 'pre-wrap',
-                fontFamily: 'inherit',
+                fontFamily: "'JetBrains Mono', 'Courier New', monospace",
               }}
             >
               {diffContent}
@@ -301,7 +318,7 @@ export function DetailView() {
 
       {showDoneForm && (
         <Section title="Submit for Review">
-          <div style={{ fontSize: '13px' }}>
+          <div style={{ fontSize: '14px' }}>
             <label style={{ color: ayu.dim, display: 'block', marginBottom: '4px' }}>
               Evidence (URL or description)
             </label>
@@ -312,13 +329,14 @@ export function DetailView() {
               placeholder="https://github.com/..."
               style={{
                 width: '100%',
-                padding: '6px 8px',
+                padding: '8px 10px',
                 background: ayu.bg,
                 border: `1px solid ${ayu.border}`,
                 borderRadius: '4px',
                 color: ayu.fg,
-                fontSize: '13px',
+                fontSize: '14px',
                 boxSizing: 'border-box',
+                fontFamily: "'Crimson Text', Georgia, serif",
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') handleDone(); }}
             />
@@ -327,13 +345,17 @@ export function DetailView() {
                 onClick={handleDone}
                 disabled={!evidenceInput.trim()}
                 style={{
-                  padding: '4px 12px',
+                  padding: '6px 18px',
                   background: 'transparent',
                   border: `1px solid ${ayu.green}`,
                   borderRadius: '4px',
                   color: ayu.green,
                   cursor: evidenceInput.trim() ? 'pointer' : 'not-allowed',
-                  fontSize: '13px',
+                  fontSize: '12px',
+                  fontFamily: "'Cinzel', 'Times New Roman', serif",
+                  fontWeight: 600,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
                   opacity: evidenceInput.trim() ? 1 : 0.5,
                 }}
               >
@@ -342,13 +364,17 @@ export function DetailView() {
               <button
                 onClick={() => { setShowDoneForm(false); setEvidenceInput(''); }}
                 style={{
-                  padding: '4px 12px',
+                  padding: '6px 18px',
                   background: 'transparent',
                   border: `1px solid ${ayu.border}`,
                   borderRadius: '4px',
                   color: ayu.dim,
                   cursor: 'pointer',
-                  fontSize: '13px',
+                  fontSize: '12px',
+                  fontFamily: "'Cinzel', 'Times New Roman', serif",
+                  fontWeight: 600,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
                 }}
               >
                 Cancel
@@ -396,7 +422,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <div
       style={{
-        padding: '12px',
+        padding: '14px',
         background: ayu.surface,
         borderRadius: '6px',
         border: `1px solid ${ayu.border}`,
@@ -405,10 +431,12 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     >
       <h3
         style={{
-          color: statusColor[title.toLowerCase()] || ayu.accent,
+          color: statusColor[title.toLowerCase()] || ayu.brass,
           fontSize: '13px',
-          fontWeight: 600,
+          fontWeight: 700,
           margin: '0 0 8px',
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
         }}
       >
         {title}

@@ -11,17 +11,18 @@ interface FilterBarProps {
 }
 
 const selectStyle: React.CSSProperties = {
-  padding: '4px 8px',
+  padding: '6px 10px',
   borderRadius: '4px',
   border: `1px solid ${ayu.border}`,
   background: ayu.surface,
   color: ayu.fg,
-  fontSize: '13px',
+  fontSize: '14px',
+  fontFamily: "'Crimson Text', Georgia, serif",
 };
 
 const inputStyle: React.CSSProperties = {
   ...selectStyle,
-  width: '180px',
+  width: '200px',
 };
 
 export function FilterBar({ filter, onChange }: FilterBarProps) {
