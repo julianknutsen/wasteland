@@ -84,8 +84,8 @@ func (m settingsModel) toggle(cfg Config) (settingsModel, bubbletea.Cmd) {
 	mode := m.mode
 	signing := m.signing
 	return m, func() bubbletea.Msg {
-		if cfg.SaveConfig != nil {
-			if err := cfg.SaveConfig(mode, signing); err != nil {
+		if cfg.Client != nil {
+			if err := cfg.Client.SaveSettings(mode, signing); err != nil {
 				return settingsSavedMsg{mode: mode, signing: signing, err: err}
 			}
 		}

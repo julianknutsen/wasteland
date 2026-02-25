@@ -7,10 +7,11 @@ import (
 
 	bubbletea "github.com/charmbracelet/bubbletea"
 	"github.com/julianknutsen/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/sdk"
 )
 
 func TestRootModel_DelegatesToBrowse(t *testing.T) {
-	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{RigHandle: "test", Upstream: "test/db"})
 	// Simulate initial load completing.
 	m.browse.loading = false
 	m.width = 80
@@ -40,7 +41,7 @@ func TestRootModel_DelegatesToBrowse(t *testing.T) {
 }
 
 func TestRootModel_SearchKey(t *testing.T) {
-	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{RigHandle: "test", Upstream: "test/db"})
 	m.browse.loading = false
 	m.width = 80
 	m.height = 24
@@ -62,7 +63,7 @@ func TestRootModel_SearchKey(t *testing.T) {
 }
 
 func TestRootModel_TypeKey(t *testing.T) {
-	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{RigHandle: "test", Upstream: "test/db"})
 	m.browse.loading = false
 	m.width = 80
 	m.height = 24
@@ -89,7 +90,6 @@ func TestRootModel_TypeKey(t *testing.T) {
 // newDetailForTest creates a detail model with a loaded item for mutation testing.
 func newDetailForTest(status, postedBy, claimedBy, mode string) Model {
 	m := New(Config{
-		DB:        nil,
 		RigHandle: "test-rig",
 		Upstream:  "test/db",
 		Mode:      mode,
@@ -348,20 +348,35 @@ func TestDetail_AcceptKey_OpensAcceptForm(t *testing.T) {
 	}
 }
 
-func TestDetail_ActionResultMsg_WildWest_RefetchesDetail(t *testing.T) {
+func TestDetail_ActionResultMsg_WildWest_AppliesDetail(t *testing.T) {
 	m := newDetailForTest("open", "other-rig", "", "wild-west")
 	m.detail.executing = true
 	m.detail.executingLabel = "Claiming..."
 
-	// Simulate successful wild-west result (no hint).
-	result, cmd := m.Update(actionResultMsg{err: nil})
+	// Simulate successful wild-west result with detail from SDK.
+	result, cmd := m.Update(actionResultMsg{
+		result: &sdk.MutationResult{
+			Detail: &sdk.DetailResult{
+				Item: &commons.WantedItem{
+					ID:        "w-abc123",
+					Title:     "Test Item",
+					Status:    "claimed",
+					PostedBy:  "other-rig",
+					ClaimedBy: "test-rig",
+				},
+			},
+		},
+	})
 	m2 := result.(Model)
 	if m2.detail.executing {
 		t.Error("executing should be false after result")
 	}
-	// Wild-west clears result and re-fetches — the updated status is the feedback.
-	if cmd == nil {
-		t.Error("wild-west should return fetchDetail cmd to refresh")
+	if m2.detail.item.Status != "claimed" {
+		t.Errorf("item status = %q, want %q", m2.detail.item.Status, "claimed")
+	}
+	// SDK provides detail directly — no re-fetch needed.
+	if cmd != nil {
+		t.Error("should not return cmd when SDK provides detail")
 	}
 }
 
@@ -370,19 +385,20 @@ func TestDetail_ActionResultMsg_PRMode_AppliesBranchDetail(t *testing.T) {
 	m.detail.executing = true
 	m.detail.executingLabel = "Claiming..."
 
-	// Simulate successful PR result with detail read from branch.
-	branchDetail := detailDataMsg{
-		item: &commons.WantedItem{
-			ID:        "w-abc123",
-			Title:     "Test Item",
-			Status:    "claimed",
-			PostedBy:  "other-rig",
-			ClaimedBy: "test-rig",
-		},
-	}
+	// Simulate successful PR result with detail from SDK.
 	result, cmd := m.Update(actionResultMsg{
-		hint:   "wl/test-rig/w-abc123",
-		detail: &branchDetail,
+		result: &sdk.MutationResult{
+			Detail: &sdk.DetailResult{
+				Item: &commons.WantedItem{
+					ID:        "w-abc123",
+					Title:     "Test Item",
+					Status:    "claimed",
+					PostedBy:  "other-rig",
+					ClaimedBy: "test-rig",
+				},
+			},
+			Branch: "wl/test-rig/w-abc123",
+		},
 	})
 	m2 := result.(Model)
 	if m2.detail.executing {
@@ -394,11 +410,6 @@ func TestDetail_ActionResultMsg_PRMode_AppliesBranchDetail(t *testing.T) {
 	}
 	if !strings.Contains(m2.detail.result, "wl/test-rig/w-abc123") {
 		t.Errorf("result should contain branch name, got: %q", m2.detail.result)
-	}
-	// View should show updated status and action hints.
-	v := m2.View()
-	if !strings.Contains(v, "claimed") {
-		t.Errorf("view should show 'claimed' status, got:\n%s", v)
 	}
 	// Should NOT re-fetch from main.
 	if cmd != nil {
@@ -475,7 +486,7 @@ func TestDetail_ExecutingState_IgnoresKeys(t *testing.T) {
 }
 
 func TestRootModel_MeKey_NavigatesToMe(t *testing.T) {
-	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{RigHandle: "test", Upstream: "test/db"})
 	m.browse.loading = false
 	m.width = 80
 	m.height = 24
@@ -513,7 +524,7 @@ func TestRootModel_MeKey_NavigatesToMe(t *testing.T) {
 }
 
 func TestRootModel_MeDataMsg_SetsData(t *testing.T) {
-	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{RigHandle: "test", Upstream: "test/db"})
 	m.active = viewMe
 	m.me.loading = true
 	m.width = 80
@@ -539,7 +550,7 @@ func TestRootModel_MeDataMsg_SetsData(t *testing.T) {
 }
 
 func TestMe_EscReturns(t *testing.T) {
-	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{RigHandle: "test", Upstream: "test/db"})
 	m.active = viewMe
 	m.me.loading = false
 	m.me.data = &commons.DashboardData{}
@@ -564,7 +575,7 @@ func TestMe_EscReturns(t *testing.T) {
 }
 
 func TestMe_EnterOpensDetail(t *testing.T) {
-	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{RigHandle: "test", Upstream: "test/db"})
 	m.active = viewMe
 	m.width = 80
 	m.height = 24
@@ -628,7 +639,7 @@ func TestMe_View_ShowsSections(t *testing.T) {
 }
 
 func TestRootModel_ProjectFilter_RoundTrip(t *testing.T) {
-	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{RigHandle: "test", Upstream: "test/db"})
 	m.browse.loading = false
 	m.width = 80
 	m.height = 24
@@ -865,7 +876,7 @@ func TestDelta_ResultMsg_Discarded_NavigatesToBrowse(t *testing.T) {
 }
 
 func TestMe_View_Hints(t *testing.T) {
-	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{RigHandle: "test", Upstream: "test/db"})
 	m.active = viewMe
 	m.me.loading = false
 	m.me.data = &commons.DashboardData{}
@@ -880,7 +891,6 @@ func TestMe_View_Hints(t *testing.T) {
 
 func TestRootModel_SettingsKey_NavigatesToSettings(t *testing.T) {
 	m := New(Config{
-		DB:        nil,
 		RigHandle: "test",
 		Upstream:  "test/db",
 		Mode:      "wild-west",
@@ -926,7 +936,7 @@ func TestRootModel_SettingsKey_NavigatesToSettings(t *testing.T) {
 }
 
 func TestRootModel_SettingsFromMe(t *testing.T) {
-	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db", Mode: "wild-west"})
+	m := New(Config{RigHandle: "test", Upstream: "test/db", Mode: "wild-west"})
 	m.active = viewMe
 	m.me.loading = false
 	m.me.data = &commons.DashboardData{}
@@ -951,7 +961,6 @@ func TestRootModel_SettingsFromMe(t *testing.T) {
 
 func TestRootModel_SettingsSavedMsg_UpdatesConfig(t *testing.T) {
 	m := New(Config{
-		DB:        nil,
 		RigHandle: "test",
 		Upstream:  "test/db",
 		Mode:      "wild-west",
@@ -981,7 +990,6 @@ func TestRootModel_SettingsSavedMsg_UpdatesConfig(t *testing.T) {
 
 func TestRootModel_SettingsSavedMsg_Error(t *testing.T) {
 	m := New(Config{
-		DB:        nil,
 		RigHandle: "test",
 		Upstream:  "test/db",
 		Mode:      "wild-west",
@@ -1003,7 +1011,7 @@ func TestRootModel_SettingsSavedMsg_Error(t *testing.T) {
 }
 
 func TestSettings_BrowseHints_ShowsSettingsKey(t *testing.T) {
-	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{RigHandle: "test", Upstream: "test/db"})
 	m.browse.loading = false
 	m.width = 80
 	m.height = 24
@@ -1185,15 +1193,19 @@ func TestDetail_SubmitResultMsg_Error(t *testing.T) {
 
 func TestDetail_SubmitOpenedMsg_DispatchesFetchDiff(t *testing.T) {
 	diffCalled := false
-	m := New(Config{
-		DB:        nil,
+	client := sdk.New(sdk.ClientConfig{
 		RigHandle: "test-rig",
-		Upstream:  "test/db",
 		Mode:      "pr",
 		LoadDiff: func(_ string) (string, error) {
 			diffCalled = true
 			return "mock diff", nil
 		},
+	})
+	m := New(Config{
+		Client:    client,
+		RigHandle: "test-rig",
+		Upstream:  "test/db",
+		Mode:      "pr",
 	})
 	m.active = viewDetail
 

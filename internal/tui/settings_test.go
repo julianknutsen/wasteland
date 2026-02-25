@@ -6,13 +6,20 @@ import (
 	"testing"
 
 	bubbletea "github.com/charmbracelet/bubbletea"
+	"github.com/julianknutsen/wasteland/internal/sdk"
 )
+
+func settingsClient(saveErr error) *sdk.Client {
+	return sdk.New(sdk.ClientConfig{
+		SaveConfig: func(_ string, _ bool) error { return saveErr },
+	})
+}
 
 func TestSettings_Toggle_Mode(t *testing.T) {
 	m := newSettingsModel("wild-west", false)
 	m.cursor = 0 // mode
 
-	cfg := Config{SaveConfig: func(_ string, _ bool) error { return nil }}
+	cfg := Config{Client: settingsClient(nil)}
 	m2, cmd := m.toggle(cfg)
 
 	if m2.mode != "pr" {
@@ -39,7 +46,7 @@ func TestSettings_Toggle_ModePRToWildWest(t *testing.T) {
 	m := newSettingsModel("pr", false)
 	m.cursor = 0
 
-	cfg := Config{SaveConfig: func(_ string, _ bool) error { return nil }}
+	cfg := Config{Client: settingsClient(nil)}
 	m2, _ := m.toggle(cfg)
 
 	if m2.mode != "wild-west" {
@@ -51,7 +58,7 @@ func TestSettings_Toggle_Signing(t *testing.T) {
 	m := newSettingsModel("wild-west", false)
 	m.cursor = 1 // signing
 
-	cfg := Config{SaveConfig: func(_ string, _ bool) error { return nil }}
+	cfg := Config{Client: settingsClient(nil)}
 	m2, cmd := m.toggle(cfg)
 
 	if !m2.signing {
@@ -72,9 +79,7 @@ func TestSettings_Toggle_SaveError(t *testing.T) {
 	m := newSettingsModel("wild-west", false)
 	m.cursor = 0
 
-	cfg := Config{SaveConfig: func(_ string, _ bool) error {
-		return fmt.Errorf("disk full")
-	}}
+	cfg := Config{Client: settingsClient(fmt.Errorf("disk full"))}
 	_, cmd := m.toggle(cfg)
 
 	msg := cmd()
@@ -82,16 +87,16 @@ func TestSettings_Toggle_SaveError(t *testing.T) {
 	if saved.err == nil {
 		t.Fatal("expected error from save")
 	}
-	if saved.err.Error() != "disk full" {
-		t.Errorf("error = %q, want %q", saved.err.Error(), "disk full")
+	if !strings.Contains(saved.err.Error(), "disk full") {
+		t.Errorf("error = %q, want to contain %q", saved.err.Error(), "disk full")
 	}
 }
 
-func TestSettings_Toggle_NilSaveConfig(t *testing.T) {
+func TestSettings_Toggle_NilClient(t *testing.T) {
 	m := newSettingsModel("wild-west", false)
 	m.cursor = 0
 
-	cfg := Config{} // SaveConfig is nil
+	cfg := Config{} // Client is nil
 	m2, cmd := m.toggle(cfg)
 
 	if m2.mode != "pr" {
@@ -140,7 +145,7 @@ func TestSettings_Cursor_Navigation(t *testing.T) {
 func TestSettings_Enter_Toggles(t *testing.T) {
 	m := newSettingsModel("wild-west", false)
 	m.cursor = 0
-	cfg := Config{SaveConfig: func(_ string, _ bool) error { return nil }}
+	cfg := Config{Client: settingsClient(nil)}
 
 	m2, cmd := m.update(bubbletea.KeyMsg{Type: bubbletea.KeyEnter}, cfg)
 	if m2.mode != "pr" {
@@ -154,7 +159,7 @@ func TestSettings_Enter_Toggles(t *testing.T) {
 func TestSettings_LeftRight_Toggles(t *testing.T) {
 	m := newSettingsModel("wild-west", false)
 	m.cursor = 0
-	cfg := Config{SaveConfig: func(_ string, _ bool) error { return nil }}
+	cfg := Config{Client: settingsClient(nil)}
 
 	m2, cmd := m.update(bubbletea.KeyMsg{Type: bubbletea.KeyRight}, cfg)
 	if m2.mode != "pr" {

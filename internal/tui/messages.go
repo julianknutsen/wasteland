@@ -1,6 +1,9 @@
 package tui
 
-import "github.com/julianknutsen/wasteland/internal/commons"
+import (
+	"github.com/julianknutsen/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/sdk"
+)
 
 // activeView identifies which view is currently displayed.
 type activeView int
@@ -62,8 +65,7 @@ type actionConfirmedMsg struct {
 // actionResultMsg carries the result of an executed mutation.
 type actionResultMsg struct {
 	err    error
-	hint   string         // non-empty in PR mode: "branch wl/rig/w-abc pushed to origin"
-	detail *detailDataMsg // non-nil: refreshed detail read from branch before checkout main
+	result *sdk.MutationResult // non-nil on success
 }
 
 // branchDeltaAction identifies a delta resolution action.

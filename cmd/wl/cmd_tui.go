@@ -10,6 +10,7 @@ import (
 	"github.com/julianknutsen/wasteland/internal/backend"
 	"github.com/julianknutsen/wasteland/internal/commons"
 	"github.com/julianknutsen/wasteland/internal/federation"
+	"github.com/julianknutsen/wasteland/internal/sdk"
 	"github.com/julianknutsen/wasteland/internal/style"
 	"github.com/julianknutsen/wasteland/internal/tui"
 	"github.com/spf13/cobra"
@@ -91,20 +92,22 @@ func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 		return buf.String(), nil
 	}
 
-	upstream := cfg.Upstream
-
-	m := tui.New(tui.Config{
-		DB:           db,
-		RigHandle:    cfg.RigHandle,
-		Upstream:     upstream,
-		Mode:         cfg.ResolveMode(),
-		Signing:      cfg.Signing,
-		HopURI:       cfg.HopURI,
-		ProviderType: cfg.ResolveProviderType(),
-		ForkOrg:      cfg.ForkOrg,
-		ForkDB:       cfg.ForkDB,
-		LocalDir:     cfg.LocalDir,
-		JoinedAt:     cfg.JoinedAt.Format("2006-01-02"),
+	client := sdk.New(sdk.ClientConfig{
+		DB:        db,
+		RigHandle: cfg.RigHandle,
+		Mode:      cfg.ResolveMode(),
+		Signing:   cfg.Signing,
+		HopURI:    cfg.HopURI,
+		LoadDiff:  loadDiff,
+		CreatePR: func(branch string) (string, error) {
+			if cfg.ResolveBackend() != federation.BackendLocal {
+				return createPRForBranchRemote(cfg, branch)
+			}
+			return createPRForBranch(cfg, branch)
+		},
+		CheckPR: func(branch string) string {
+			return checkPRForBranch(cfg, branch)
+		},
 		SaveConfig: func(mode string, signing bool) error {
 			store := federation.NewConfigStore()
 			c, err := store.Load(cfg.Upstream)
@@ -115,16 +118,19 @@ func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 			c.Signing = signing
 			return store.Save(c)
 		},
-		LoadDiff: loadDiff,
-		CreatePR: func(branch string) (string, error) {
-			if cfg.ResolveBackend() != federation.BackendLocal {
-				return createPRForBranchRemote(cfg, branch)
-			}
-			return createPRForBranch(cfg, branch)
-		},
-		CheckPR: func(branch string) string {
-			return checkPRForBranch(cfg, branch)
-		},
+	})
+
+	m := tui.New(tui.Config{
+		Client:       client,
+		RigHandle:    cfg.RigHandle,
+		Upstream:     cfg.Upstream,
+		Mode:         cfg.ResolveMode(),
+		Signing:      cfg.Signing,
+		ProviderType: cfg.ResolveProviderType(),
+		ForkOrg:      cfg.ForkOrg,
+		ForkDB:       cfg.ForkDB,
+		LocalDir:     cfg.LocalDir,
+		JoinedAt:     cfg.JoinedAt.Format("2006-01-02"),
 	})
 
 	p := bubbletea.NewProgram(m, bubbletea.WithAltScreen())
