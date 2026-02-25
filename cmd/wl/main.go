@@ -98,6 +98,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		newMergeCmd(stdout, stderr),
 		newVerifyCmd(stdout, stderr),
 		newTUICmd(stdout, stderr),
+		newServeCmd(stdout, stderr),
 		newDoctorCmd(stdout, stderr),
 		newVersionCmd(stdout),
 	)

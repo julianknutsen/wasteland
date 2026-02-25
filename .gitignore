@@ -3,3 +3,6 @@ coverage.txt
 /bin/
 /wl
 .envrc
+web/node_modules/
+web/dist/*
+!web/dist/.gitkeep

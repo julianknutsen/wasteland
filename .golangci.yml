@@ -24,6 +24,12 @@ linters:
         - fmt.Fprintln
     misspell:
       locale: US
+  exclusions:
+    rules:
+      # "api" is descriptive enough under internal/api.
+      - path: "internal/api"
+        linters: [revive]
+        text: "avoid meaningless package names"
 
 issues:
   # Show all issues, don't limit per-linter.

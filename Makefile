@@ -20,10 +20,18 @@ LDFLAGS := -X main.version=$(VERSION) \
            -X main.commit=$(COMMIT) \
            -X main.date=$(BUILD_TIME)
 
-.PHONY: build check check-all lint fmt-check fmt vet test test-integration test-integration-offline test-cover cover install install-tools setup clean
+.PHONY: build build-go web check check-all lint fmt-check fmt vet test test-integration test-integration-offline test-cover cover install install-tools setup clean
 
-## build: compile wl binary with version metadata
-build:
+## web: build web UI (requires bun)
+web:
+	cd web && bun install --frozen-lockfile && bun run build
+
+## build: compile wl binary with embedded web UI
+build: web
+	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) ./cmd/wl
+
+## build-go: compile wl binary without rebuilding web UI
+build-go:
 	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) ./cmd/wl
 
 ## install: build and install wl to ~/.local/bin
