@@ -118,8 +118,8 @@ func FetchRemote(dbDir, remote string) error {
 	})
 }
 
-// doltSQLScript executes a SQL script against a dolt database directory.
-func doltSQLScript(dbDir, script string) error {
+// DoltSQLScript executes a SQL script against a dolt database directory.
+func DoltSQLScript(dbDir, script string) error {
 	tmpFile, err := os.CreateTemp("", "dolt-script-*.sql")
 	if err != nil {
 		return fmt.Errorf("creating temp SQL file: %w", err)
@@ -270,12 +270,12 @@ func ListBranches(dbDir, prefix string) ([]string, error) {
 // it aborts and returns an error. The caller must already be on main.
 func MergeBranch(dbDir, branch string) error {
 	escaped := strings.ReplaceAll(branch, "'", "''")
-	err := doltSQLScript(dbDir, fmt.Sprintf(
+	err := DoltSQLScript(dbDir, fmt.Sprintf(
 		"CALL DOLT_CHECKOUT('main');\nCALL DOLT_MERGE('%s');", escaped,
 	))
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "conflict") {
-			_ = doltSQLScript(dbDir, "CALL DOLT_MERGE('--abort');")
+			_ = DoltSQLScript(dbDir, "CALL DOLT_MERGE('--abort');")
 			return fmt.Errorf("merge conflict on branch %s: resolve manually or delete the branch", branch)
 		}
 		return fmt.Errorf("merging branch %s: %w", branch, err)
@@ -286,7 +286,7 @@ func MergeBranch(dbDir, branch string) error {
 // DeleteBranch deletes a local branch.
 func DeleteBranch(dbDir, branch string) error {
 	escaped := strings.ReplaceAll(branch, "'", "''")
-	return doltSQLScript(dbDir, fmt.Sprintf("CALL DOLT_BRANCH('-D', '%s');", escaped))
+	return DoltSQLScript(dbDir, fmt.Sprintf("CALL DOLT_BRANCH('-D', '%s');", escaped))
 }
 
 // DeleteRemoteBranch deletes a branch on a named remote using refspec syntax.
@@ -367,13 +367,13 @@ func PushBranchToRemoteForce(dbDir, remote, branch string, force bool, stdout io
 }
 
 // ListWantedIDs returns wanted item IDs, optionally filtered by status.
-func ListWantedIDs(dbDir, statusFilter string) ([]string, error) {
+func ListWantedIDs(db DB, statusFilter string) ([]string, error) {
 	query := "SELECT id FROM wanted"
 	if statusFilter != "" {
 		query += fmt.Sprintf(" WHERE status = '%s'", EscapeSQL(statusFilter))
 	}
 	query += " ORDER BY created_at DESC LIMIT 50"
-	out, err := DoltSQLQuery(dbDir, query)
+	out, err := db.Query(query, "")
 	if err != nil {
 		return nil, err
 	}
@@ -392,9 +392,9 @@ func ListWantedIDs(dbDir, statusFilter string) ([]string, error) {
 }
 
 // ResolveWantedID resolves a wanted ID or unambiguous prefix to a full ID.
-func ResolveWantedID(dbDir, idOrPrefix string) (string, error) {
+func ResolveWantedID(db DB, idOrPrefix string) (string, error) {
 	query := fmt.Sprintf("SELECT id FROM wanted WHERE id LIKE '%s%%' LIMIT 3", EscapeSQL(idOrPrefix))
-	out, err := DoltSQLQuery(dbDir, query)
+	out, err := db.Query(query, "")
 	if err != nil {
 		return "", err
 	}
@@ -422,18 +422,12 @@ func ResolveWantedID(dbDir, idOrPrefix string) (string, error) {
 // If ref is empty, queries the working copy.
 // Returns (status, true, nil) if found, ("", false, nil) if not found,
 // or ("", false, err) if the query failed.
-func QueryItemStatus(dbDir, wantedID, ref string) (string, bool, error) {
+func QueryItemStatus(db DB, wantedID, ref string) (string, bool, error) {
 	query := fmt.Sprintf(
 		"SELECT status FROM wanted WHERE id = '%s'",
 		EscapeSQL(wantedID),
 	)
-	if ref != "" {
-		query = fmt.Sprintf(
-			"SELECT status FROM wanted AS OF '%s' WHERE id = '%s'",
-			EscapeSQL(ref), EscapeSQL(wantedID),
-		)
-	}
-	out, err := DoltSQLQuery(dbDir, query)
+	out, err := db.Query(query, ref)
 	if err != nil {
 		return "", false, err
 	}
@@ -447,8 +441,8 @@ func QueryItemStatus(dbDir, wantedID, ref string) (string, bool, error) {
 // QueryItemStatusAsOf is a convenience wrapper that returns "" on not-found or error.
 //
 // Deprecated: prefer QueryItemStatus for explicit error handling.
-func QueryItemStatusAsOf(dbDir, wantedID, ref string) string {
-	status, _, _ := QueryItemStatus(dbDir, wantedID, ref)
+func QueryItemStatusAsOf(db DB, wantedID, ref string) string {
+	status, _, _ := QueryItemStatus(db, wantedID, ref)
 	return status
 }
 

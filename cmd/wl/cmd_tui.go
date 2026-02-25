@@ -7,6 +7,7 @@ import (
 	"os/exec"
 
 	bubbletea "github.com/charmbracelet/bubbletea"
+	"github.com/julianknutsen/wasteland/internal/backend"
 	"github.com/julianknutsen/wasteland/internal/commons"
 	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/julianknutsen/wasteland/internal/style"
@@ -32,36 +33,40 @@ func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 		return fmt.Errorf("loading wasteland config: %w", err)
 	}
 
-	if err := requireDolt(); err != nil {
-		return err
-	}
-
-	// Sync before launching the TUI.
-	sp := style.StartSpinner(stderr, "Syncing with upstream...")
-	if cfg.ResolveMode() == federation.ModePR {
-		// PR mode: hard-reset local main to upstream so it's a clean mirror.
-		// Mutations live on per-item branches; main must not carry local-only commits.
-		err = commons.ResetMainToUpstream(cfg.LocalDir)
-	} else {
-		err = commons.PullUpstream(cfg.LocalDir)
-	}
-	sp.Stop()
-	if err != nil {
-		return fmt.Errorf("syncing with upstream: %w", err)
-	}
-
-	// PR mode: force-push main to origin so it matches upstream.
-	// Only the per-item mutation branches should differ.
-	if cfg.ResolveMode() == federation.ModePR {
-		if err := commons.PushOriginMain(cfg.LocalDir, io.Discard); err != nil {
-			fmt.Fprintf(stderr, "  warning: could not sync origin/main: %v\n", err)
+	var db commons.DB
+	if cfg.ResolveBackend() == federation.BackendLocal {
+		if err := requireDolt(); err != nil {
+			return err
 		}
+		localDB := backend.NewLocalDB(cfg.LocalDir, cfg.ResolveMode())
+		db = localDB
+
+		// Sync before launching the TUI.
+		sp := style.StartSpinner(stderr, "Syncing with upstream...")
+		err = localDB.Sync()
+		sp.Stop()
+		if err != nil {
+			return fmt.Errorf("syncing with upstream: %w", err)
+		}
+
+		// PR mode: force-push main to origin so it matches upstream.
+		if cfg.ResolveMode() == federation.ModePR {
+			if err := localDB.PushMain(io.Discard); err != nil {
+				fmt.Fprintf(stderr, "  warning: could not sync origin/main: %v\n", err)
+			}
+		}
+	} else {
+		upOrg, upDB, err := federation.ParseUpstream(cfg.Upstream)
+		if err != nil {
+			return fmt.Errorf("parsing upstream: %w", err)
+		}
+		db = backend.NewRemoteDB(commons.DoltHubToken(), upOrg, upDB, cfg.ForkOrg, cfg.ForkDB)
 	}
 
 	upstream := cfg.Upstream
 
 	m := tui.New(tui.Config{
-		DBDir:        cfg.LocalDir,
+		DB:           db,
 		RigHandle:    cfg.RigHandle,
 		Upstream:     upstream,
 		Mode:         cfg.ResolveMode(),
@@ -83,6 +88,9 @@ func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 			return store.Save(c)
 		},
 		LoadDiff: func(branch string) (string, error) {
+			if cfg.ResolveBackend() != federation.BackendLocal {
+				return "", fmt.Errorf("diff view requires local backend")
+			}
 			doltPath, err := exec.LookPath("dolt")
 			if err != nil {
 				return "", err
@@ -95,6 +103,9 @@ func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 			return buf.String(), nil
 		},
 		CreatePR: func(branch string) (string, error) {
+			if cfg.ResolveBackend() != federation.BackendLocal {
+				return createPRForBranchRemote(cfg, branch)
+			}
 			return createPRForBranch(cfg, branch)
 		},
 		CheckPR: func(branch string) string {

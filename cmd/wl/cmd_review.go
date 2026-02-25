@@ -633,6 +633,41 @@ func createPRForBranchDoltHub(cfg *federation.Config, doltPath, branch, base str
 	return prURL, nil
 }
 
+// createPRForBranchRemote creates a DoltHub PR in remote mode. The branch already
+// exists on the fork (the write API auto-pushes), so no local dolt is needed.
+func createPRForBranchRemote(cfg *federation.Config, branch string) (string, error) {
+	if cfg.ResolveProviderType() != "dolthub" {
+		return "", fmt.Errorf("remote backend only supports DoltHub PRs")
+	}
+
+	token := os.Getenv("DOLTHUB_TOKEN")
+	if token == "" {
+		return "", fmt.Errorf("DOLTHUB_TOKEN environment variable is required for DoltHub PRs")
+	}
+
+	upstreamOrg, db, err := federation.ParseUpstream(cfg.Upstream)
+	if err != nil {
+		return "", fmt.Errorf("parsing upstream: %w", err)
+	}
+
+	wantedID := extractWantedID(branch)
+	prTitle := fmt.Sprintf("[wl] %s", wantedID)
+
+	provider := remote.NewDoltHubProvider(token)
+	prURL, err := provider.CreatePR(cfg.ForkOrg, upstreamOrg, db, branch, prTitle, "")
+	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			existingURL, existingID := provider.FindPR(upstreamOrg, db, cfg.ForkOrg, branch)
+			if existingID != "" {
+				return existingURL, nil
+			}
+			return fmt.Sprintf("%s/%s/%s/pulls", "https://www.dolthub.com/repositories", upstreamOrg, db), nil
+		}
+		return "", fmt.Errorf("creating DoltHub PR: %w", err)
+	}
+	return prURL, nil
+}
+
 // checkPRForBranch checks if an upstream PR already exists for the given branch.
 // Returns the PR URL or empty string. Best-effort: returns "" on any error.
 func checkPRForBranch(cfg *federation.Config, branch string) string {

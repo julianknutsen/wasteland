@@ -20,7 +20,7 @@ func TestBrowseUpdate_StatusCycle(t *testing.T) {
 		t.Fatalf("initial statusIdx = %d, want 0", m.statusIdx)
 	}
 
-	m2, cmd := m.update(keyMsg("s"), Config{DBDir: "/tmp/fake"})
+	m2, cmd := m.update(keyMsg("s"), Config{DB: nil})
 	if m2.statusIdx != 1 {
 		t.Errorf("after 's': statusIdx = %d, want 1", m2.statusIdx)
 	}
@@ -40,7 +40,7 @@ func TestBrowseUpdate_TypeCycle(t *testing.T) {
 		t.Fatalf("initial typeIdx = %d, want 0", m.typeIdx)
 	}
 
-	m2, cmd := m.update(keyMsg("t"), Config{DBDir: "/tmp/fake"})
+	m2, cmd := m.update(keyMsg("t"), Config{DB: nil})
 	if m2.typeIdx != 1 {
 		t.Errorf("after 't': typeIdx = %d, want 1", m2.typeIdx)
 	}
@@ -60,7 +60,7 @@ func TestBrowseUpdate_PriorityCycle(t *testing.T) {
 		t.Fatalf("initial priorityIdx = %d, want 0", m.priorityIdx)
 	}
 
-	m2, cmd := m.update(keyMsg("p"), Config{DBDir: "/tmp/fake"})
+	m2, cmd := m.update(keyMsg("p"), Config{DB: nil})
 	if m2.priorityIdx != 1 {
 		t.Errorf("after 'p': priorityIdx = %d, want 1", m2.priorityIdx)
 	}
@@ -80,7 +80,7 @@ func TestBrowseUpdate_SortCycle(t *testing.T) {
 		t.Fatalf("initial sortIdx = %d, want 0", m.sortIdx)
 	}
 
-	m2, cmd := m.update(keyMsg("o"), Config{DBDir: "/tmp/fake"})
+	m2, cmd := m.update(keyMsg("o"), Config{DB: nil})
 	if m2.sortIdx != 1 {
 		t.Errorf("after 'o': sortIdx = %d, want 1", m2.sortIdx)
 	}
@@ -105,7 +105,7 @@ func TestBrowseUpdate_MyItemsToggle(t *testing.T) {
 		t.Fatalf("initial statusIdx = %d, want 0", m.statusIdx)
 	}
 
-	m2, cmd := m.update(keyMsg("i"), Config{DBDir: "/tmp/fake", RigHandle: "test-rig"})
+	m2, cmd := m.update(keyMsg("i"), Config{DB: nil, RigHandle: "test-rig"})
 	if !m2.myItems {
 		t.Error("after 'i': myItems should be true")
 	}
@@ -122,7 +122,7 @@ func TestBrowseUpdate_MyItemsToggle(t *testing.T) {
 	}
 
 	// Toggle off — status stays where it is.
-	m3, _ := m2.update(keyMsg("i"), Config{DBDir: "/tmp/fake", RigHandle: "test-rig"})
+	m3, _ := m2.update(keyMsg("i"), Config{DB: nil, RigHandle: "test-rig"})
 	if m3.myItems {
 		t.Error("after second 'i': myItems should be false")
 	}
@@ -132,7 +132,7 @@ func TestBrowseUpdate_ProjectMode(t *testing.T) {
 	m := newBrowseModel()
 	m.loading = false
 
-	m2, _ := m.update(keyMsg("P"), Config{DBDir: "/tmp/fake"})
+	m2, _ := m.update(keyMsg("P"), Config{DB: nil})
 	if !m2.projectMode {
 		t.Error("after 'P': projectMode should be true")
 	}
@@ -144,7 +144,7 @@ func TestBrowseUpdate_ProjectMode(t *testing.T) {
 func TestBrowseUpdate_ProjectFilter_AppliesOnEnter(t *testing.T) {
 	m := newBrowseModel()
 	m.loading = false
-	cfg := Config{DBDir: "/tmp/fake", RigHandle: "test"}
+	cfg := Config{DB: nil, RigHandle: "test"}
 
 	// Enter project mode.
 	m, _ = m.update(keyMsg("P"), cfg)
@@ -179,7 +179,7 @@ func TestBrowseUpdate_ProjectFilter_AppliesOnEnter(t *testing.T) {
 func TestBrowseUpdate_ProjectFilter_SurvivesStatusCycle(t *testing.T) {
 	m := newBrowseModel()
 	m.loading = false
-	cfg := Config{DBDir: "/tmp/fake", RigHandle: "test"}
+	cfg := Config{DB: nil, RigHandle: "test"}
 
 	// Set project via text input.
 	m, _ = m.update(keyMsg("P"), cfg)
@@ -207,7 +207,7 @@ func TestBrowseUpdate_MeKey(t *testing.T) {
 	m := newBrowseModel()
 	m.loading = false
 
-	_, cmd := m.update(keyMsg("m"), Config{DBDir: "/tmp/fake"})
+	_, cmd := m.update(keyMsg("m"), Config{DB: nil})
 	if cmd == nil {
 		t.Fatal("after 'm': expected a cmd, got nil")
 	}
@@ -225,7 +225,7 @@ func TestBrowseUpdate_SearchMode(t *testing.T) {
 	m := newBrowseModel()
 	m.loading = false
 
-	m2, _ := m.update(keyMsg("/"), Config{DBDir: "/tmp/fake"})
+	m2, _ := m.update(keyMsg("/"), Config{DB: nil})
 	if !m2.searchMode {
 		t.Error("after '/': searchMode should be true")
 	}

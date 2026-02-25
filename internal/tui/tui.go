@@ -13,12 +13,12 @@ import (
 
 // Config holds the parameters needed to launch the TUI.
 type Config struct {
-	DBDir     string // local dolt database directory
-	RigHandle string // current rig handle
-	Upstream  string // upstream identifier for display
-	Mode      string // "wild-west" or "pr"
-	Signing   bool   // GPG-signed dolt commits
-	HopURI    string // rig's HOP protocol URI for done/accept dolt commits
+	DB        commons.DB // database backend
+	RigHandle string     // current rig handle
+	Upstream  string     // upstream identifier for display
+	Mode      string     // "wild-west" or "pr"
+	Signing   bool       // GPG-signed dolt commits
+	HopURI    string     // rig's HOP protocol URI for done/accept dolt commits
 
 	// Settings view: read-only context
 	ProviderType string
@@ -57,7 +57,7 @@ func New(cfg Config) Model {
 		cfg:      cfg,
 		active:   viewBrowse,
 		browse:   newBrowseModel(),
-		detail:   newDetailModel(cfg.DBDir, cfg.RigHandle, cfg.Mode),
+		detail:   newDetailModel(cfg.RigHandle, cfg.Mode),
 		me:       newMeModel(),
 		settings: newSettingsModel(cfg.Mode, cfg.Signing),
 		bar:      newStatusBar(fmt.Sprintf("%s@%s", cfg.RigHandle, cfg.Upstream)),
@@ -162,8 +162,8 @@ func (m Model) Update(msg bubbletea.Msg) (bubbletea.Model, bubbletea.Cmd) {
 				msg.detail.item.Status == msg.detail.mainStatus {
 				branch := msg.hint
 				return m, func() bubbletea.Msg {
-					_ = commons.DeleteBranch(m.cfg.DBDir, branch)
-					_ = commons.DeleteRemoteBranch(m.cfg.DBDir, "origin", branch)
+					_ = m.cfg.DB.DeleteBranch(branch)
+					_ = m.cfg.DB.DeleteRemoteBranch(branch)
 					return deltaResultMsg{hint: "discarded"}
 				}
 			}
@@ -355,7 +355,7 @@ func (m Model) View() string {
 
 func fetchBrowse(cfg Config, f commons.BrowseFilter) bubbletea.Cmd {
 	return func() bubbletea.Msg {
-		items, branchIDs, err := commons.BrowseWantedBranchAware(cfg.DBDir, cfg.Mode, cfg.RigHandle, f)
+		items, branchIDs, err := commons.BrowseWantedBranchAware(cfg.DB, cfg.Mode, cfg.RigHandle, f)
 		if err != nil {
 			return browseDataMsg{err: err}
 		}
@@ -365,7 +365,7 @@ func fetchBrowse(cfg Config, f commons.BrowseFilter) bubbletea.Cmd {
 
 func fetchMe(cfg Config) bubbletea.Cmd {
 	return func() bubbletea.Msg {
-		data, err := commons.QueryMyDashboardBranchAware(cfg.DBDir, cfg.Mode, cfg.RigHandle)
+		data, err := commons.QueryMyDashboardBranchAware(cfg.DB, cfg.Mode, cfg.RigHandle)
 		return meDataMsg{data: data, err: err}
 	}
 }
@@ -384,60 +384,76 @@ func executeWildWestMutation(cfg Config, wantedID string, t commons.Transition) 
 	if err := applyTransition(cfg, wantedID, t); err != nil {
 		return actionResultMsg{err: err}
 	}
-	err := commons.PushWithSync(cfg.DBDir, io.Discard)
+	err := cfg.DB.PushWithSync(io.Discard)
 	return actionResultMsg{err: err}
 }
 
 // mutateOnBranch is the common pattern for all PR-mode mutations:
-// checkout branch → apply closure → read detail → push → return to main.
-func mutateOnBranch(cfg Config, wantedID string, apply func() error) actionResultMsg {
+// execute DML on branch → read detail → push.
+func mutateOnBranch(cfg Config, wantedID, commitMsg string, stmts ...string) actionResultMsg {
 	branch := commons.BranchName(cfg.RigHandle, wantedID)
-	mainStatus, _, _ := commons.QueryItemStatus(cfg.DBDir, wantedID, "main")
+	mainStatus, _, _ := commons.QueryItemStatus(cfg.DB, wantedID, "main")
 
-	if err := commons.CheckoutBranchFrom(cfg.DBDir, branch, "main"); err != nil {
-		return actionResultMsg{err: fmt.Errorf("checkout branch: %w", err)}
-	}
-
-	if err := apply(); err != nil {
-		_ = commons.CheckoutMain(cfg.DBDir)
+	if err := cfg.DB.Exec(branch, commitMsg, cfg.Signing, stmts...); err != nil {
 		return actionResultMsg{err: err}
 	}
 
-	detail := fetchDetailSync(cfg.DBDir, wantedID)
-	detail.branch = branch
-	detail.mainStatus = mainStatus
+	// Read post-mutation state from branch.
+	item, completion, stamp, _ := commons.QueryFullDetailAsOf(cfg.DB, wantedID, branch)
+	detail := detailDataMsg{
+		item: item, completion: completion, stamp: stamp,
+		branch: branch, mainStatus: mainStatus,
+	}
 
 	var pushLog bytes.Buffer
-	if err := commons.PushBranch(cfg.DBDir, branch, &pushLog); err != nil {
-		_ = commons.CheckoutMain(cfg.DBDir)
+	if err := cfg.DB.PushBranch(branch, &pushLog); err != nil {
 		if msg := strings.TrimSpace(pushLog.String()); msg != "" {
 			return actionResultMsg{err: fmt.Errorf("%s", msg)}
 		}
 		return actionResultMsg{err: fmt.Errorf("push branch: %w", err)}
 	}
 
-	_ = commons.CheckoutMain(cfg.DBDir)
 	return actionResultMsg{hint: branch, detail: &detail}
 }
 
+// transitionDML returns the DML statements and commit message for a lifecycle transition.
+func transitionDML(cfg Config, wantedID string, t commons.Transition) ([]string, string) {
+	switch t {
+	case commons.TransitionClaim:
+		return []string{commons.ClaimWantedDML(wantedID, cfg.RigHandle)}, "wl claim: " + wantedID
+	case commons.TransitionUnclaim:
+		return []string{commons.UnclaimWantedDML(wantedID)}, "wl unclaim: " + wantedID
+	case commons.TransitionReject:
+		return commons.RejectCompletionDML(wantedID), "wl reject: " + wantedID
+	case commons.TransitionClose:
+		return []string{commons.CloseWantedDML(wantedID)}, "wl close: " + wantedID
+	case commons.TransitionDelete:
+		return []string{commons.DeleteWantedDML(wantedID)}, "wl delete: " + wantedID
+	default:
+		return nil, ""
+	}
+}
+
 func executePRMutation(cfg Config, wantedID string, t commons.Transition) actionResultMsg {
-	return mutateOnBranch(cfg, wantedID, func() error {
-		return applyTransition(cfg, wantedID, t)
-	})
+	stmts, msg := transitionDML(cfg, wantedID, t)
+	if stmts == nil {
+		return actionResultMsg{err: fmt.Errorf("unsupported transition")}
+	}
+	return mutateOnBranch(cfg, wantedID, msg, stmts...)
 }
 
 func applyTransition(cfg Config, wantedID string, t commons.Transition) error {
 	switch t {
 	case commons.TransitionClaim:
-		return commons.ClaimWanted(cfg.DBDir, wantedID, cfg.RigHandle, cfg.Signing)
+		return commons.ClaimWanted(cfg.DB, wantedID, cfg.RigHandle, cfg.Signing)
 	case commons.TransitionUnclaim:
-		return commons.UnclaimWanted(cfg.DBDir, wantedID, cfg.Signing)
+		return commons.UnclaimWanted(cfg.DB, wantedID, cfg.Signing)
 	case commons.TransitionReject:
-		return commons.RejectCompletion(cfg.DBDir, wantedID, "", "", cfg.Signing)
+		return commons.RejectCompletion(cfg.DB, wantedID, "", "", cfg.Signing)
 	case commons.TransitionClose:
-		return commons.CloseWanted(cfg.DBDir, wantedID, cfg.Signing)
+		return commons.CloseWanted(cfg.DB, wantedID, cfg.Signing)
 	case commons.TransitionDelete:
-		return commons.DeleteWanted(cfg.DBDir, wantedID, cfg.Signing)
+		return commons.DeleteWanted(cfg.DB, wantedID, cfg.Signing)
 	default:
 		return fmt.Errorf("unsupported transition")
 	}
@@ -446,7 +462,7 @@ func applyTransition(cfg Config, wantedID string, t commons.Transition) error {
 func fetchDetail(cfg Config, wantedID string) bubbletea.Cmd {
 	return func() bubbletea.Msg {
 		if cfg.Mode == "pr" {
-			state, _ := commons.ResolveItemState(cfg.DBDir, cfg.RigHandle, wantedID)
+			state, _ := commons.ResolveItemState(cfg.DB, cfg.RigHandle, wantedID)
 			if state != nil && state.Effective() != nil {
 				detail := detailDataMsg{
 					item:       state.Effective(),
@@ -463,7 +479,7 @@ func fetchDetail(cfg Config, wantedID string) bubbletea.Cmd {
 				return detail
 			}
 		}
-		return fetchDetailSync(cfg.DBDir, wantedID)
+		return fetchDetailSync(cfg.DB, wantedID)
 	}
 }
 
@@ -482,15 +498,15 @@ func executeDelta(cfg Config, branch string, action branchDeltaAction) bubbletea
 
 func executeDeltaApply(cfg Config, branch string) deltaResultMsg {
 	// Merge branch into main.
-	if err := commons.MergeBranch(cfg.DBDir, branch); err != nil {
+	if err := cfg.DB.MergeBranch(branch); err != nil {
 		return deltaResultMsg{err: err}
 	}
 	// Delete local branch.
-	if err := commons.DeleteBranch(cfg.DBDir, branch); err != nil {
+	if err := cfg.DB.DeleteBranch(branch); err != nil {
 		return deltaResultMsg{err: fmt.Errorf("delete local branch: %w", err)}
 	}
 	// Push merged main to origin.
-	if err := commons.PushOriginMain(cfg.DBDir, io.Discard); err != nil {
+	if err := cfg.DB.PushMain(io.Discard); err != nil {
 		return deltaResultMsg{err: fmt.Errorf("push origin main: %w", err)}
 	}
 	return deltaResultMsg{hint: "applied"}
@@ -498,11 +514,11 @@ func executeDeltaApply(cfg Config, branch string) deltaResultMsg {
 
 func executeDeltaDiscard(cfg Config, branch string) deltaResultMsg {
 	// Delete local branch.
-	if err := commons.DeleteBranch(cfg.DBDir, branch); err != nil {
+	if err := cfg.DB.DeleteBranch(branch); err != nil {
 		return deltaResultMsg{err: fmt.Errorf("delete local branch: %w", err)}
 	}
 	// Delete remote branch (best-effort).
-	_ = commons.DeleteRemoteBranch(cfg.DBDir, "origin", branch)
+	_ = cfg.DB.DeleteRemoteBranch(branch)
 	return deltaResultMsg{hint: "discarded"}
 }
 
@@ -510,7 +526,7 @@ func executeDeltaDiscard(cfg Config, branch string) deltaResultMsg {
 
 func applyDone(cfg Config, wantedID, evidence string) error {
 	completionID := commons.GeneratePrefixedID("c", wantedID, cfg.RigHandle)
-	return commons.SubmitCompletion(cfg.DBDir, completionID, wantedID,
+	return commons.SubmitCompletion(cfg.DB, completionID, wantedID,
 		cfg.RigHandle, evidence, cfg.HopURI, cfg.Signing)
 }
 
@@ -527,7 +543,7 @@ func applyAccept(cfg Config, wantedID string, msg acceptSubmitMsg, completionID 
 		SkillTags:   msg.skills,
 		Message:     msg.message,
 	}
-	return commons.AcceptCompletion(cfg.DBDir, wantedID, completionID,
+	return commons.AcceptCompletion(cfg.DB, wantedID, completionID,
 		cfg.RigHandle, cfg.HopURI, stamp, cfg.Signing)
 }
 
@@ -544,14 +560,14 @@ func executeWildWestDoneMutation(cfg Config, wantedID, evidence string) actionRe
 	if err := applyDone(cfg, wantedID, evidence); err != nil {
 		return actionResultMsg{err: err}
 	}
-	err := commons.PushWithSync(cfg.DBDir, io.Discard)
+	err := cfg.DB.PushWithSync(io.Discard)
 	return actionResultMsg{err: err}
 }
 
 func executePRDoneMutation(cfg Config, wantedID, evidence string) actionResultMsg {
-	return mutateOnBranch(cfg, wantedID, func() error {
-		return applyDone(cfg, wantedID, evidence)
-	})
+	completionID := commons.GeneratePrefixedID("c", wantedID, cfg.RigHandle)
+	stmts := commons.SubmitCompletionDML(completionID, wantedID, cfg.RigHandle, evidence, cfg.HopURI)
+	return mutateOnBranch(cfg, wantedID, "wl done: "+wantedID, stmts...)
 }
 
 func executeAcceptMutation(cfg Config, wantedID string, msg acceptSubmitMsg, completionID string) bubbletea.Cmd {
@@ -567,14 +583,25 @@ func executeWildWestAcceptMutation(cfg Config, wantedID string, msg acceptSubmit
 	if err := applyAccept(cfg, wantedID, msg, completionID); err != nil {
 		return actionResultMsg{err: err}
 	}
-	err := commons.PushWithSync(cfg.DBDir, io.Discard)
+	err := cfg.DB.PushWithSync(io.Discard)
 	return actionResultMsg{err: err}
 }
 
 func executePRAcceptMutation(cfg Config, wantedID string, msg acceptSubmitMsg, completionID string) actionResultMsg {
-	return mutateOnBranch(cfg, wantedID, func() error {
-		return applyAccept(cfg, wantedID, msg, completionID)
-	})
+	stamp := &commons.Stamp{
+		ID:          commons.GeneratePrefixedID("s", wantedID, cfg.RigHandle),
+		Author:      cfg.RigHandle,
+		Subject:     completionID,
+		Quality:     msg.quality,
+		Reliability: msg.reliability,
+		Severity:    msg.severity,
+		ContextID:   completionID,
+		ContextType: "completion",
+		SkillTags:   msg.skills,
+		Message:     msg.message,
+	}
+	stmts := commons.AcceptCompletionDML(wantedID, completionID, cfg.RigHandle, cfg.HopURI, stamp)
+	return mutateOnBranch(cfg, wantedID, "wl accept: "+wantedID, stmts...)
 }
 
 // --- submit PR commands ---
@@ -599,9 +626,9 @@ func createPR(cfg Config, branch string) bubbletea.Cmd {
 	}
 }
 
-// fetchDetailSync queries detail data from the current working copy.
-func fetchDetailSync(dbDir, wantedID string) detailDataMsg {
-	item, completion, stamp, err := commons.QueryFullDetail(dbDir, wantedID)
+// fetchDetailSync queries detail data from the working copy (main).
+func fetchDetailSync(db commons.DB, wantedID string) detailDataMsg {
+	item, completion, stamp, err := commons.QueryFullDetail(db, wantedID)
 	if err != nil {
 		return detailDataMsg{err: err}
 	}

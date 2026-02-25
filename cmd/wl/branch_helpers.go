@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/julianknutsen/wasteland/internal/backend"
 	"github.com/julianknutsen/wasteland/internal/commons"
 	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/julianknutsen/wasteland/internal/style"
@@ -14,6 +15,7 @@ import (
 // in PR mode it checks out a per-item branch and returns to main afterward.
 type mutationContext struct {
 	cfg      *federation.Config
+	db       commons.DB
 	wantedID string
 	branch   string // computed branch name, empty in wild-west mode
 	noPush   bool
@@ -23,8 +25,10 @@ type mutationContext struct {
 
 // newMutationContext creates a mutation context for the given config and wanted ID.
 func newMutationContext(cfg *federation.Config, wantedID string, noPush bool, stdout io.Writer) *mutationContext {
+	db := backend.NewLocalDB(cfg.LocalDir, cfg.ResolveMode())
 	mc := &mutationContext{
 		cfg:      cfg,
+		db:       db,
 		wantedID: wantedID,
 		noPush:   noPush,
 		stdout:   stdout,
@@ -57,7 +61,7 @@ func (m *mutationContext) Setup() (cleanup func(), err error) {
 
 	// Detect item location across remotes (best-effort).
 	if m.wantedID != "" {
-		loc, _ := commons.DetectItemLocation(m.cfg.LocalDir, m.wantedID)
+		loc, _ := commons.DetectItemLocation(m.cfg.LocalDir, m.db, m.wantedID)
 		m.location = loc
 	}
 
@@ -83,7 +87,7 @@ func (m *mutationContext) Push() error {
 	}
 	// PR mode with branch — push branch to origin, then refresh any existing PR.
 	if m.branch != "" {
-		if err := commons.PushBranch(m.cfg.LocalDir, m.branch, m.stdout); err != nil {
+		if err := m.db.PushBranch(m.branch, m.stdout); err != nil {
 			return err
 		}
 		m.refreshPR()
@@ -92,21 +96,21 @@ func (m *mutationContext) Push() error {
 
 	// Wild-west mode without location info — existing behavior.
 	if m.location == nil || m.cfg.ResolveMode() != federation.ModePR {
-		return commons.PushWithSync(m.cfg.LocalDir, m.stdout)
+		return m.db.PushWithSync(m.stdout)
 	}
 
 	// PR mode on main — use location-aware push.
 	// Re-read local status after the mutation has been applied.
-	if status, found, err := commons.QueryItemStatus(m.cfg.LocalDir, m.wantedID, ""); err == nil && found {
+	if status, found, err := commons.QueryItemStatus(m.db, m.wantedID, ""); err == nil && found {
 		m.location.LocalStatus = status
 	}
 	target := commons.ResolvePushTarget("pr", m.location)
 
 	if target.PushUpstream {
-		return commons.PushWithSync(m.cfg.LocalDir, m.stdout)
+		return m.db.PushWithSync(m.stdout)
 	}
 	if target.PushOrigin {
-		if err := commons.PushOriginMain(m.cfg.LocalDir, m.stdout); err != nil {
+		if err := m.db.PushMain(m.stdout); err != nil {
 			return err
 		}
 	}

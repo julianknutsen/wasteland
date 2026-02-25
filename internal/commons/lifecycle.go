@@ -61,7 +61,8 @@ type ItemLocation struct {
 }
 
 // DetectItemLocation fetches both remotes and queries item state at each ref.
-func DetectItemLocation(dbDir, wantedID string) (*ItemLocation, error) {
+// dbDir is needed for FetchRemote (local-only operations); db is used for queries.
+func DetectItemLocation(dbDir string, db DB, wantedID string) (*ItemLocation, error) {
 	loc := &ItemLocation{}
 
 	// Fetch remotes (best-effort — failures are recorded but not fatal).
@@ -73,18 +74,18 @@ func DetectItemLocation(dbDir, wantedID string) (*ItemLocation, error) {
 	}
 
 	// Query local status (working copy).
-	if status, found, err := QueryItemStatus(dbDir, wantedID, ""); err == nil && found {
+	if status, found, err := QueryItemStatus(db, wantedID, ""); err == nil && found {
 		loc.LocalStatus = status
 	}
 
 	// Query remote statuses using AS OF.
 	if loc.FetchedOrigin {
-		if status, found, err := QueryItemStatus(dbDir, wantedID, "origin/main"); err == nil && found {
+		if status, found, err := QueryItemStatus(db, wantedID, "origin/main"); err == nil && found {
 			loc.OriginStatus = status
 		}
 	}
 	if loc.FetchedUpstream {
-		if status, found, err := QueryItemStatus(dbDir, wantedID, "upstream/main"); err == nil && found {
+		if status, found, err := QueryItemStatus(db, wantedID, "upstream/main"); err == nil && found {
 			loc.UpstreamStatus = status
 		}
 	}

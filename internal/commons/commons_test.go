@@ -189,25 +189,25 @@ func TestGenerateWantedID_Uniqueness(t *testing.T) {
 
 func TestCommitSQL_Unsigned(t *testing.T) {
 	t.Parallel()
-	got := commitSQL("wl post: Fix bug", false)
+	got := CommitSQL("wl post: Fix bug", false)
 	want := "CALL DOLT_COMMIT('-m', 'wl post: Fix bug');\n"
 	if got != want {
-		t.Errorf("commitSQL(unsigned) = %q, want %q", got, want)
+		t.Errorf("CommitSQL(unsigned) = %q, want %q", got, want)
 	}
 }
 
 func TestCommitSQL_Signed(t *testing.T) {
 	t.Parallel()
-	got := commitSQL("wl post: Fix bug", true)
+	got := CommitSQL("wl post: Fix bug", true)
 	want := "CALL DOLT_COMMIT('-S', '-m', 'wl post: Fix bug');\n"
 	if got != want {
-		t.Errorf("commitSQL(signed) = %q, want %q", got, want)
+		t.Errorf("CommitSQL(signed) = %q, want %q", got, want)
 	}
 }
 
 func TestCommitSQL_EscapesQuotes(t *testing.T) {
 	t.Parallel()
-	got := commitSQL("wl post: it's a test", true)
+	got := CommitSQL("wl post: it's a test", true)
 	if !strings.Contains(got, "it''s a test") {
 		t.Errorf("commitSQL did not escape single quotes: %q", got)
 	}

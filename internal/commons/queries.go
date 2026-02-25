@@ -62,10 +62,9 @@ type WantedSummary struct {
 }
 
 // BrowseWanted queries the wanted board with the given filters.
-// Returns structured results suitable for both CLI and TUI rendering.
-func BrowseWanted(dbDir string, f BrowseFilter) ([]WantedSummary, error) {
+func BrowseWanted(db DB, f BrowseFilter) ([]WantedSummary, error) {
 	query := BuildBrowseQuery(f)
-	csvData, err := DoltSQLQuery(dbDir, query)
+	csvData, err := db.Query(query, "")
 	if err != nil {
 		return nil, fmt.Errorf("querying wanted board: %w", err)
 	}
@@ -133,12 +132,12 @@ type BranchOverride struct {
 	ClaimedBy string
 }
 
-// DetectBranchOverrides lists local wl/<rigHandle>/* branches and queries
+// DetectBranchOverrides lists wl/<rigHandle>/* branches and queries
 // each item's status via AS OF. Returns overrides for items whose branch
 // status differs from their main status.
-func DetectBranchOverrides(dbDir, rigHandle string) []BranchOverride {
+func DetectBranchOverrides(db DB, rigHandle string) []BranchOverride {
 	prefix := fmt.Sprintf("wl/%s/", rigHandle)
-	branches, err := ListBranches(dbDir, prefix)
+	branches, err := db.Branches(prefix)
 	if err != nil || len(branches) == 0 {
 		return nil
 	}
@@ -146,11 +145,11 @@ func DetectBranchOverrides(dbDir, rigHandle string) []BranchOverride {
 	var overrides []BranchOverride
 	for _, branch := range branches {
 		wantedID := strings.TrimPrefix(branch, prefix)
-		branchStatus, branchClaimedBy := queryItemBranchState(dbDir, wantedID, branch)
+		branchStatus, branchClaimedBy := queryItemBranchState(db, wantedID, branch)
 		if branchStatus == "" {
 			continue
 		}
-		mainStatus, _, _ := QueryItemStatus(dbDir, wantedID, "")
+		mainStatus, _, _ := QueryItemStatus(db, wantedID, "")
 		if branchStatus != mainStatus {
 			overrides = append(overrides, BranchOverride{
 				WantedID:  wantedID,
@@ -164,12 +163,12 @@ func DetectBranchOverrides(dbDir, rigHandle string) []BranchOverride {
 }
 
 // queryItemBranchState returns (status, claimed_by) for a wanted item on a branch.
-func queryItemBranchState(dbDir, wantedID, branch string) (string, string) {
+func queryItemBranchState(db DB, wantedID, branch string) (string, string) {
 	query := fmt.Sprintf(
-		"SELECT status, COALESCE(claimed_by,'') AS claimed_by FROM wanted AS OF '%s' WHERE id = '%s'",
-		EscapeSQL(branch), EscapeSQL(wantedID),
+		"SELECT status, COALESCE(claimed_by,'') AS claimed_by FROM wanted WHERE id = '%s'",
+		EscapeSQL(wantedID),
 	)
-	out, err := DoltSQLQuery(dbDir, query)
+	out, err := db.Query(query, branch)
 	if err != nil {
 		return "", ""
 	}
@@ -181,10 +180,7 @@ func queryItemBranchState(dbDir, wantedID, branch string) (string, string) {
 }
 
 // ApplyBranchOverrides adjusts browse results to reflect branch mutations.
-// Items with overrides get their status updated. Items excluded by the status
-// filter but matching after override are fetched from main and added.
-// Items included but no longer matching after override are removed.
-func ApplyBranchOverrides(dbDir string, items []WantedSummary, overrides []BranchOverride, statusFilter string) []WantedSummary {
+func ApplyBranchOverrides(db DB, items []WantedSummary, overrides []BranchOverride, statusFilter string) []WantedSummary {
 	if len(overrides) == 0 {
 		return items
 	}
@@ -219,9 +215,9 @@ func ApplyBranchOverrides(dbDir string, items []WantedSummary, overrides []Branc
 			continue
 		}
 		// Try main first; fall back to branch (item may only exist there).
-		item, err := QueryWantedDetail(dbDir, o.WantedID)
+		item, err := QueryWantedDetail(db, o.WantedID)
 		if err != nil {
-			item, err = QueryWantedDetailAsOf(dbDir, o.WantedID, o.Branch)
+			item, err = QueryWantedDetailAsOf(db, o.WantedID, o.Branch)
 		}
 		if err == nil {
 			result = append(result, WantedSummary{
@@ -243,10 +239,16 @@ func ApplyBranchOverrides(dbDir string, items []WantedSummary, overrides []Branc
 
 // FindBranchForItem returns the branch name if a mutation branch exists for
 // this item, or "" if not.
-func FindBranchForItem(dbDir, rigHandle, wantedID string) string {
+func FindBranchForItem(db DB, rigHandle, wantedID string) string {
 	branch := BranchName(rigHandle, wantedID)
-	if exists, _ := BranchExists(dbDir, branch); exists {
-		return branch
+	branches, err := db.Branches(branch)
+	if err != nil || len(branches) == 0 {
+		return ""
+	}
+	for _, b := range branches {
+		if b == branch {
+			return branch
+		}
 	}
 	return ""
 }
@@ -299,7 +301,7 @@ type DashboardData struct {
 }
 
 // QueryMyDashboard fetches personal dashboard data for the given handle.
-func QueryMyDashboard(dbDir, handle string) (*DashboardData, error) {
+func QueryMyDashboard(db DB, handle string) (*DashboardData, error) {
 	escaped := EscapeSQL(handle)
 	data := &DashboardData{}
 
@@ -307,7 +309,7 @@ func QueryMyDashboard(dbDir, handle string) (*DashboardData, error) {
 	claimedQ := fmt.Sprintf(
 		"SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted WHERE status = 'claimed' AND claimed_by = '%s' ORDER BY priority ASC, created_at DESC LIMIT 50",
 		escaped)
-	csv, err := DoltSQLQuery(dbDir, claimedQ)
+	csv, err := db.Query(claimedQ, "")
 	if err != nil {
 		return nil, fmt.Errorf("dashboard claimed: %w", err)
 	}
@@ -317,7 +319,7 @@ func QueryMyDashboard(dbDir, handle string) (*DashboardData, error) {
 	reviewQ := fmt.Sprintf(
 		"SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted WHERE status = 'in_review' AND posted_by = '%s' ORDER BY priority ASC, created_at DESC LIMIT 50",
 		escaped)
-	csv, err = DoltSQLQuery(dbDir, reviewQ)
+	csv, err = db.Query(reviewQ, "")
 	if err != nil {
 		return nil, fmt.Errorf("dashboard in_review: %w", err)
 	}
@@ -327,7 +329,7 @@ func QueryMyDashboard(dbDir, handle string) (*DashboardData, error) {
 	completedQ := fmt.Sprintf(
 		"SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted WHERE status = 'completed' AND claimed_by = '%s' ORDER BY created_at DESC LIMIT 5",
 		escaped)
-	csv, err = DoltSQLQuery(dbDir, completedQ)
+	csv, err = db.Query(completedQ, "")
 	if err != nil {
 		return nil, fmt.Errorf("dashboard completed: %w", err)
 	}
@@ -337,8 +339,8 @@ func QueryMyDashboard(dbDir, handle string) (*DashboardData, error) {
 }
 
 // QueryMyDashboardBranchAware wraps QueryMyDashboard with branch overlay in PR mode.
-func QueryMyDashboardBranchAware(dbDir, mode, rigHandle string) (*DashboardData, error) {
-	data, err := QueryMyDashboard(dbDir, rigHandle)
+func QueryMyDashboardBranchAware(db DB, mode, rigHandle string) (*DashboardData, error) {
+	data, err := QueryMyDashboard(db, rigHandle)
 	if err != nil {
 		return nil, err
 	}
@@ -346,22 +348,21 @@ func QueryMyDashboardBranchAware(dbDir, mode, rigHandle string) (*DashboardData,
 		return data, nil
 	}
 
-	overrides := DetectBranchOverrides(dbDir, rigHandle)
+	overrides := DetectBranchOverrides(db, rigHandle)
 	if len(overrides) == 0 {
 		return data, nil
 	}
 
 	// Apply overrides to each section with its status+person filter.
-	data.Claimed = applyDashboardOverrides(dbDir, data.Claimed, overrides, "claimed", "claimed_by", rigHandle)
-	data.InReview = applyDashboardOverrides(dbDir, data.InReview, overrides, "in_review", "posted_by", rigHandle)
-	data.Completed = applyDashboardOverrides(dbDir, data.Completed, overrides, "completed", "claimed_by", rigHandle)
+	data.Claimed = applyDashboardOverrides(db, data.Claimed, overrides, "claimed", "claimed_by", rigHandle)
+	data.InReview = applyDashboardOverrides(db, data.InReview, overrides, "in_review", "posted_by", rigHandle)
+	data.Completed = applyDashboardOverrides(db, data.Completed, overrides, "completed", "claimed_by", rigHandle)
 
 	return data, nil
 }
 
 // applyDashboardOverrides applies branch overrides to a dashboard section.
-// statusFilter is the required status, personField/personValue filter by role.
-func applyDashboardOverrides(dbDir string, items []WantedSummary, overrides []BranchOverride, statusFilter, personField, personValue string) []WantedSummary {
+func applyDashboardOverrides(db DB, items []WantedSummary, overrides []BranchOverride, statusFilter, personField, personValue string) []WantedSummary {
 	if len(overrides) == 0 {
 		return items
 	}
@@ -392,9 +393,9 @@ func applyDashboardOverrides(dbDir string, items []WantedSummary, overrides []Br
 		if applied[o.WantedID] || o.Status != statusFilter {
 			continue
 		}
-		item, err := QueryWantedDetail(dbDir, o.WantedID)
+		item, err := QueryWantedDetail(db, o.WantedID)
 		if err != nil {
-			item, err = QueryWantedDetailAsOf(dbDir, o.WantedID, o.Branch)
+			item, err = QueryWantedDetailAsOf(db, o.WantedID, o.Branch)
 		}
 		if err != nil {
 			continue
@@ -427,50 +428,34 @@ func applyDashboardOverrides(dbDir string, items []WantedSummary, overrides []Br
 }
 
 // BrowseWantedBranchAware wraps BrowseWanted with branch overlay in PR mode.
-// Returns the items and a map of wanted IDs that have active branches.
-func BrowseWantedBranchAware(dbDir, mode, rigHandle string, f BrowseFilter) ([]WantedSummary, map[string]bool, error) {
-	items, err := BrowseWanted(dbDir, f)
+func BrowseWantedBranchAware(db DB, mode, rigHandle string, f BrowseFilter) ([]WantedSummary, map[string]bool, error) {
+	items, err := BrowseWanted(db, f)
 	if err != nil {
 		return nil, nil, err
 	}
 	branchIDs := make(map[string]bool)
 	if mode == "pr" {
-		overrides := DetectBranchOverrides(dbDir, rigHandle)
+		overrides := DetectBranchOverrides(db, rigHandle)
 		for _, o := range overrides {
 			branchIDs[o.WantedID] = true
 		}
-		items = ApplyBranchOverrides(dbDir, items, overrides, f.Status)
+		items = ApplyBranchOverrides(db, items, overrides, f.Status)
 	}
 	return items, branchIDs, nil
 }
 
-// QueryFullDetail fetches a wanted item with all related records (completion, stamp).
-func QueryFullDetail(dbDir, wantedID string) (*WantedItem, *CompletionRecord, *Stamp, error) {
-	item, err := QueryWantedDetail(dbDir, wantedID)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	var completion *CompletionRecord
-	var stamp *Stamp
-
-	if item.Status == "in_review" || item.Status == "completed" {
-		if c, err := QueryCompletion(dbDir, wantedID); err == nil {
-			completion = c
-			if c.StampID != "" {
-				if s, err := QueryStamp(dbDir, c.StampID); err == nil {
-					stamp = s
-				}
-			}
-		}
-	}
-
-	return item, completion, stamp, nil
+// QueryFullDetail fetches a wanted item with all related records.
+func QueryFullDetail(db DB, wantedID string) (*WantedItem, *CompletionRecord, *Stamp, error) {
+	return queryFullDetailRef(db, wantedID, "")
 }
 
 // QueryFullDetailAsOf fetches a wanted item with all related records from a specific ref.
-func QueryFullDetailAsOf(dbDir, wantedID, ref string) (*WantedItem, *CompletionRecord, *Stamp, error) {
-	item, err := QueryWantedDetailAsOf(dbDir, wantedID, ref)
+func QueryFullDetailAsOf(db DB, wantedID, ref string) (*WantedItem, *CompletionRecord, *Stamp, error) {
+	return queryFullDetailRef(db, wantedID, ref)
+}
+
+func queryFullDetailRef(db DB, wantedID, ref string) (*WantedItem, *CompletionRecord, *Stamp, error) {
+	item, err := queryWantedDetailRef(db, wantedID, ref)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -479,10 +464,10 @@ func QueryFullDetailAsOf(dbDir, wantedID, ref string) (*WantedItem, *CompletionR
 	var stamp *Stamp
 
 	if item.Status == "in_review" || item.Status == "completed" {
-		if c, err := QueryCompletionAsOf(dbDir, wantedID, ref); err == nil {
+		if c, err := queryCompletionRef(db, wantedID, ref); err == nil {
 			completion = c
 			if c.StampID != "" {
-				if s, err := QueryStampAsOf(dbDir, c.StampID, ref); err == nil {
+				if s, err := queryStampRef(db, c.StampID, ref); err == nil {
 					stamp = s
 				}
 			}
@@ -530,20 +515,19 @@ func (s *ItemState) Delta() string {
 }
 
 // ResolveItemState gives the complete picture of an item without checkout.
-// Uses AS OF queries exclusively — never mutates the working copy.
-func ResolveItemState(dbDir, rigHandle, wantedID string) (*ItemState, error) {
+func ResolveItemState(db DB, rigHandle, wantedID string) (*ItemState, error) {
 	state := &ItemState{WantedID: wantedID}
 
 	// Main state.
-	if item, err := QueryWantedDetail(dbDir, wantedID); err == nil {
+	if item, err := QueryWantedDetail(db, wantedID); err == nil {
 		state.Main = item
 	}
 
 	// Branch state (if exists).
-	branch := FindBranchForItem(dbDir, rigHandle, wantedID)
+	branch := FindBranchForItem(db, rigHandle, wantedID)
 	if branch != "" {
 		state.BranchName = branch
-		if item, err := QueryWantedDetailAsOf(dbDir, wantedID, branch); err == nil {
+		if item, err := QueryWantedDetailAsOf(db, wantedID, branch); err == nil {
 			state.Branch = item
 		}
 	}
@@ -551,22 +535,15 @@ func ResolveItemState(dbDir, rigHandle, wantedID string) (*ItemState, error) {
 	// Completion + stamp from effective source.
 	effective := state.Effective()
 	if effective != nil && (effective.Status == "in_review" || effective.Status == "completed") {
+		ref := ""
 		if branch != "" {
-			if c, err := QueryCompletionAsOf(dbDir, wantedID, branch); err == nil {
-				state.Completion = c
-				if c.StampID != "" {
-					if s, err := QueryStampAsOf(dbDir, c.StampID, branch); err == nil {
-						state.Stamp = s
-					}
-				}
-			}
-		} else {
-			if c, err := QueryCompletion(dbDir, wantedID); err == nil {
-				state.Completion = c
-				if c.StampID != "" {
-					if s, err := QueryStamp(dbDir, c.StampID); err == nil {
-						state.Stamp = s
-					}
+			ref = branch
+		}
+		if c, err := queryCompletionRef(db, wantedID, ref); err == nil {
+			state.Completion = c
+			if c.StampID != "" {
+				if s, err := queryStampRef(db, c.StampID, ref); err == nil {
+					state.Stamp = s
 				}
 			}
 		}

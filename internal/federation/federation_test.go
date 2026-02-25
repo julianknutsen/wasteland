@@ -230,6 +230,30 @@ func TestResolveProviderType(t *testing.T) {
 	}
 }
 
+func TestResolveBackend(t *testing.T) {
+	tests := []struct {
+		name     string
+		backend  string
+		localDir string
+		want     string
+	}{
+		{"explicit local", "local", "/some/dir", "local"},
+		{"explicit remote", "remote", "/some/dir", "remote"},
+		{"explicit remote no dir", "remote", "", "remote"},
+		{"empty with local dir defaults to local", "", "/some/dir", "local"},
+		{"empty without local dir defaults to remote", "", "", "remote"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{Backend: tc.backend, LocalDir: tc.localDir}
+			got := cfg.ResolveBackend()
+			if got != tc.want {
+				t.Errorf("ResolveBackend() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestIsGitHub(t *testing.T) {
 	tests := []struct {
 		name         string

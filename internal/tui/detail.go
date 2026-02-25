@@ -34,7 +34,7 @@ type detailModel struct {
 	err        error
 
 	// Mutation state.
-	dbDir          string
+	// dbDir was removed; DB is now on Config
 	rigHandle      string
 	mode           string
 	branch         string              // non-empty when showing branch state
@@ -53,10 +53,9 @@ type detailModel struct {
 	acceptForm *acceptFormModel
 }
 
-func newDetailModel(dbDir, rigHandle, mode string) detailModel {
+func newDetailModel(rigHandle, mode string) detailModel {
 	s := spinner.New(spinner.WithSpinner(spinner.Dot))
 	return detailModel{
-		dbDir:     dbDir,
 		rigHandle: rigHandle,
 		mode:      mode,
 		spinner:   s,

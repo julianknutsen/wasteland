@@ -10,7 +10,7 @@ import (
 )
 
 func TestRootModel_DelegatesToBrowse(t *testing.T) {
-	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
 	// Simulate initial load completing.
 	m.browse.loading = false
 	m.width = 80
@@ -40,7 +40,7 @@ func TestRootModel_DelegatesToBrowse(t *testing.T) {
 }
 
 func TestRootModel_SearchKey(t *testing.T) {
-	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
 	m.browse.loading = false
 	m.width = 80
 	m.height = 24
@@ -62,7 +62,7 @@ func TestRootModel_SearchKey(t *testing.T) {
 }
 
 func TestRootModel_TypeKey(t *testing.T) {
-	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
 	m.browse.loading = false
 	m.width = 80
 	m.height = 24
@@ -89,7 +89,7 @@ func TestRootModel_TypeKey(t *testing.T) {
 // newDetailForTest creates a detail model with a loaded item for mutation testing.
 func newDetailForTest(status, postedBy, claimedBy, mode string) Model {
 	m := New(Config{
-		DBDir:     "/tmp/fake",
+		DB:        nil,
 		RigHandle: "test-rig",
 		Upstream:  "test/db",
 		Mode:      mode,
@@ -475,7 +475,7 @@ func TestDetail_ExecutingState_IgnoresKeys(t *testing.T) {
 }
 
 func TestRootModel_MeKey_NavigatesToMe(t *testing.T) {
-	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
 	m.browse.loading = false
 	m.width = 80
 	m.height = 24
@@ -513,7 +513,7 @@ func TestRootModel_MeKey_NavigatesToMe(t *testing.T) {
 }
 
 func TestRootModel_MeDataMsg_SetsData(t *testing.T) {
-	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
 	m.active = viewMe
 	m.me.loading = true
 	m.width = 80
@@ -539,7 +539,7 @@ func TestRootModel_MeDataMsg_SetsData(t *testing.T) {
 }
 
 func TestMe_EscReturns(t *testing.T) {
-	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
 	m.active = viewMe
 	m.me.loading = false
 	m.me.data = &commons.DashboardData{}
@@ -564,7 +564,7 @@ func TestMe_EscReturns(t *testing.T) {
 }
 
 func TestMe_EnterOpensDetail(t *testing.T) {
-	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
 	m.active = viewMe
 	m.width = 80
 	m.height = 24
@@ -628,7 +628,7 @@ func TestMe_View_ShowsSections(t *testing.T) {
 }
 
 func TestRootModel_ProjectFilter_RoundTrip(t *testing.T) {
-	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
 	m.browse.loading = false
 	m.width = 80
 	m.height = 24
@@ -865,7 +865,7 @@ func TestDelta_ResultMsg_Discarded_NavigatesToBrowse(t *testing.T) {
 }
 
 func TestMe_View_Hints(t *testing.T) {
-	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
 	m.active = viewMe
 	m.me.loading = false
 	m.me.data = &commons.DashboardData{}
@@ -880,7 +880,7 @@ func TestMe_View_Hints(t *testing.T) {
 
 func TestRootModel_SettingsKey_NavigatesToSettings(t *testing.T) {
 	m := New(Config{
-		DBDir:     "/tmp/fake",
+		DB:        nil,
 		RigHandle: "test",
 		Upstream:  "test/db",
 		Mode:      "wild-west",
@@ -926,7 +926,7 @@ func TestRootModel_SettingsKey_NavigatesToSettings(t *testing.T) {
 }
 
 func TestRootModel_SettingsFromMe(t *testing.T) {
-	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db", Mode: "wild-west"})
+	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db", Mode: "wild-west"})
 	m.active = viewMe
 	m.me.loading = false
 	m.me.data = &commons.DashboardData{}
@@ -951,7 +951,7 @@ func TestRootModel_SettingsFromMe(t *testing.T) {
 
 func TestRootModel_SettingsSavedMsg_UpdatesConfig(t *testing.T) {
 	m := New(Config{
-		DBDir:     "/tmp/fake",
+		DB:        nil,
 		RigHandle: "test",
 		Upstream:  "test/db",
 		Mode:      "wild-west",
@@ -981,7 +981,7 @@ func TestRootModel_SettingsSavedMsg_UpdatesConfig(t *testing.T) {
 
 func TestRootModel_SettingsSavedMsg_Error(t *testing.T) {
 	m := New(Config{
-		DBDir:     "/tmp/fake",
+		DB:        nil,
 		RigHandle: "test",
 		Upstream:  "test/db",
 		Mode:      "wild-west",
@@ -1003,7 +1003,7 @@ func TestRootModel_SettingsSavedMsg_Error(t *testing.T) {
 }
 
 func TestSettings_BrowseHints_ShowsSettingsKey(t *testing.T) {
-	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m := New(Config{DB: nil, RigHandle: "test", Upstream: "test/db"})
 	m.browse.loading = false
 	m.width = 80
 	m.height = 24
@@ -1186,7 +1186,7 @@ func TestDetail_SubmitResultMsg_Error(t *testing.T) {
 func TestDetail_SubmitOpenedMsg_DispatchesFetchDiff(t *testing.T) {
 	diffCalled := false
 	m := New(Config{
-		DBDir:     "/tmp/fake",
+		DB:        nil,
 		RigHandle: "test-rig",
 		Upstream:  "test/db",
 		Mode:      "pr",

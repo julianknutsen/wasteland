@@ -66,6 +66,9 @@ type Config struct {
 	// Mode is the workflow mode: "" or "wild-west" (default) or "pr".
 	Mode string `json:"mode,omitempty"`
 
+	// Backend is the database backend: "remote" (DoltHub API, default) or "local" (dolt CLI).
+	Backend string `json:"backend,omitempty"`
+
 	// Signing enables GPG-signed Dolt commits when true.
 	Signing bool `json:"signing,omitempty"`
 
@@ -81,6 +84,30 @@ func (c *Config) ResolveMode() string {
 		return ModeWildWest
 	}
 	return c.Mode
+}
+
+// Backend constants.
+const (
+	BackendRemote = "remote"
+	BackendLocal  = "local"
+)
+
+// ResolveBackend returns the effective backend.
+// Explicit "local" or "remote" values are returned as-is.
+// When unset, defaults to "local" if LocalDir is configured (backward compat),
+// "remote" otherwise (new remote-only users).
+func (c *Config) ResolveBackend() string {
+	switch c.Backend {
+	case BackendLocal:
+		return BackendLocal
+	case BackendRemote:
+		return BackendRemote
+	default:
+		if c.LocalDir != "" {
+			return BackendLocal
+		}
+		return BackendRemote
+	}
 }
 
 // ResolveProviderType returns the effective provider type.
@@ -283,6 +310,7 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 		ForkOrg:      forkOrg,
 		ForkDB:       upstreamDB,
 		LocalDir:     localDir,
+		Backend:      BackendLocal,
 		RigHandle:    handle,
 		HopURI:       hopURI,
 		JoinedAt:     time.Now(),
