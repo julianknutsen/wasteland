@@ -154,6 +154,19 @@ func (m Model) Update(msg bubbletea.Msg) (bubbletea.Model, bubbletea.Cmd) {
 			return m, nil
 		}
 		if msg.detail != nil {
+			// PR mode: if the branch status now matches main, the delta
+			// is a no-op (e.g. claim then unclaim). Auto-cleanup the branch
+			// which also closes any upstream PR (providers close PRs when
+			// the source branch is deleted).
+			if msg.detail.mainStatus != "" && msg.detail.item != nil &&
+				msg.detail.item.Status == msg.detail.mainStatus {
+				branch := msg.hint
+				return m, func() bubbletea.Msg {
+					_ = commons.DeleteBranch(m.cfg.DBDir, branch)
+					_ = commons.DeleteRemoteBranch(m.cfg.DBDir, "origin", branch)
+					return deltaResultMsg{hint: "discarded"}
+				}
+			}
 			// PR mode: apply the detail read from the branch so the
 			// view reflects the updated state even though main hasn't changed.
 			m.detail.setData(*msg.detail)
