@@ -10,6 +10,20 @@ import (
 	"time"
 )
 
+// doltRetry runs fn up to 3 times with backoff (1s, 2s) between attempts.
+func doltRetry(fn func() error) error {
+	var err error
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			time.Sleep(time.Duration(i) * time.Second)
+		}
+		if err = fn(); err == nil {
+			return nil
+		}
+	}
+	return err
+}
+
 // DoltHubToken returns the DoltHub API token from the environment.
 func DoltHubToken() string {
 	return os.Getenv("DOLTHUB_TOKEN")
@@ -48,27 +62,31 @@ func PushWithSync(dbDir string, stdout io.Writer) error {
 }
 
 func pushRemote(dbDir, remote string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "dolt", "push", remote, "main")
-	cmd.Dir = dbDir
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("dolt push %s main: %w (%s)", remote, err, strings.TrimSpace(string(output)))
-	}
-	return nil
+	return doltRetry(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "dolt", "push", remote, "main")
+		cmd.Dir = dbDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("dolt push %s main: %w (%s)", remote, err, strings.TrimSpace(string(output)))
+		}
+		return nil
+	})
 }
 
 func pullRemote(dbDir, remote string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "dolt", "pull", remote, "main")
-	cmd.Dir = dbDir
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("dolt pull %s main: %w (%s)", remote, err, strings.TrimSpace(string(output)))
-	}
-	return nil
+	return doltRetry(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "dolt", "pull", remote, "main")
+		cmd.Dir = dbDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("dolt pull %s main: %w (%s)", remote, err, strings.TrimSpace(string(output)))
+		}
+		return nil
+	})
 }
 
 // PullUpstream pulls the latest changes from the upstream remote.
@@ -76,17 +94,28 @@ func PullUpstream(dbDir string) error {
 	return pullRemote(dbDir, "upstream")
 }
 
+// ResetMainToUpstream fetches upstream and hard-resets local main to match.
+// Used in PR mode where main should always mirror upstream exactly.
+func ResetMainToUpstream(dbDir string) error {
+	if err := FetchRemote(dbDir, "upstream"); err != nil {
+		return err
+	}
+	return doltExec(dbDir, "reset", "--hard", "upstream/main")
+}
+
 // FetchRemote fetches the latest refs from a named remote without merging.
 func FetchRemote(dbDir, remote string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "dolt", "fetch", remote)
-	cmd.Dir = dbDir
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("dolt fetch %s: %w (%s)", remote, err, strings.TrimSpace(string(output)))
-	}
-	return nil
+	return doltRetry(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "dolt", "fetch", remote)
+		cmd.Dir = dbDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("dolt fetch %s: %w (%s)", remote, err, strings.TrimSpace(string(output)))
+		}
+		return nil
+	})
 }
 
 // doltSQLScript executes a SQL script against a dolt database directory.
@@ -103,16 +132,17 @@ func doltSQLScript(dbDir, script string) error {
 	}
 	_ = tmpFile.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "dolt", "sql", "--file", tmpFile.Name())
-	cmd.Dir = dbDir
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("%w (output: %s)", err, strings.TrimSpace(string(output)))
-	}
-	return nil
+	return doltRetry(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "dolt", "sql", "--file", tmpFile.Name())
+		cmd.Dir = dbDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("%w (output: %s)", err, strings.TrimSpace(string(output)))
+		}
+		return nil
+	})
 }
 
 // BranchName returns the conventional branch name for a PR-mode mutation.
@@ -153,6 +183,27 @@ func CheckoutBranch(dbDir, branch string) error {
 	return doltExec(dbDir, "checkout", branch)
 }
 
+// CheckoutBranchFrom creates a branch from startPoint (deleting any existing
+// branch first), then checks it out. Used in PR mode to ensure branches start
+// from a clean upstream-aligned base rather than a potentially dirty HEAD.
+func CheckoutBranchFrom(dbDir, branch, startPoint string) error {
+	exists, err := BranchExists(dbDir, branch)
+	if err != nil {
+		return fmt.Errorf("checking branch %s: %w", branch, err)
+	}
+	if exists {
+		// Delete and recreate from the specified start point so the branch
+		// doesn't carry stale commits from a previous dirty main.
+		if err := doltExec(dbDir, "branch", "-D", branch); err != nil {
+			return fmt.Errorf("deleting stale branch %s: %w", branch, err)
+		}
+	}
+	if err := doltExec(dbDir, "branch", branch, startPoint); err != nil {
+		return fmt.Errorf("creating branch %s from %s: %w", branch, startPoint, err)
+	}
+	return doltExec(dbDir, "checkout", branch)
+}
+
 // CheckoutMain switches the working directory back to the main branch.
 func CheckoutMain(dbDir string) error {
 	return doltExec(dbDir, "checkout", "main")
@@ -160,29 +211,37 @@ func CheckoutMain(dbDir string) error {
 
 // doltExec runs a dolt CLI command in the given database directory.
 func doltExec(dbDir string, args ...string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "dolt", args...)
-	cmd.Dir = dbDir
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("dolt %s: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
-	}
-	return nil
+	return doltRetry(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "dolt", args...)
+		cmd.Dir = dbDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("dolt %s: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+		}
+		return nil
+	})
 }
 
 // PushBranch force-pushes a named branch to origin.
 // Force is always used because wl/* branches on the user's own fork may
 // have diverged history after redo operations (unclaim then re-claim, etc.).
 func PushBranch(dbDir, branch string, stdout io.Writer) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "dolt", "push", "--force", "origin", branch)
-	cmd.Dir = dbDir
-	output, err := cmd.CombinedOutput()
+	err := doltRetry(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "dolt", "push", "--force", "origin", branch)
+		cmd.Dir = dbDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("push branch %s: %w (%s)", branch, err, strings.TrimSpace(string(output)))
+		}
+		return nil
+	})
 	if err != nil {
-		fmt.Fprintf(stdout, "  warning: push branch %s to origin failed: %v (%s)\n", branch, err, strings.TrimSpace(string(output)))
-		return fmt.Errorf("push branch %s: %w", branch, err)
+		fmt.Fprintf(stdout, "  warning: %v\n", err)
+		return err
 	}
 	fmt.Fprintf(stdout, "  Pushed branch %s to origin\n", branch)
 	return nil
@@ -236,15 +295,17 @@ func DeleteBranch(dbDir, branch string) error {
 
 // DeleteRemoteBranch deletes a branch on a named remote using refspec syntax.
 func DeleteRemoteBranch(dbDir, remote, branch string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "dolt", "push", remote, ":"+branch)
-	cmd.Dir = dbDir
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("dolt push %s :%s: %w (%s)", remote, branch, err, strings.TrimSpace(string(output)))
-	}
-	return nil
+	return doltRetry(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "dolt", "push", remote, ":"+branch)
+		cmd.Dir = dbDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("dolt push %s :%s: %w (%s)", remote, branch, err, strings.TrimSpace(string(output)))
+		}
+		return nil
+	})
 }
 
 // EnsureGitHubRemote adds a "github" Dolt remote pointing to the rig's
@@ -286,18 +347,24 @@ func PushBranchToRemote(dbDir, remote, branch string, stdout io.Writer) error {
 
 // PushBranchToRemoteForce pushes a branch to a named remote, optionally with --force.
 func PushBranchToRemoteForce(dbDir, remote, branch string, force bool, stdout io.Writer) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	args := []string{"push"}
-	if force {
-		args = append(args, "--force")
-	}
-	args = append(args, remote, branch)
-	cmd := exec.CommandContext(ctx, "dolt", args...)
-	cmd.Dir = dbDir
-	output, err := cmd.CombinedOutput()
+	err := doltRetry(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		args := []string{"push"}
+		if force {
+			args = append(args, "--force")
+		}
+		args = append(args, remote, branch)
+		cmd := exec.CommandContext(ctx, "dolt", args...)
+		cmd.Dir = dbDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("dolt push %s %s: %w (%s)", remote, branch, err, strings.TrimSpace(string(output)))
+		}
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("dolt push %s %s: %w (%s)", remote, branch, err, strings.TrimSpace(string(output)))
+		return err
 	}
 	fmt.Fprintf(stdout, "  Pushed branch %s to %s\n", branch, remote)
 	return nil
@@ -382,14 +449,18 @@ func QueryItemStatusAsOf(dbDir, wantedID, ref string) string {
 
 // DoltSQLQuery executes a SQL query and returns the raw CSV output.
 func DoltSQLQuery(dbDir, query string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "dolt", "sql", "-r", "csv", "-q", query)
-	cmd.Dir = dbDir
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("dolt sql query failed: %w (%s)", err, strings.TrimSpace(string(output)))
-	}
-	return string(output), nil
+	var result string
+	err := doltRetry(func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "dolt", "sql", "-r", "csv", "-q", query)
+		cmd.Dir = dbDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("dolt sql query failed: %w (%s)", err, strings.TrimSpace(string(output)))
+		}
+		result = string(output)
+		return nil
+	})
+	return result, err
 }

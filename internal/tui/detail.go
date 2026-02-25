@@ -449,6 +449,8 @@ func (m detailModel) renderContent() string {
 		b.WriteString(fmt.Sprintf("  %s %s", m.spinner.View(), m.executingLabel))
 	case m.result != "":
 		b.WriteString("  " + m.result)
+		b.WriteByte('\n')
+		b.WriteString(styleDim.Render(m.actionHints()))
 	default:
 		b.WriteString(styleDim.Render(m.actionHints()))
 	}

@@ -381,7 +381,10 @@ func executePRMutation(cfg Config, wantedID string, t commons.Transition) action
 	// Query main status before checking out the branch.
 	mainStatus := commons.QueryItemStatusAsOf(cfg.DBDir, wantedID, "main")
 
-	if err := commons.CheckoutBranch(cfg.DBDir, branch); err != nil {
+	// Create branch from main (which is reset to upstream at TUI startup).
+	// This ensures the branch only contains this item's mutation, not stale
+	// local-only commits from previous operations.
+	if err := commons.CheckoutBranchFrom(cfg.DBDir, branch, "main"); err != nil {
 		return actionResultMsg{err: fmt.Errorf("checkout branch: %w", err)}
 	}
 
@@ -536,7 +539,7 @@ func executePRDoneMutation(cfg Config, wantedID, evidence string) actionResultMs
 	branch := commons.BranchName(cfg.RigHandle, wantedID)
 	mainStatus := commons.QueryItemStatusAsOf(cfg.DBDir, wantedID, "main")
 
-	if err := commons.CheckoutBranch(cfg.DBDir, branch); err != nil {
+	if err := commons.CheckoutBranchFrom(cfg.DBDir, branch, "main"); err != nil {
 		return actionResultMsg{err: fmt.Errorf("checkout branch: %w", err)}
 	}
 
@@ -583,7 +586,7 @@ func executePRAcceptMutation(cfg Config, wantedID string, msg acceptSubmitMsg, c
 	branch := commons.BranchName(cfg.RigHandle, wantedID)
 	mainStatus := commons.QueryItemStatusAsOf(cfg.DBDir, wantedID, "main")
 
-	if err := commons.CheckoutBranch(cfg.DBDir, branch); err != nil {
+	if err := commons.CheckoutBranchFrom(cfg.DBDir, branch, "main"); err != nil {
 		return actionResultMsg{err: fmt.Errorf("checkout branch: %w", err)}
 	}
 

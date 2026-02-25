@@ -38,10 +38,16 @@ func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 
 	// Sync before launching the TUI.
 	sp := style.StartSpinner(stderr, "Syncing with upstream...")
-	err = commons.PullUpstream(cfg.LocalDir)
+	if cfg.ResolveMode() == federation.ModePR {
+		// PR mode: hard-reset local main to upstream so it's a clean mirror.
+		// Mutations live on per-item branches; main must not carry local-only commits.
+		err = commons.ResetMainToUpstream(cfg.LocalDir)
+	} else {
+		err = commons.PullUpstream(cfg.LocalDir)
+	}
 	sp.Stop()
 	if err != nil {
-		return fmt.Errorf("pulling upstream: %w", err)
+		return fmt.Errorf("syncing with upstream: %w", err)
 	}
 
 	// PR mode: force-push main to origin so it matches upstream.
