@@ -39,6 +39,11 @@ func (l *LocalDB) Exec(branch, commitMsg string, signed bool, stmts ...string) e
 		}
 	}
 
+	// Ensure each statement ends with a semicolon before joining.
+	for i, s := range stmts {
+		s = strings.TrimRight(s, "; \t\n")
+		stmts[i] = s + ";"
+	}
 	script := strings.Join(stmts, "\n") + "\n"
 	script += "CALL DOLT_ADD('-A');\n"
 	script += commons.CommitSQL(commitMsg, signed)
