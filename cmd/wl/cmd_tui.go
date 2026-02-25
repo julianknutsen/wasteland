@@ -53,11 +53,26 @@ func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 	upstream := cfg.Upstream
 
 	m := tui.New(tui.Config{
-		DBDir:     cfg.LocalDir,
-		RigHandle: cfg.RigHandle,
-		Upstream:  upstream,
-		Mode:      cfg.ResolveMode(),
-		Signing:   cfg.Signing,
+		DBDir:        cfg.LocalDir,
+		RigHandle:    cfg.RigHandle,
+		Upstream:     upstream,
+		Mode:         cfg.ResolveMode(),
+		Signing:      cfg.Signing,
+		ProviderType: cfg.ResolveProviderType(),
+		ForkOrg:      cfg.ForkOrg,
+		ForkDB:       cfg.ForkDB,
+		LocalDir:     cfg.LocalDir,
+		JoinedAt:     cfg.JoinedAt.Format("2006-01-02"),
+		SaveConfig: func(mode string, signing bool) error {
+			store := federation.NewConfigStore()
+			c, err := store.Load(cfg.Upstream)
+			if err != nil {
+				return err
+			}
+			c.Mode = mode
+			c.Signing = signing
+			return store.Save(c)
+		},
 	})
 
 	p := bubbletea.NewProgram(m, bubbletea.WithAltScreen())

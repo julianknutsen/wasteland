@@ -9,6 +9,7 @@ const (
 	viewBrowse activeView = iota
 	viewDetail
 	viewMe
+	viewSettings
 )
 
 // navigateMsg requests a view switch.
@@ -86,4 +87,11 @@ type deltaConfirmedMsg struct {
 type deltaResultMsg struct {
 	err  error
 	hint string
+}
+
+// settingsSavedMsg carries the result of saving settings.
+type settingsSavedMsg struct {
+	mode    string
+	signing bool
+	err     error
 }

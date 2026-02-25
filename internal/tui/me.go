@@ -94,6 +94,11 @@ func (m meModel) update(msg bubbletea.Msg) (meModel, bubbletea.Cmd) {
 			return m, func() bubbletea.Msg {
 				return navigateMsg{view: viewBrowse}
 			}
+
+		case key.Matches(msg, keys.Settings):
+			return m, func() bubbletea.Msg {
+				return navigateMsg{view: viewSettings}
+			}
 		}
 	}
 	return m, nil

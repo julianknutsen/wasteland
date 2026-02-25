@@ -27,6 +27,7 @@ type keyMap struct {
 	Discard  key.Binding
 	Confirm  key.Binding
 	Cancel   key.Binding
+	Settings key.Binding
 }
 
 var keys = keyMap{
@@ -125,5 +126,9 @@ var keys = keyMap{
 	Cancel: key.NewBinding(
 		key.WithKeys("n"),
 		key.WithHelp("n", "cancel"),
+	),
+	Settings: key.NewBinding(
+		key.WithKeys("S"),
+		key.WithHelp("S", "settings"),
 	),
 }

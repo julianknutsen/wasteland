@@ -18,6 +18,16 @@ type Config struct {
 	Upstream  string // upstream identifier for display
 	Mode      string // "wild-west" or "pr"
 	Signing   bool   // GPG-signed dolt commits
+
+	// Settings view: read-only context
+	ProviderType string
+	ForkOrg      string
+	ForkDB       string
+	LocalDir     string
+	JoinedAt     string
+
+	// Settings persistence (nil = settings read-only)
+	SaveConfig func(mode string, signing bool) error
 }
 
 // Model is the root TUI model that routes between views.
@@ -27,6 +37,7 @@ type Model struct {
 	browse   browseModel
 	detail   detailModel
 	me       meModel
+	settings settingsModel
 	bar      statusBar
 	width    int
 	height   int
@@ -37,12 +48,13 @@ type Model struct {
 // New creates a new root TUI model.
 func New(cfg Config) Model {
 	return Model{
-		cfg:    cfg,
-		active: viewBrowse,
-		browse: newBrowseModel(),
-		detail: newDetailModel(cfg.DBDir, cfg.RigHandle, cfg.Mode),
-		me:     newMeModel(),
-		bar:    newStatusBar(fmt.Sprintf("%s@%s", cfg.RigHandle, cfg.Upstream)),
+		cfg:      cfg,
+		active:   viewBrowse,
+		browse:   newBrowseModel(),
+		detail:   newDetailModel(cfg.DBDir, cfg.RigHandle, cfg.Mode),
+		me:       newMeModel(),
+		settings: newSettingsModel(cfg.Mode, cfg.Signing),
+		bar:      newStatusBar(fmt.Sprintf("%s@%s", cfg.RigHandle, cfg.Upstream)),
 	}
 }
 
@@ -67,6 +79,7 @@ func (m Model) Update(msg bubbletea.Msg) (bubbletea.Model, bubbletea.Cmd) {
 		m.browse.setSize(msg.Width, msg.Height-1) // -1 for statusbar
 		m.detail.setSize(msg.Width, msg.Height-1)
 		m.me.setSize(msg.Width, msg.Height-1)
+		m.settings.setSize(msg.Width, msg.Height-1)
 
 	case navigateMsg:
 		m.active = msg.view
@@ -78,6 +91,9 @@ func (m Model) Update(msg bubbletea.Msg) (bubbletea.Model, bubbletea.Cmd) {
 		case viewMe:
 			m.me.loading = true
 			return m, fetchMe(m.cfg)
+		case viewSettings:
+			m.settings.sync(m.cfg.Mode, m.cfg.Signing)
+			return m, nil
 		}
 
 	case browseDataMsg:
@@ -179,6 +195,19 @@ func (m Model) Update(msg bubbletea.Msg) (bubbletea.Model, bubbletea.Cmd) {
 		// Delta resolved — re-fetch detail from main (branch is gone).
 		return m, fetchDetail(m.cfg, m.detail.item.ID)
 
+	case settingsSavedMsg:
+		if msg.err != nil {
+			m.settings.result = styleError.Render("Error: " + msg.err.Error())
+			return m, nil
+		}
+		m.cfg.Mode = msg.mode
+		m.cfg.Signing = msg.signing
+		m.detail.mode = msg.mode
+		m.settings.mode = msg.mode
+		m.settings.signing = msg.signing
+		m.settings.result = styleSuccess.Render("Saved")
+		return m, nil
+
 	case errMsg:
 		m.err = msg.err
 		return m, nil
@@ -193,6 +222,8 @@ func (m Model) Update(msg bubbletea.Msg) (bubbletea.Model, bubbletea.Cmd) {
 		m.detail, cmd = m.detail.update(msg)
 	case viewMe:
 		m.me, cmd = m.me.update(msg)
+	case viewSettings:
+		m.settings, cmd = m.settings.update(msg, m.cfg)
 	}
 	return m, cmd
 }
@@ -209,13 +240,16 @@ func (m Model) View() string {
 	switch m.active {
 	case viewBrowse:
 		content = m.browse.view()
-		hints = "j/k: navigate  enter: open  s/t/p/o: filters  i: mine  P: project  /: search  m: me  q: quit"
+		hints = "j/k: navigate  enter: open  s/t/p/o: filters  i: mine  P: project  /: search  m: me  S: settings  q: quit"
 	case viewDetail:
 		content = m.detail.view()
 		hints = "esc: back  j/k: scroll  c/u/x/X/D: actions  q: quit"
 	case viewMe:
 		content = m.me.view()
-		hints = "j/k: navigate  enter: open  esc: back  q: quit"
+		hints = "j/k: navigate  enter: open  esc: back  S: settings  q: quit"
+	case viewSettings:
+		content = m.settings.view(m.cfg)
+		hints = "j/k: select  enter: toggle  esc: back  q: quit"
 	}
 
 	// Pad content to fill available height.

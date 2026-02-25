@@ -163,6 +163,11 @@ func (m browseModel) update(msg bubbletea.Msg, cfg Config) (browseModel, bubblet
 			return m, func() bubbletea.Msg {
 				return navigateMsg{view: viewMe}
 			}
+
+		case key.Matches(msg, keys.Settings):
+			return m, func() bubbletea.Msg {
+				return navigateMsg{view: viewSettings}
+			}
 		}
 	}
 

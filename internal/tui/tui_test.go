@@ -837,3 +837,140 @@ func TestMe_View_Hints(t *testing.T) {
 		t.Errorf("me view hints should contain 'esc: back', got:\n%s", v)
 	}
 }
+
+func TestRootModel_SettingsKey_NavigatesToSettings(t *testing.T) {
+	m := New(Config{
+		DBDir:     "/tmp/fake",
+		RigHandle: "test",
+		Upstream:  "test/db",
+		Mode:      "wild-west",
+		Signing:   false,
+	})
+	m.browse.loading = false
+	m.width = 80
+	m.height = 24
+	m.browse.setSize(80, 23)
+
+	// Press 'S' to navigate to settings.
+	result, cmd := m.Update(keyMsg("S"))
+	_ = result.(Model)
+
+	if cmd == nil {
+		t.Fatal("after 'S': expected a cmd, got nil")
+	}
+
+	msg := cmd()
+	nav, ok := msg.(navigateMsg)
+	if !ok {
+		t.Fatalf("expected navigateMsg, got %T", msg)
+	}
+	if nav.view != viewSettings {
+		t.Errorf("expected viewSettings, got %d", nav.view)
+	}
+
+	// Feed the navigate msg back in.
+	result, _ = m.Update(nav)
+	m2 := result.(Model)
+	if m2.active != viewSettings {
+		t.Errorf("active = %d, want viewSettings", m2.active)
+	}
+
+	// View should show settings content.
+	v := m2.View()
+	if !strings.Contains(v, "Settings") {
+		t.Errorf("view should contain 'Settings', got:\n%s", v)
+	}
+	if !strings.Contains(v, "j/k: select") {
+		t.Errorf("hints should contain 'j/k: select', got:\n%s", v)
+	}
+}
+
+func TestRootModel_SettingsFromMe(t *testing.T) {
+	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db", Mode: "wild-west"})
+	m.active = viewMe
+	m.me.loading = false
+	m.me.data = &commons.DashboardData{}
+	m.width = 80
+	m.height = 24
+
+	result, cmd := m.Update(keyMsg("S"))
+	_ = result.(Model)
+
+	if cmd == nil {
+		t.Fatal("after 'S' from me: expected a cmd, got nil")
+	}
+	msg := cmd()
+	nav, ok := msg.(navigateMsg)
+	if !ok {
+		t.Fatalf("expected navigateMsg, got %T", msg)
+	}
+	if nav.view != viewSettings {
+		t.Errorf("expected viewSettings, got %d", nav.view)
+	}
+}
+
+func TestRootModel_SettingsSavedMsg_UpdatesConfig(t *testing.T) {
+	m := New(Config{
+		DBDir:     "/tmp/fake",
+		RigHandle: "test",
+		Upstream:  "test/db",
+		Mode:      "wild-west",
+		Signing:   false,
+	})
+	m.active = viewSettings
+	m.width = 80
+	m.height = 24
+
+	// Simulate a settings save.
+	result, _ := m.Update(settingsSavedMsg{mode: "pr", signing: true})
+	m2 := result.(Model)
+
+	if m2.cfg.Mode != "pr" {
+		t.Errorf("cfg.Mode = %q, want %q", m2.cfg.Mode, "pr")
+	}
+	if !m2.cfg.Signing {
+		t.Error("cfg.Signing should be true")
+	}
+	if m2.detail.mode != "pr" {
+		t.Errorf("detail.mode = %q, want %q", m2.detail.mode, "pr")
+	}
+	if !strings.Contains(m2.settings.result, "Saved") {
+		t.Errorf("settings.result should contain 'Saved', got %q", m2.settings.result)
+	}
+}
+
+func TestRootModel_SettingsSavedMsg_Error(t *testing.T) {
+	m := New(Config{
+		DBDir:     "/tmp/fake",
+		RigHandle: "test",
+		Upstream:  "test/db",
+		Mode:      "wild-west",
+	})
+	m.active = viewSettings
+	m.width = 80
+	m.height = 24
+
+	result, _ := m.Update(settingsSavedMsg{mode: "pr", signing: true, err: fmt.Errorf("disk full")})
+	m2 := result.(Model)
+
+	// Config should NOT be updated on error.
+	if m2.cfg.Mode != "wild-west" {
+		t.Errorf("cfg.Mode = %q, want %q (unchanged)", m2.cfg.Mode, "wild-west")
+	}
+	if !strings.Contains(m2.settings.result, "disk full") {
+		t.Errorf("settings.result should contain error, got %q", m2.settings.result)
+	}
+}
+
+func TestSettings_BrowseHints_ShowsSettingsKey(t *testing.T) {
+	m := New(Config{DBDir: "/tmp/fake", RigHandle: "test", Upstream: "test/db"})
+	m.browse.loading = false
+	m.width = 80
+	m.height = 24
+	m.browse.setSize(80, 23)
+
+	v := m.View()
+	if !strings.Contains(v, "S: settings") {
+		t.Errorf("browse hints should contain 'S: settings', got:\n%s", v)
+	}
+}
