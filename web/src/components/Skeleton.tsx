@@ -1,4 +1,4 @@
-import styles from './Skeleton.module.css';
+import styles from "./Skeleton.module.css";
 
 interface SkeletonProps {
   width?: string;
@@ -7,16 +7,11 @@ interface SkeletonProps {
 }
 
 export function Skeleton({ width, height, className }: SkeletonProps) {
-  return (
-    <div
-      className={`${styles.skeleton} ${className ?? ''}`}
-      style={{ width, height }}
-    />
-  );
+  return <div className={`${styles.skeleton} ${className ?? ""}`} style={{ width, height }} />;
 }
 
 export function SkeletonLine({ width }: { width?: string }) {
-  return <div className={styles.line} style={{ width: width ?? '100%' }} />;
+  return <div className={styles.line} style={{ width: width ?? "100%" }} />;
 }
 
 export function SkeletonBadge() {

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react";
 
 export function useFocusTrap(active: boolean) {
   const ref = useRef<HTMLDivElement>(null);
@@ -19,7 +19,7 @@ export function useFocusTrap(active: boolean) {
     }
 
     const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return;
+      if (e.key !== "Tab") return;
 
       const els = focusable();
       if (els.length === 0) return;
@@ -40,8 +40,8 @@ export function useFocusTrap(active: boolean) {
       }
     };
 
-    container.addEventListener('keydown', handler);
-    return () => container.removeEventListener('keydown', handler);
+    container.addEventListener("keydown", handler);
+    return () => container.removeEventListener("keydown", handler);
   }, [active]);
 
   return ref;

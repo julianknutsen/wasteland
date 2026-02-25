@@ -1,4 +1,6 @@
-.page {}
+.page {
+  /* layout container — no styles needed */
+}
 
 .header {
   margin-bottom: var(--space-4);

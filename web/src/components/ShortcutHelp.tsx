@@ -1,4 +1,4 @@
-import styles from './ShortcutHelp.module.css';
+import styles from "./ShortcutHelp.module.css";
 
 interface ShortcutHelpProps {
   open: boolean;
@@ -7,28 +7,28 @@ interface ShortcutHelpProps {
 
 const shortcuts = [
   {
-    title: 'Navigation',
+    title: "Navigation",
     items: [
-      { label: 'Board', key: 'g b' },
-      { label: 'Dashboard', key: 'g d' },
-      { label: 'Settings', key: 'g s' },
+      { label: "Board", key: "g b" },
+      { label: "Dashboard", key: "g d" },
+      { label: "Settings", key: "g s" },
     ],
   },
   {
-    title: 'Actions',
+    title: "Actions",
     items: [
-      { label: 'Command Palette', key: '\u2318K' },
-      { label: 'Create Item', key: 'c' },
-      { label: 'Shortcut Help', key: '?' },
+      { label: "Command Palette", key: "\u2318K" },
+      { label: "Create Item", key: "c" },
+      { label: "Shortcut Help", key: "?" },
     ],
   },
   {
-    title: 'Browse List',
+    title: "Browse List",
     items: [
-      { label: 'Move Down', key: 'j' },
-      { label: 'Move Up', key: 'k' },
-      { label: 'Open Item', key: 'Enter' },
-      { label: 'Focus Search', key: '/' },
+      { label: "Move Down", key: "j" },
+      { label: "Move Up", key: "k" },
+      { label: "Open Item", key: "Enter" },
+      { label: "Focus Search", key: "/" },
     ],
   },
 ];
@@ -51,7 +51,9 @@ export function ShortcutHelp({ open, onClose }: ShortcutHelpProps) {
             ))}
           </div>
         ))}
-        <button className={styles.closeBtn} onClick={onClose}>Close</button>
+        <button type="button" className={styles.closeBtn} onClick={onClose}>
+          Close
+        </button>
       </div>
     </div>
   );

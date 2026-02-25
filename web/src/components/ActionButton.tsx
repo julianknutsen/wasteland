@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import styles from './ActionButton.module.css';
+import { useState } from "react";
+import styles from "./ActionButton.module.css";
 
 interface ActionButtonProps {
   action: string;
@@ -19,12 +19,7 @@ export function ActionButton({ action, onAction }: ActionButtonProps) {
   };
 
   return (
-    <button
-      className={styles.button}
-      data-action={action}
-      onClick={handleClick}
-      disabled={loading}
-    >
+    <button type="button" className={styles.button} data-action={action} onClick={handleClick} disabled={loading}>
       {loading ? `${action}...` : action}
     </button>
   );

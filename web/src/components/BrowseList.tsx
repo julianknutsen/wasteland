@@ -1,36 +1,36 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
-import { browse } from '../api/client';
-import type { WantedSummary } from '../api/types';
-import { useFilterParams } from '../hooks/useFilterParams';
-import { StatusBadge } from './StatusBadge';
-import { PriorityBadge } from './PriorityBadge';
-import { FilterBar } from './FilterBar';
-import { WantedForm } from './WantedForm';
-import { SkeletonRows } from './Skeleton';
-import { EmptyState } from './EmptyState';
-import styles from './BrowseList.module.css';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { browse } from "../api/client";
+import type { WantedSummary } from "../api/types";
+import { useFilterParams } from "../hooks/useFilterParams";
+import styles from "./BrowseList.module.css";
+import { EmptyState } from "./EmptyState";
+import { FilterBar } from "./FilterBar";
+import { PriorityBadge } from "./PriorityBadge";
+import { SkeletonRows } from "./Skeleton";
+import { StatusBadge } from "./StatusBadge";
+import { WantedForm } from "./WantedForm";
 
 export function BrowseList() {
   const navigate = useNavigate();
   const [items, setItems] = useState<WantedSummary[]>([]);
   const [filter, setFilter] = useFilterParams();
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError('');
+    setError("");
     try {
       const resp = await browse(filter);
       setItems(resp.items);
       setSelectedIndex(-1);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to load';
+      const msg = e instanceof Error ? e.message : "Failed to load";
       setError(msg);
       toast.error(msg);
     } finally {
@@ -45,42 +45,42 @@ export function BrowseList() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      const inInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
+      const inInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
       if (inInput) return;
 
       switch (e.key) {
-        case 'j':
+        case "j":
           e.preventDefault();
           setSelectedIndex((i) => Math.min(i + 1, items.length - 1));
           break;
-        case 'k':
+        case "k":
           e.preventDefault();
           setSelectedIndex((i) => Math.max(i - 1, 0));
           break;
-        case 'Enter':
+        case "Enter":
           if (selectedIndex >= 0 && selectedIndex < items.length) {
             navigate(`/wanted/${items[selectedIndex].id}`);
           }
           break;
-        case 'c':
+        case "c":
           setShowForm(true);
           break;
-        case '/':
+        case "/":
           e.preventDefault();
           searchRef.current?.focus();
           break;
       }
     };
 
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, [items, selectedIndex, navigate]);
 
   return (
     <div className={styles.page}>
       <div className={styles.header}>
         <h2 className={styles.heading}>Wanted Board</h2>
-        <button className={styles.postBtn} onClick={() => setShowForm(true)}>
+        <button type="button" className={styles.postBtn} onClick={() => setShowForm(true)}>
           + Post
         </button>
       </div>
@@ -100,75 +100,71 @@ export function BrowseList() {
         />
       ) : (
         <>
-        <table className={styles.table} role="table" aria-label="Wanted items">
-          <thead>
-            <tr className={styles.thead}>
-              <th className={styles.th} aria-sort={filter.sort === 'priority' ? 'ascending' : undefined}>Priority</th>
-              <th className={styles.th} aria-sort={filter.sort === 'alpha' ? 'ascending' : undefined}>Title</th>
-              <th className={styles.th}>Status</th>
-              <th className={styles.th}>Type</th>
-              <th className={styles.th}>Posted By</th>
-              <th className={styles.th}>Claimed By</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item, index) => (
-              <tr
-                key={item.id}
-                className={styles.row}
-                data-selected={index === selectedIndex || undefined}
-                aria-selected={index === selectedIndex || undefined}
-              >
-                <td className={styles.td}>
-                  <PriorityBadge priority={item.priority} />
-                </td>
-                <td className={styles.td}>
-                  <Link to={`/wanted/${item.id}`} className={styles.titleLink}>
-                    {item.title}
-                    {item.has_branch && (
-                      <span className={styles.branchTag}>branch</span>
-                    )}
-                  </Link>
-                </td>
-                <td className={styles.td}>
-                  <StatusBadge status={item.status} />
-                </td>
-                <td className={styles.tdMuted}>{item.type || '-'}</td>
-                <td className={styles.tdMuted}>{item.posted_by || '-'}</td>
-                <td className={styles.tdMuted}>{item.claimed_by || '-'}</td>
+          <table className={styles.table} aria-label="Wanted items">
+            <thead>
+              <tr className={styles.thead}>
+                <th className={styles.th} aria-sort={filter.sort === "priority" ? "ascending" : undefined}>
+                  Priority
+                </th>
+                <th className={styles.th} aria-sort={filter.sort === "alpha" ? "ascending" : undefined}>
+                  Title
+                </th>
+                <th className={styles.th}>Status</th>
+                <th className={styles.th}>Type</th>
+                <th className={styles.th}>Posted By</th>
+                <th className={styles.th}>Claimed By</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((item, index) => (
+                <tr
+                  key={item.id}
+                  className={styles.row}
+                  data-selected={index === selectedIndex || undefined}
+                  aria-selected={index === selectedIndex || undefined}
+                >
+                  <td className={styles.td}>
+                    <PriorityBadge priority={item.priority} />
+                  </td>
+                  <td className={styles.td}>
+                    <Link to={`/wanted/${item.id}`} className={styles.titleLink}>
+                      {item.title}
+                      {item.has_branch && <span className={styles.branchTag}>branch</span>}
+                    </Link>
+                  </td>
+                  <td className={styles.td}>
+                    <StatusBadge status={item.status} />
+                  </td>
+                  <td className={styles.tdMuted}>{item.type || "-"}</td>
+                  <td className={styles.tdMuted}>{item.posted_by || "-"}</td>
+                  <td className={styles.tdMuted}>{item.claimed_by || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
 
-        <div className={styles.cardList}>
-          {items.map((item, index) => (
-            <div
-              key={item.id}
-              className={styles.card}
-              data-selected={index === selectedIndex || undefined}
-            >
-              <div className={styles.cardTop}>
-                <PriorityBadge priority={item.priority} />
-                <StatusBadge status={item.status} />
-                {item.has_branch && <span className={styles.branchTag}>branch</span>}
+          <div className={styles.cardList}>
+            {items.map((item, index) => (
+              <div key={item.id} className={styles.card} data-selected={index === selectedIndex || undefined}>
+                <div className={styles.cardTop}>
+                  <PriorityBadge priority={item.priority} />
+                  <StatusBadge status={item.status} />
+                  {item.has_branch && <span className={styles.branchTag}>branch</span>}
+                </div>
+                <Link to={`/wanted/${item.id}`} className={styles.cardTitle}>
+                  {item.title}
+                </Link>
+                <div className={styles.cardMeta}>
+                  {item.type && <span>{item.type}</span>}
+                  {item.posted_by && <span>{item.posted_by}</span>}
+                </div>
               </div>
-              <Link to={`/wanted/${item.id}`} className={styles.cardTitle}>
-                {item.title}
-              </Link>
-              <div className={styles.cardMeta}>
-                {item.type && <span>{item.type}</span>}
-                {item.posted_by && <span>{item.posted_by}</span>}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
         </>
       )}
 
-      {showForm && (
-        <WantedForm onClose={() => setShowForm(false)} onSaved={load} />
-      )}
+      {showForm && <WantedForm onClose={() => setShowForm(false)} onSaved={load} />}
     </div>
   );
 }

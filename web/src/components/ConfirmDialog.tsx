@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
-import { useFocusTrap } from '../hooks/useFocusTrap';
-import styles from './ConfirmDialog.module.css';
+import { useEffect } from "react";
+import { useFocusTrap } from "../hooks/useFocusTrap";
+import styles from "./ConfirmDialog.module.css";
 
 interface ConfirmDialogProps {
   message: string;
@@ -13,10 +13,10 @@ export function ConfirmDialog({ message, onConfirm, onCancel }: ConfirmDialogPro
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
+      if (e.key === "Escape") onCancel();
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, [onCancel]);
 
   return (
@@ -31,10 +31,10 @@ export function ConfirmDialog({ message, onConfirm, onCancel }: ConfirmDialogPro
       >
         <p className={styles.message}>{message}</p>
         <div className={styles.actions}>
-          <button className={styles.cancelBtn} onClick={onCancel}>
+          <button type="button" className={styles.cancelBtn} onClick={onCancel}>
             Cancel
           </button>
-          <button className={styles.confirmBtn} onClick={onConfirm}>
+          <button type="button" className={styles.confirmBtn} onClick={onConfirm}>
             Confirm
           </button>
         </div>

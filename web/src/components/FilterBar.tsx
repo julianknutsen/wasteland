@@ -1,10 +1,10 @@
-import type { RefObject } from 'react';
-import type { BrowseFilter } from '../api/types';
-import styles from './FilterBar.module.css';
+import type { RefObject } from "react";
+import type { BrowseFilter } from "../api/types";
+import styles from "./FilterBar.module.css";
 
-const statuses = ['', 'open', 'claimed', 'in_review', 'completed'];
-const types = ['', 'feature', 'bug', 'design', 'rfc', 'docs'];
-const sorts = ['priority', 'newest', 'alpha'];
+const statuses = ["", "open", "claimed", "in_review", "completed"];
+const types = ["", "feature", "bug", "design", "rfc", "docs"];
+const sorts = ["priority", "newest", "alpha"];
 
 interface FilterBarProps {
   filter: BrowseFilter;
@@ -18,12 +18,12 @@ export function FilterBar({ filter, onChange, searchRef }: FilterBarProps) {
       <select
         className={styles.select}
         aria-label="Filter by status"
-        value={filter.status || ''}
+        value={filter.status || ""}
         onChange={(e) => onChange({ ...filter, status: e.target.value || undefined })}
       >
         {statuses.map((s) => (
           <option key={s} value={s}>
-            {s || 'all statuses'}
+            {s || "all statuses"}
           </option>
         ))}
       </select>
@@ -31,12 +31,12 @@ export function FilterBar({ filter, onChange, searchRef }: FilterBarProps) {
       <select
         className={styles.select}
         aria-label="Filter by type"
-        value={filter.type || ''}
+        value={filter.type || ""}
         onChange={(e) => onChange({ ...filter, type: e.target.value || undefined })}
       >
         {types.map((t) => (
           <option key={t} value={t}>
-            {t || 'all types'}
+            {t || "all types"}
           </option>
         ))}
       </select>
@@ -44,7 +44,7 @@ export function FilterBar({ filter, onChange, searchRef }: FilterBarProps) {
       <select
         className={styles.select}
         aria-label="Sort order"
-        value={filter.sort || 'priority'}
+        value={filter.sort || "priority"}
         onChange={(e) => onChange({ ...filter, sort: e.target.value })}
       >
         {sorts.map((s) => (
@@ -60,7 +60,7 @@ export function FilterBar({ filter, onChange, searchRef }: FilterBarProps) {
         aria-label="Search items"
         type="text"
         placeholder="search..."
-        value={filter.search || ''}
+        value={filter.search || ""}
         onChange={(e) => onChange({ ...filter, search: e.target.value || undefined })}
       />
     </div>

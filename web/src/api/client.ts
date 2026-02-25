@@ -7,9 +7,9 @@ import type {
   ErrorResponse,
   MutationResponse,
   PostInput,
-  UpdateInput,
   SettingsInput,
-} from './types';
+  UpdateInput,
+} from "./types";
 
 class ApiError extends Error {
   constructor(
@@ -17,7 +17,7 @@ class ApiError extends Error {
     message: string,
   ) {
     super(message);
-    this.name = 'ApiError';
+    this.name = "ApiError";
   }
 }
 
@@ -26,13 +26,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     resp = await fetch(path, init);
   } catch {
-    throw new ApiError(0, 'Network error — is the server running?');
+    throw new ApiError(0, "Network error — is the server running?");
   }
   let body: unknown;
   try {
     body = await resp.json();
   } catch {
-    throw new ApiError(resp.status, resp.statusText || 'Invalid response');
+    throw new ApiError(resp.status, resp.statusText || "Invalid response");
   }
   if (!resp.ok) {
     throw new ApiError(resp.status, (body as ErrorResponse).error || resp.statusText);
@@ -42,15 +42,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 function buildQuery(filter: BrowseFilter): string {
   const params = new URLSearchParams();
-  if (filter.status) params.set('status', filter.status);
-  if (filter.type) params.set('type', filter.type);
-  if (filter.priority !== undefined && filter.priority >= 0) params.set('priority', String(filter.priority));
-  if (filter.project) params.set('project', filter.project);
-  if (filter.search) params.set('search', filter.search);
-  if (filter.sort) params.set('sort', filter.sort);
-  if (filter.limit) params.set('limit', String(filter.limit));
+  if (filter.status) params.set("status", filter.status);
+  if (filter.type) params.set("type", filter.type);
+  if (filter.priority !== undefined && filter.priority >= 0) params.set("priority", String(filter.priority));
+  if (filter.project) params.set("project", filter.project);
+  if (filter.search) params.set("search", filter.search);
+  if (filter.sort) params.set("sort", filter.sort);
+  if (filter.limit) params.set("limit", String(filter.limit));
   const qs = params.toString();
-  return qs ? `?${qs}` : '';
+  return qs ? `?${qs}` : "";
 }
 
 export async function browse(filter: BrowseFilter = {}): Promise<BrowseResponse> {
@@ -62,69 +62,72 @@ export async function detail(id: string): Promise<DetailResponse> {
 }
 
 export async function dashboard(): Promise<DashboardResponse> {
-  return request<DashboardResponse>('/api/dashboard');
+  return request<DashboardResponse>("/api/dashboard");
 }
 
 export async function config(): Promise<ConfigResponse> {
-  return request<ConfigResponse>('/api/config');
+  return request<ConfigResponse>("/api/config");
 }
 
 export async function claim(id: string): Promise<MutationResponse> {
-  return request<MutationResponse>(`/api/wanted/${id}/claim`, { method: 'POST' });
+  return request<MutationResponse>(`/api/wanted/${id}/claim`, { method: "POST" });
 }
 
 export async function unclaim(id: string): Promise<MutationResponse> {
-  return request<MutationResponse>(`/api/wanted/${id}/unclaim`, { method: 'POST' });
+  return request<MutationResponse>(`/api/wanted/${id}/unclaim`, { method: "POST" });
 }
 
 export async function reject(id: string, reason?: string): Promise<MutationResponse> {
   return request<MutationResponse>(`/api/wanted/${id}/reject`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reason: reason || '' }),
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: reason || "" }),
   });
 }
 
 export async function close(id: string): Promise<MutationResponse> {
-  return request<MutationResponse>(`/api/wanted/${id}/close`, { method: 'POST' });
+  return request<MutationResponse>(`/api/wanted/${id}/close`, { method: "POST" });
 }
 
 export async function done(id: string, evidence: string): Promise<MutationResponse> {
   return request<MutationResponse>(`/api/wanted/${id}/done`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ evidence }),
   });
 }
 
-export async function accept(id: string, stamp?: {
-  quality?: number;
-  reliability?: number;
-  severity?: string;
-  skill_tags?: string[];
-  message?: string;
-}): Promise<MutationResponse> {
+export async function accept(
+  id: string,
+  stamp?: {
+    quality?: number;
+    reliability?: number;
+    severity?: string;
+    skill_tags?: string[];
+    message?: string;
+  },
+): Promise<MutationResponse> {
   return request<MutationResponse>(`/api/wanted/${id}/accept`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(stamp || {}),
   });
 }
 
 export async function deleteItem(id: string): Promise<MutationResponse> {
-  return request<MutationResponse>(`/api/wanted/${id}`, { method: 'DELETE' });
+  return request<MutationResponse>(`/api/wanted/${id}`, { method: "DELETE" });
 }
 
 export async function submitPR(branch: string): Promise<{ url: string }> {
-  return request<{ url: string }>(`/api/branches/pr/${branch}`, { method: 'POST' });
+  return request<{ url: string }>(`/api/branches/pr/${branch}`, { method: "POST" });
 }
 
 export async function applyBranch(branch: string): Promise<void> {
-  await request<Record<string, string>>(`/api/branches/apply/${branch}`, { method: 'POST' });
+  await request<Record<string, string>>(`/api/branches/apply/${branch}`, { method: "POST" });
 }
 
 export async function discardBranch(branch: string): Promise<void> {
-  await request<Record<string, string>>(`/api/branches/${branch}`, { method: 'DELETE' });
+  await request<Record<string, string>>(`/api/branches/${branch}`, { method: "DELETE" });
 }
 
 export async function branchDiff(branch: string): Promise<{ diff: string }> {
@@ -132,29 +135,29 @@ export async function branchDiff(branch: string): Promise<{ diff: string }> {
 }
 
 export async function sync(): Promise<void> {
-  await request<Record<string, string>>('/api/sync', { method: 'POST' });
+  await request<Record<string, string>>("/api/sync", { method: "POST" });
 }
 
 export async function createItem(input: PostInput): Promise<MutationResponse> {
-  return request<MutationResponse>('/api/wanted', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  return request<MutationResponse>("/api/wanted", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
 }
 
 export async function updateItem(id: string, input: UpdateInput): Promise<MutationResponse> {
   return request<MutationResponse>(`/api/wanted/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
 }
 
 export async function saveSettings(input: SettingsInput): Promise<void> {
-  await request<Record<string, string>>('/api/settings', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+  await request<Record<string, string>>("/api/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
 }

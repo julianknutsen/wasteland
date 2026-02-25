@@ -10,8 +10,23 @@
   border: 1px solid var(--dim);
 }
 
-.badge[data-priority="0"] { color: var(--accent); border-color: var(--accent); }
-.badge[data-priority="1"] { color: var(--brass); border-color: var(--brass); }
-.badge[data-priority="2"] { color: var(--copper); border-color: var(--copper); }
-.badge[data-priority="3"] { color: var(--green); border-color: var(--green); }
-.badge[data-priority="4"] { color: var(--dim); border-color: var(--dim); }
+.badge[data-priority="0"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.badge[data-priority="1"] {
+  color: var(--brass);
+  border-color: var(--brass);
+}
+.badge[data-priority="2"] {
+  color: var(--copper);
+  border-color: var(--copper);
+}
+.badge[data-priority="3"] {
+  color: var(--green);
+  border-color: var(--green);
+}
+.badge[data-priority="4"] {
+  color: var(--dim);
+  border-color: var(--dim);
+}

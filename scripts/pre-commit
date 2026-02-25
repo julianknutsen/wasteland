@@ -8,4 +8,9 @@ make fmt
 git add -u
 
 # Run all quality gates (lint, fmt-check, vet, test).
-exec make check
+make check
+
+# Web quality gates (typecheck + lint; skip tests for speed).
+if command -v bun >/dev/null 2>&1; then
+  (cd web && bun run tsc --noEmit && bun run biome check src/)
+fi

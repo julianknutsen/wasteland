@@ -6,3 +6,4 @@ coverage.txt
 web/node_modules/
 web/dist/*
 !web/dist/.gitkeep
+web/coverage/

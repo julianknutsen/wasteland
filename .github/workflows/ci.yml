@@ -46,8 +46,29 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           files: coverage.txt
+          flags: go
           token: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
+
+  web-check:
+    name: Web Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+      - run: cd web && bun install --frozen-lockfile
+      - name: Typecheck
+        run: cd web && bun run tsc --noEmit
+      - name: Lint
+        run: cd web && bun run biome check src/
+      - name: Test
+        run: cd web && bun run vitest run --coverage
+      - name: Upload coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: web/coverage/lcov.info
+          flags: web
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   integration-offline:
     name: Integration (offline)

@@ -36,9 +36,9 @@
   --space-8: 48px;
 
   /* Typography */
-  --font-heading: 'Cinzel', 'Times New Roman', serif;
-  --font-body: 'Crimson Text', Georgia, serif;
-  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  --font-heading: "Cinzel", "Times New Roman", serif;
+  --font-body: "Crimson Text", Georgia, serif;
+  --font-mono: "JetBrains Mono", "Courier New", monospace;
   --text-xs: 11px;
   --text-sm: 12px;
   --text-base: 14px;

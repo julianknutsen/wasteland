@@ -1,0 +1,14 @@
+coverage:
+  status:
+    project:
+      go:
+        paths: ["!web/"]
+        target: auto
+      web:
+        paths: ["web/src/"]
+        target: auto
+  flags:
+    go:
+      paths: ["!web/"]
+    web:
+      paths: ["web/src/"]

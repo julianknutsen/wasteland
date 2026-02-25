@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
-import { config, saveSettings, sync } from '../api/client';
-import styles from './Settings.module.css';
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { config, saveSettings, sync } from "../api/client";
+import styles from "./Settings.module.css";
 
 export function Settings() {
-  const [mode, setMode] = useState('wild-west');
+  const [mode, setMode] = useState("wild-west");
   const [signing, setSigning] = useState(false);
-  const [rigHandle, setRigHandle] = useState('');
+  const [rigHandle, setRigHandle] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -16,9 +16,9 @@ export function Settings() {
       try {
         const cfg = await config();
         setRigHandle(cfg.rig_handle);
-        setMode(cfg.mode || 'wild-west');
+        setMode(cfg.mode || "wild-west");
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Failed to load config');
+        toast.error(e instanceof Error ? e.message : "Failed to load config");
       } finally {
         setLoading(false);
       }
@@ -29,9 +29,9 @@ export function Settings() {
     setSaving(true);
     try {
       await saveSettings({ mode, signing });
-      toast.success('Settings saved');
+      toast.success("Settings saved");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to save');
+      toast.error(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(false);
     }
@@ -41,9 +41,9 @@ export function Settings() {
     setSyncing(true);
     try {
       await sync();
-      toast.success('Sync complete');
+      toast.success("Sync complete");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Sync failed');
+      toast.error(e instanceof Error ? e.message : "Sync failed");
     } finally {
       setSyncing(false);
     }
@@ -61,15 +61,9 @@ export function Settings() {
         <div className={styles.field}>
           <div>
             <span className={styles.label}>Mode</span>
-            <span className={styles.labelHint}>
-              wild-west: direct writes &middot; pr: branch-based
-            </span>
+            <span className={styles.labelHint}>wild-west: direct writes &middot; pr: branch-based</span>
           </div>
-          <select
-            className={styles.select}
-            value={mode}
-            onChange={(e) => setMode(e.target.value)}
-          >
+          <select className={styles.select} value={mode} onChange={(e) => setMode(e.target.value)}>
             <option value="wild-west">wild-west</option>
             <option value="pr">pr</option>
           </select>
@@ -93,24 +87,16 @@ export function Settings() {
         <h3 className={styles.sectionTitle}>Identity</h3>
         <div className={styles.field}>
           <span className={styles.label}>Rig Handle</span>
-          <span className={styles.configInfo}>{rigHandle || '-'}</span>
+          <span className={styles.configInfo}>{rigHandle || "-"}</span>
         </div>
       </div>
 
       <div className={styles.actions}>
-        <button
-          className={styles.saveBtn}
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving ? 'Saving...' : 'Save'}
+        <button type="button" className={styles.saveBtn} onClick={handleSave} disabled={saving}>
+          {saving ? "Saving..." : "Save"}
         </button>
-        <button
-          className={styles.syncBtn}
-          onClick={handleSync}
-          disabled={syncing}
-        >
-          {syncing ? 'Syncing...' : 'Sync'}
+        <button type="button" className={styles.syncBtn} onClick={handleSync} disabled={syncing}>
+          {syncing ? "Syncing..." : "Sync"}
         </button>
       </div>
     </div>

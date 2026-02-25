@@ -27,13 +27,43 @@
   cursor: wait;
 }
 
-.button[data-action="claim"] { color: var(--steel); border-color: var(--steel); }
-.button[data-action="unclaim"] { color: var(--green); border-color: var(--green); }
-.button[data-action="done"] { color: var(--green); border-color: var(--green); }
-.button[data-action="accept"] { color: var(--green); border-color: var(--green); }
-.button[data-action="reject"] { color: var(--accent); border-color: var(--accent); }
-.button[data-action="close"] { color: var(--accent); border-color: var(--accent); }
-.button[data-action="delete"] { color: var(--accent); border-color: var(--accent); }
-.button[data-action="submit pr"] { color: var(--brass); border-color: var(--brass); }
-.button[data-action="apply"] { color: var(--green); border-color: var(--green); }
-.button[data-action="discard"] { color: var(--accent); border-color: var(--accent); }
+.button[data-action="claim"] {
+  color: var(--steel);
+  border-color: var(--steel);
+}
+.button[data-action="unclaim"] {
+  color: var(--green);
+  border-color: var(--green);
+}
+.button[data-action="done"] {
+  color: var(--green);
+  border-color: var(--green);
+}
+.button[data-action="accept"] {
+  color: var(--green);
+  border-color: var(--green);
+}
+.button[data-action="reject"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.button[data-action="close"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.button[data-action="delete"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.button[data-action="submit pr"] {
+  color: var(--brass);
+  border-color: var(--brass);
+}
+.button[data-action="apply"] {
+  color: var(--green);
+  border-color: var(--green);
+}
+.button[data-action="discard"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}

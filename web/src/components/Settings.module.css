@@ -72,7 +72,7 @@
 }
 
 .toggle::after {
-  content: '';
+  content: "";
   position: absolute;
   top: 2px;
   left: 2px;
@@ -80,7 +80,9 @@
   height: 18px;
   border-radius: 50%;
   background: var(--dim);
-  transition: transform var(--transition-normal), background var(--transition-normal);
+  transition:
+    transform var(--transition-normal),
+    background var(--transition-normal);
 }
 
 .toggle:checked {

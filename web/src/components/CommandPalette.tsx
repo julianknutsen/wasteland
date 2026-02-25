@@ -1,7 +1,7 @@
-import { Command } from 'cmdk';
-import { useCommands } from '../hooks/useCommands';
-import { useSyncExternalStore } from 'react';
-import styles from './CommandPalette.module.css';
+import { Command } from "cmdk";
+import { useSyncExternalStore } from "react";
+import { useCommands } from "../hooks/useCommands";
+import styles from "./CommandPalette.module.css";
 
 interface CommandPaletteProps {
   open: boolean;

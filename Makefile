@@ -20,7 +20,7 @@ LDFLAGS := -X main.version=$(VERSION) \
            -X main.commit=$(COMMIT) \
            -X main.date=$(BUILD_TIME)
 
-.PHONY: build build-go web check check-all lint fmt-check fmt vet test test-integration test-integration-offline test-cover cover install install-tools setup clean
+.PHONY: build build-go web check check-all lint fmt-check fmt vet test test-integration test-integration-offline test-cover cover install install-tools setup clean web-check web-test
 
 ## web: build web UI (requires bun)
 web:
@@ -99,6 +99,14 @@ $(GOLANGCI_LINT):
 setup: install-tools
 	ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
 	@echo "Done. Tools installed, pre-commit hook active."
+
+## web-check: typecheck + lint + test web frontend
+web-check:
+	cd web && bun run check
+
+## web-test: run web tests with coverage
+web-test:
+	cd web && bun run test:coverage
 
 ## help: show this help
 help:

@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useRef } from 'react';
+import { createContext, useCallback, useContext, useRef } from "react";
 
 export interface Command {
   id: string;
@@ -38,21 +38,26 @@ export function useCommandRegistry() {
     }
   }, []);
 
-  const register = useCallback((cmds: Command[]) => {
-    const key = Math.random().toString(36).slice(2);
-    commandsRef.current.set(key, cmds);
-    rebuildSnapshot();
-    return () => {
-      commandsRef.current.delete(key);
+  const register = useCallback(
+    (cmds: Command[]) => {
+      const key = Math.random().toString(36).slice(2);
+      commandsRef.current.set(key, cmds);
       rebuildSnapshot();
-    };
-  }, [rebuildSnapshot]);
+      return () => {
+        commandsRef.current.delete(key);
+        rebuildSnapshot();
+      };
+    },
+    [rebuildSnapshot],
+  );
 
   const getCommands = useCallback(() => snapshotRef.current, []);
 
   const subscribe = useCallback((listener: () => void) => {
     listenersRef.current.add(listener);
-    return () => { listenersRef.current.delete(listener); };
+    return () => {
+      listenersRef.current.delete(listener);
+    };
   }, []);
 
   return { register, getCommands, subscribe };

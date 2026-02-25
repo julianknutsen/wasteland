@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
-import { toast } from 'sonner';
-import { createItem, updateItem } from '../api/client';
-import type { WantedItem } from '../api/types';
-import { useFocusTrap } from '../hooks/useFocusTrap';
-import styles from './WantedForm.module.css';
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { createItem, updateItem } from "../api/client";
+import type { WantedItem } from "../api/types";
+import { useFocusTrap } from "../hooks/useFocusTrap";
+import styles from "./WantedForm.module.css";
 
-const types = ['feature', 'bug', 'design', 'rfc', 'docs'];
+const types = ["feature", "bug", "design", "rfc", "docs"];
 const priorities = [0, 1, 2, 3, 4];
-const efforts = ['trivial', 'small', 'medium', 'large', 'epic'];
+const efforts = ["trivial", "small", "medium", "large", "epic"];
 
 interface WantedFormProps {
   item?: WantedItem;
@@ -18,22 +18,22 @@ interface WantedFormProps {
 export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
   const isEdit = !!item;
 
-  const [title, setTitle] = useState(item?.title ?? '');
-  const [description, setDescription] = useState(item?.description ?? '');
-  const [project, setProject] = useState(item?.project ?? '');
-  const [type, setType] = useState(item?.type ?? 'feature');
+  const [title, setTitle] = useState(item?.title ?? "");
+  const [description, setDescription] = useState(item?.description ?? "");
+  const [project, setProject] = useState(item?.project ?? "");
+  const [type, setType] = useState(item?.type ?? "feature");
   const [priority, setPriority] = useState(item?.priority ?? 2);
-  const [effortLevel, setEffortLevel] = useState(item?.effort_level ?? 'medium');
-  const [tags, setTags] = useState(item?.tags?.join(', ') ?? '');
+  const [effortLevel, setEffortLevel] = useState(item?.effort_level ?? "medium");
+  const [tags, setTags] = useState(item?.tags?.join(", ") ?? "");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') handleSubmit();
+      if (e.key === "Escape") onClose();
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleSubmit();
     };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
   });
 
   const handleSubmit = async () => {
@@ -41,7 +41,7 @@ export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
     setSaving(true);
 
     const parsedTags = tags
-      .split(',')
+      .split(",")
       .map((t) => t.trim())
       .filter(Boolean);
 
@@ -57,7 +57,7 @@ export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
           tags: parsedTags,
           tags_set: true,
         });
-        toast.success('Item updated');
+        toast.success("Item updated");
       } else {
         await createItem({
           title: title.trim(),
@@ -68,12 +68,12 @@ export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
           effort_level: effortLevel,
           tags: parsedTags.length > 0 ? parsedTags : undefined,
         });
-        toast.success('Item posted');
+        toast.success("Item posted");
       }
       onSaved();
       onClose();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to save');
+      toast.error(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSaving(false);
     }
@@ -88,10 +88,10 @@ export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
         className={styles.dialog}
         role="dialog"
         aria-modal="true"
-        aria-label={isEdit ? 'Edit item' : 'Post new item'}
+        aria-label={isEdit ? "Edit item" : "Post new item"}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className={styles.title}>{isEdit ? 'Edit Item' : 'Post New Item'}</h2>
+        <h2 className={styles.title}>{isEdit ? "Edit Item" : "Post New Item"}</h2>
 
         <div className={styles.field}>
           <label className={styles.label}>Title</label>
@@ -128,13 +128,11 @@ export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
           </div>
           <div className={styles.field}>
             <label className={styles.label}>Type</label>
-            <select
-              className={styles.select}
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-            >
+            <select className={styles.select} value={type} onChange={(e) => setType(e.target.value)}>
               {types.map((t) => (
-                <option key={t} value={t}>{t}</option>
+                <option key={t} value={t}>
+                  {t}
+                </option>
               ))}
             </select>
           </div>
@@ -143,25 +141,21 @@ export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
         <div className={styles.row}>
           <div className={styles.field}>
             <label className={styles.label}>Priority</label>
-            <select
-              className={styles.select}
-              value={priority}
-              onChange={(e) => setPriority(Number(e.target.value))}
-            >
+            <select className={styles.select} value={priority} onChange={(e) => setPriority(Number(e.target.value))}>
               {priorities.map((p) => (
-                <option key={p} value={p}>P{p}</option>
+                <option key={p} value={p}>
+                  P{p}
+                </option>
               ))}
             </select>
           </div>
           <div className={styles.field}>
             <label className={styles.label}>Effort</label>
-            <select
-              className={styles.select}
-              value={effortLevel}
-              onChange={(e) => setEffortLevel(e.target.value)}
-            >
+            <select className={styles.select} value={effortLevel} onChange={(e) => setEffortLevel(e.target.value)}>
               {efforts.map((e) => (
-                <option key={e} value={e}>{e}</option>
+                <option key={e} value={e}>
+                  {e}
+                </option>
               ))}
             </select>
           </div>
@@ -179,15 +173,11 @@ export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
         </div>
 
         <div className={styles.actions}>
-          <button className={styles.cancelBtn} onClick={onClose}>
+          <button type="button" className={styles.cancelBtn} onClick={onClose}>
             Cancel
           </button>
-          <button
-            className={styles.submitBtn}
-            onClick={handleSubmit}
-            disabled={!title.trim() || saving}
-          >
-            {saving ? 'Saving...' : isEdit ? 'Update' : 'Post'}
+          <button type="button" className={styles.submitBtn} onClick={handleSubmit} disabled={!title.trim() || saving}>
+            {saving ? "Saving..." : isEdit ? "Update" : "Post"}
           </button>
         </div>
 

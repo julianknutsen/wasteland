@@ -1,4 +1,4 @@
-import styles from './PriorityBadge.module.css';
+import styles from "./PriorityBadge.module.css";
 
 export function PriorityBadge({ priority }: { priority: number }) {
   return (

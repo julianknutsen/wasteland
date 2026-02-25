@@ -12,6 +12,10 @@
     {
       "matchManagers": ["github-actions"],
       "groupName": "github actions"
+    },
+    {
+      "matchManagers": ["npm"],
+      "groupName": "npm dependencies"
     }
   ]
 }

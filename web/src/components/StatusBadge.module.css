@@ -11,8 +11,18 @@
   background-color: var(--dim);
 }
 
-.badge[data-status="open"] { background-color: var(--green); }
-.badge[data-status="claimed"] { background-color: var(--steel); }
-.badge[data-status="in_review"] { background-color: var(--brass); }
-.badge[data-status="completed"] { background-color: var(--accent); }
-.badge[data-status="withdrawn"] { background-color: var(--dim); }
+.badge[data-status="open"] {
+  background-color: var(--green);
+}
+.badge[data-status="claimed"] {
+  background-color: var(--steel);
+}
+.badge[data-status="in_review"] {
+  background-color: var(--brass);
+}
+.badge[data-status="completed"] {
+  background-color: var(--accent);
+}
+.badge[data-status="withdrawn"] {
+  background-color: var(--dim);
+}

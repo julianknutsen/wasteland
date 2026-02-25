@@ -1,4 +1,4 @@
-import styles from './EmptyState.module.css';
+import styles from "./EmptyState.module.css";
 
 interface EmptyStateProps {
   title: string;
@@ -13,7 +13,7 @@ export function EmptyState({ title, description, ctaLabel, onCta }: EmptyStatePr
       <h3 className={styles.title}>{title}</h3>
       <p className={styles.description}>{description}</p>
       {ctaLabel && onCta && (
-        <button className={styles.ctaBtn} onClick={onCta}>
+        <button type="button" className={styles.ctaBtn} onClick={onCta}>
           {ctaLabel}
         </button>
       )}

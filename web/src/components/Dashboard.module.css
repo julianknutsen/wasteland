@@ -1,4 +1,6 @@
-.page {}
+.page {
+  /* layout container — no styles needed */
+}
 
 .heading {
   color: var(--fg);
@@ -21,9 +23,15 @@
   text-transform: uppercase;
 }
 
-.sectionTitle[data-status="claimed"] { color: var(--steel); }
-.sectionTitle[data-status="in_review"] { color: var(--brass); }
-.sectionTitle[data-status="completed"] { color: var(--accent); }
+.sectionTitle[data-status="claimed"] {
+  color: var(--steel);
+}
+.sectionTitle[data-status="in_review"] {
+  color: var(--brass);
+}
+.sectionTitle[data-status="completed"] {
+  color: var(--accent);
+}
 
 .empty {
   color: var(--dim);

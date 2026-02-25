@@ -1,4 +1,4 @@
-@import './tokens.css';
+@import "./tokens.css";
 
 *,
 *::before,
@@ -15,7 +15,7 @@ body,
 }
 
 body {
-  font-family: 'Crimson Text', Georgia, serif;
+  font-family: "Crimson Text", Georgia, serif;
   font-size: 15px;
   line-height: 1.6;
   color: var(--fg);
@@ -35,24 +35,34 @@ a:hover {
 }
 
 button {
-  font-family: 'Cinzel', 'Times New Roman', serif;
+  font-family: "Cinzel", "Times New Roman", serif;
   font-size: inherit;
   cursor: pointer;
-  transition: background 150ms, border-color 150ms, color 150ms;
+  transition:
+    background 150ms,
+    border-color 150ms,
+    color 150ms;
 }
 
 input,
 select {
-  font-family: 'Crimson Text', Georgia, serif;
+  font-family: "Crimson Text", Georgia, serif;
   font-size: inherit;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: 'Cinzel', 'Times New Roman', serif;
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "Cinzel", "Times New Roman", serif;
 }
 
-code, pre, .mono {
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
+code,
+pre,
+.mono {
+  font-family: "JetBrains Mono", "Courier New", monospace;
 }
 
 /* Scrollbar */

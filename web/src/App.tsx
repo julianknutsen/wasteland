@@ -1,9 +1,9 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { Layout } from './components/Layout';
-import { BrowseList } from './components/BrowseList';
-import { DetailView } from './components/DetailView';
-import { Dashboard } from './components/Dashboard';
-import { Settings } from './components/Settings';
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowseList } from "./components/BrowseList";
+import { Dashboard } from "./components/Dashboard";
+import { DetailView } from "./components/DetailView";
+import { Layout } from "./components/Layout";
+import { Settings } from "./components/Settings";
 
 export function App() {
   return (
