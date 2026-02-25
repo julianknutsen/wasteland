@@ -1,17 +1,27 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useOptimistic } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
   detail, claim, unclaim, reject, close, deleteItem,
   done, accept, submitPR, applyBranch, discardBranch, branchDiff,
 } from '../api/client';
 import type { DetailResponse } from '../api/types';
-import { ayu, statusColor } from '../styles/theme';
 import { StatusBadge } from './StatusBadge';
 import { PriorityBadge } from './PriorityBadge';
 import { ActionButton } from './ActionButton';
 import { ConfirmDialog } from './ConfirmDialog';
+import { WantedForm } from './WantedForm';
+import { SkeletonLine, SkeletonBlock, SkeletonBadge } from './Skeleton';
+import styles from './DetailView.module.css';
 
 const destructiveActions = new Set(['delete', 'close', 'reject', 'discard']);
+
+const actionStatusMap: Record<string, string> = {
+  claim: 'claimed',
+  unclaim: 'open',
+  close: 'completed',
+  accept: 'completed',
+};
 
 export function DetailView() {
   const { id } = useParams<{ id: string }>();
@@ -24,6 +34,12 @@ export function DetailView() {
   const [diffLoading, setDiffLoading] = useState(false);
   const [evidenceInput, setEvidenceInput] = useState('');
   const [showDoneForm, setShowDoneForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+
+  const [optimisticStatus, setOptimisticStatus] = useOptimistic(
+    data?.item.status ?? '',
+    (_current: string, next: string) => next,
+  );
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -44,6 +60,12 @@ export function DetailView() {
 
   const handleAction = async (action: string) => {
     if (!id || !data) return;
+
+    const newStatus = actionStatusMap[action];
+    if (newStatus) {
+      setOptimisticStatus(newStatus);
+    }
+
     try {
       switch (action) {
         case 'claim': await claim(id); break;
@@ -52,6 +74,7 @@ export function DetailView() {
         case 'close': await close(id); break;
         case 'delete':
           await deleteItem(id);
+          toast.success('Item deleted');
           navigate('/');
           return;
         case 'accept': await accept(id); break;
@@ -59,6 +82,7 @@ export function DetailView() {
           if (data.branch) {
             const resp = await submitPR(data.branch);
             setData({ ...data, pr_url: resp.url });
+            toast.success('PR submitted');
           }
           return;
         case 'apply':
@@ -73,9 +97,11 @@ export function DetailView() {
           break;
         default: return;
       }
+      toast.success(`${action} successful`);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : `Failed to ${action}`);
+      const msg = e instanceof Error ? e.message : `Failed to ${action}`;
+      toast.error(msg);
     }
   };
 
@@ -85,9 +111,10 @@ export function DetailView() {
       await done(id, evidenceInput.trim());
       setShowDoneForm(false);
       setEvidenceInput('');
+      toast.success('Submitted for review');
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to submit');
+      toast.error(e instanceof Error ? e.message : 'Failed to submit');
     }
   };
 
@@ -116,117 +143,81 @@ export function DetailView() {
     }
   };
 
-  if (loading) return <p style={{ color: ayu.dim }}>Loading...</p>;
-  if (error) return <p style={{ color: ayu.accent }}>{error}</p>;
-  if (!data) return <p style={{ color: ayu.dim }}>Not found.</p>;
+  if (loading) return (
+    <div className={styles.page}>
+      <SkeletonLine width="60px" />
+      <div style={{ marginTop: 16 }}>
+        <SkeletonLine width="70%" />
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <SkeletonBadge />
+          <SkeletonBadge />
+        </div>
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <SkeletonBlock />
+      </div>
+    </div>
+  );
+  if (error) return <p className={styles.errorText}>{error}</p>;
+  if (!data) return <p className={styles.notFound}>Not found.</p>;
 
   const { item, completion, stamp, branch, main_status, pr_url, delta, actions, branch_actions } = data;
-
-  // Branch actions are computed by the SDK (mode-aware: submit_pr/apply/discard).
   const branchActions = branch_actions || [];
+  const displayStatus = optimisticStatus || item.status;
 
   return (
-    <div style={{ maxWidth: '720px' }}>
-      <button
-        onClick={() => navigate(-1)}
-        style={{
-          background: 'transparent',
-          border: 'none',
-          color: ayu.dim,
-          cursor: 'pointer',
-          padding: 0,
-          marginBottom: '12px',
-          fontSize: '13px',
-          fontFamily: "'Cinzel', 'Times New Roman', serif",
-          letterSpacing: '0.05em',
-        }}
-      >
+    <div className={styles.page}>
+      <button className={styles.backBtn} onClick={() => navigate(-1)}>
         &larr; back
       </button>
 
-      <div style={{ marginBottom: '16px' }}>
-        <h2 style={{ color: ayu.fg, fontSize: '22px', fontWeight: 700, margin: 0 }}>
-          {item.title}
-        </h2>
-        <div style={{ display: 'flex', gap: '8px', marginTop: '8px', alignItems: 'center' }}>
+      <div className={styles.header}>
+        <div className={styles.titleRow}>
+          <h2 className={styles.title}>{item.title}</h2>
+          <button className={styles.editBtn} onClick={() => setShowEditForm(true)}>
+            Edit
+          </button>
+        </div>
+        <div className={styles.badges}>
           <PriorityBadge priority={item.priority} />
-          <StatusBadge status={item.status} />
-          {item.type && (
-            <span
-              style={{
-                color: ayu.dim,
-                fontSize: '12px',
-                fontFamily: "'Cinzel', 'Times New Roman', serif",
-                letterSpacing: '0.05em',
-                textTransform: 'uppercase',
-              }}
-            >
-              {item.type}
-            </span>
-          )}
+          <StatusBadge status={displayStatus} />
+          {item.type && <span className={styles.typeLabel}>{item.type}</span>}
         </div>
       </div>
 
       {item.description && (
-        <div
-          style={{
-            padding: '14px',
-            background: ayu.surface,
-            borderRadius: '6px',
-            border: `1px solid ${ayu.border}`,
-            marginBottom: '16px',
-            whiteSpace: 'pre-wrap',
-            color: ayu.fg,
-            fontSize: '14px',
-            lineHeight: 1.6,
-          }}
-        >
-          {item.description}
-        </div>
+        <div className={styles.description}>{item.description}</div>
       )}
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '120px 1fr',
-          gap: '6px 12px',
-          fontSize: '14px',
-          marginBottom: '16px',
-        }}
-      >
-        <span style={{ color: ayu.dim }}>Posted by</span>
-        <span style={{ color: ayu.fg }}>{item.posted_by || '-'}</span>
-        <span style={{ color: ayu.dim }}>Claimed by</span>
-        <span style={{ color: ayu.fg }}>{item.claimed_by || '-'}</span>
-        <span style={{ color: ayu.dim }}>Effort</span>
-        <span style={{ color: ayu.fg }}>{item.effort_level || '-'}</span>
+      <div className={styles.metadata}>
+        <span className={styles.metaLabel}>Posted by</span>
+        <span className={styles.metaValue}>{item.posted_by || '-'}</span>
+        <span className={styles.metaLabel}>Claimed by</span>
+        <span className={styles.metaValue}>{item.claimed_by || '-'}</span>
+        <span className={styles.metaLabel}>Effort</span>
+        <span className={styles.metaValue}>{item.effort_level || '-'}</span>
         {item.tags && item.tags.length > 0 && (
           <>
-            <span style={{ color: ayu.dim }}>Tags</span>
-            <span style={{ color: ayu.fg }}>{item.tags.join(', ')}</span>
+            <span className={styles.metaLabel}>Tags</span>
+            <span className={styles.metaValue}>{item.tags.join(', ')}</span>
           </>
         )}
         {branch && main_status && main_status !== item.status && (
           <>
-            <span style={{ color: ayu.dim }}>Pending</span>
-            <span style={{ color: ayu.brass }}>{main_status} &rarr; {item.status}</span>
+            <span className={styles.metaLabel}>Pending</span>
+            <span className={styles.metaValueBrass}>{main_status} &rarr; {item.status}</span>
           </>
         )}
         {branch && (
           <>
-            <span style={{ color: ayu.dim }}>Branch</span>
-            <span style={{ color: ayu.brass, fontFamily: "'JetBrains Mono', 'Courier New', monospace", fontSize: '13px' }}>{branch}</span>
+            <span className={styles.metaLabel}>Branch</span>
+            <span className={styles.metaMono}>{branch}</span>
           </>
         )}
         {pr_url && (
           <>
-            <span style={{ color: ayu.dim }}>PR</span>
-            <a
-              href={pr_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: ayu.green, textDecoration: 'none' }}
-            >
+            <span className={styles.metaLabel}>PR</span>
+            <a href={pr_url} target="_blank" rel="noopener noreferrer" className={styles.prLink}>
               {pr_url}
             </a>
           </>
@@ -235,16 +226,16 @@ export function DetailView() {
 
       {completion && (
         <Section title="Completion">
-          <div style={{ fontSize: '14px' }}>
-            <p style={{ color: ayu.fg, margin: '0 0 4px' }}>
-              Completed by: <span style={{ color: ayu.brass }}>{completion.completed_by}</span>
+          <div className={styles.sectionContent}>
+            <p className={styles.sectionText}>
+              Completed by: <span className={styles.highlightBrass}>{completion.completed_by}</span>
             </p>
             {completion.evidence && (
-              <p style={{ color: ayu.fg, margin: '0 0 4px' }}>Evidence: {completion.evidence}</p>
+              <p className={styles.sectionText}>Evidence: {completion.evidence}</p>
             )}
             {completion.validated_by && (
-              <p style={{ color: ayu.fg, margin: 0 }}>
-                Validated by: <span style={{ color: ayu.green }}>{completion.validated_by}</span>
+              <p className={styles.sectionTextLast}>
+                Validated by: <span className={styles.highlightGreen}>{completion.validated_by}</span>
               </p>
             )}
           </div>
@@ -253,129 +244,58 @@ export function DetailView() {
 
       {stamp && (
         <Section title="Stamp">
-          <div style={{ fontSize: '14px', color: ayu.fg }}>
-            <p style={{ margin: '0 0 4px' }}>
-              Author: <span style={{ color: ayu.brass }}>{stamp.author}</span>
+          <div className={styles.sectionContent}>
+            <p className={styles.sectionText}>
+              Author: <span className={styles.highlightBrass}>{stamp.author}</span>
             </p>
-            <p style={{ margin: '0 0 4px' }}>Subject: {stamp.subject}</p>
-            <p style={{ margin: '0 0 4px' }}>
+            <p className={styles.sectionText}>Subject: {stamp.subject}</p>
+            <p className={styles.sectionText}>
               Quality: {stamp.quality} / Reliability: {stamp.reliability}
             </p>
-            {stamp.message && <p style={{ margin: 0 }}>{stamp.message}</p>}
+            {stamp.message && <p className={styles.sectionTextLast}>{stamp.message}</p>}
           </div>
         </Section>
       )}
 
       {delta && (
         <Section title="Branch Delta">
-          <pre
-            style={{
-              fontSize: '13px',
-              color: ayu.fg,
-              margin: 0,
-              whiteSpace: 'pre-wrap',
-              fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-            }}
-          >
-            {delta}
-          </pre>
+          <pre className={styles.diffPre}>{delta}</pre>
           {branch && diffContent === null && (
             <button
+              className={styles.diffBtn}
               onClick={handleLoadDiff}
               disabled={diffLoading}
-              style={{
-                marginTop: '8px',
-                padding: '4px 14px',
-                background: 'transparent',
-                border: `1px solid ${ayu.border}`,
-                borderRadius: '4px',
-                color: ayu.dim,
-                cursor: diffLoading ? 'wait' : 'pointer',
-                fontSize: '12px',
-                fontFamily: "'Cinzel', 'Times New Roman', serif",
-                letterSpacing: '0.05em',
-                textTransform: 'uppercase',
-              }}
             >
               {diffLoading ? 'Loading diff...' : 'View diff'}
             </button>
           )}
-          {diffContent && (
-            <pre
-              style={{
-                marginTop: '8px',
-                fontSize: '13px',
-                color: ayu.fg,
-                whiteSpace: 'pre-wrap',
-                fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-              }}
-            >
-              {diffContent}
-            </pre>
-          )}
+          {diffContent && <pre className={styles.diffResult}>{diffContent}</pre>}
         </Section>
       )}
 
       {showDoneForm && (
         <Section title="Submit for Review">
-          <div style={{ fontSize: '14px' }}>
-            <label style={{ color: ayu.dim, display: 'block', marginBottom: '4px' }}>
-              Evidence (URL or description)
-            </label>
+          <div className={styles.sectionContent}>
+            <label className={styles.doneLabel}>Evidence (URL or description)</label>
             <input
+              className={styles.evidenceInput}
               type="text"
               value={evidenceInput}
               onChange={(e) => setEvidenceInput(e.target.value)}
               placeholder="https://github.com/..."
-              style={{
-                width: '100%',
-                padding: '8px 10px',
-                background: ayu.bg,
-                border: `1px solid ${ayu.border}`,
-                borderRadius: '4px',
-                color: ayu.fg,
-                fontSize: '14px',
-                boxSizing: 'border-box',
-                fontFamily: "'Crimson Text', Georgia, serif",
-              }}
               onKeyDown={(e) => { if (e.key === 'Enter') handleDone(); }}
             />
-            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+            <div className={styles.formActions}>
               <button
+                className={styles.submitBtn}
                 onClick={handleDone}
                 disabled={!evidenceInput.trim()}
-                style={{
-                  padding: '6px 18px',
-                  background: 'transparent',
-                  border: `1px solid ${ayu.green}`,
-                  borderRadius: '4px',
-                  color: ayu.green,
-                  cursor: evidenceInput.trim() ? 'pointer' : 'not-allowed',
-                  fontSize: '12px',
-                  fontFamily: "'Cinzel', 'Times New Roman', serif",
-                  fontWeight: 600,
-                  letterSpacing: '0.05em',
-                  textTransform: 'uppercase',
-                  opacity: evidenceInput.trim() ? 1 : 0.5,
-                }}
               >
                 Submit
               </button>
               <button
+                className={styles.formCancelBtn}
                 onClick={() => { setShowDoneForm(false); setEvidenceInput(''); }}
-                style={{
-                  padding: '6px 18px',
-                  background: 'transparent',
-                  border: `1px solid ${ayu.border}`,
-                  borderRadius: '4px',
-                  color: ayu.dim,
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  fontFamily: "'Cinzel', 'Times New Roman', serif",
-                  fontWeight: 600,
-                  letterSpacing: '0.05em',
-                  textTransform: 'uppercase',
-                }}
               >
                 Cancel
               </button>
@@ -385,7 +305,7 @@ export function DetailView() {
       )}
 
       {(actions.length > 0 || branchActions.length > 0) && (
-        <div style={{ display: 'flex', gap: '8px', marginTop: '16px', flexWrap: 'wrap' }}>
+        <div className={styles.actions}>
           {actions.map((action) => (
             <ActionButton
               key={action}
@@ -401,6 +321,14 @@ export function DetailView() {
             />
           ))}
         </div>
+      )}
+
+      {showEditForm && (
+        <WantedForm
+          item={item}
+          onClose={() => setShowEditForm(false)}
+          onSaved={load}
+        />
       )}
 
       {confirm && (
@@ -420,27 +348,8 @@ export function DetailView() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        padding: '14px',
-        background: ayu.surface,
-        borderRadius: '6px',
-        border: `1px solid ${ayu.border}`,
-        marginBottom: '12px',
-      }}
-    >
-      <h3
-        style={{
-          color: statusColor[title.toLowerCase()] || ayu.brass,
-          fontSize: '13px',
-          fontWeight: 700,
-          margin: '0 0 8px',
-          letterSpacing: '0.05em',
-          textTransform: 'uppercase',
-        }}
-      >
-        {title}
-      </h3>
+    <div className={styles.section}>
+      <h3 className={styles.sectionTitle}>{title}</h3>
       {children}
     </div>
   );

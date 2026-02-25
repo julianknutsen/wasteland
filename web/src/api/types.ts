@@ -96,3 +96,29 @@ export interface BrowseFilter {
   sort?: string;
   limit?: number;
 }
+
+export interface PostInput {
+  title: string;
+  description?: string;
+  project?: string;
+  type?: string;
+  priority?: number;
+  effort_level?: string;
+  tags?: string[];
+}
+
+export interface UpdateInput {
+  title?: string;
+  description?: string;
+  project?: string;
+  type?: string;
+  priority?: number;
+  effort_level?: string;
+  tags?: string[];
+  tags_set?: boolean;
+}
+
+export interface SettingsInput {
+  mode: string;
+  signing: boolean;
+}

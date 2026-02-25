@@ -1,22 +1,8 @@
-import { statusColor, ayu } from '../styles/theme';
+import styles from './StatusBadge.module.css';
 
 export function StatusBadge({ status }: { status: string }) {
-  const color = statusColor[status] || ayu.dim;
   return (
-    <span
-      style={{
-        display: 'inline-block',
-        padding: '2px 8px',
-        borderRadius: '4px',
-        fontSize: '11px',
-        fontWeight: 700,
-        fontFamily: "'Cinzel', 'Times New Roman', serif",
-        letterSpacing: '0.05em',
-        textTransform: 'uppercase',
-        color: '#fff',
-        backgroundColor: color,
-      }}
-    >
+    <span className={styles.badge} data-status={status}>
       {status.replace('_', ' ')}
     </span>
   );

@@ -6,6 +6,9 @@ import type {
   DetailResponse,
   ErrorResponse,
   MutationResponse,
+  PostInput,
+  UpdateInput,
+  SettingsInput,
 } from './types';
 
 class ApiError extends Error {
@@ -120,6 +123,30 @@ export async function branchDiff(branch: string): Promise<{ diff: string }> {
 
 export async function sync(): Promise<void> {
   await request<Record<string, string>>('/api/sync', { method: 'POST' });
+}
+
+export async function createItem(input: PostInput): Promise<MutationResponse> {
+  return request<MutationResponse>('/api/wanted', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateItem(id: string, input: UpdateInput): Promise<MutationResponse> {
+  return request<MutationResponse>(`/api/wanted/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function saveSettings(input: SettingsInput): Promise<void> {
+  await request<Record<string, string>>('/api/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
 }
 
 export { ApiError };

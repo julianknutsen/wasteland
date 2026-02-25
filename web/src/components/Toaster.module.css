@@ -1,0 +1,12 @@
+.toaster {
+  --normal-bg: var(--surface);
+  --normal-text: var(--fg);
+  --normal-border: var(--border);
+  --success-bg: var(--surface);
+  --success-text: var(--green);
+  --success-border: var(--green);
+  --error-bg: var(--surface);
+  --error-text: var(--accent);
+  --error-border: var(--accent);
+  font-family: var(--font-body);
+}

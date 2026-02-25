@@ -1,0 +1,73 @@
+.page {}
+
+.heading {
+  color: var(--fg);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  margin-bottom: var(--space-5);
+}
+
+.section {
+  margin-bottom: var(--space-6);
+}
+
+.sectionTitle {
+  font-size: var(--text-base);
+  font-weight: 700;
+  margin-bottom: var(--space-2);
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--border);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.sectionTitle[data-status="claimed"] { color: var(--steel); }
+.sectionTitle[data-status="in_review"] { color: var(--brass); }
+.sectionTitle[data-status="completed"] { color: var(--accent); }
+
+.empty {
+  color: var(--dim);
+  font-size: var(--text-base);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-base);
+}
+
+.row {
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--surface);
+}
+
+.cellPriority {
+  padding: 6px var(--space-3);
+  width: 60px;
+}
+
+.cellTitle {
+  padding: 6px var(--space-3);
+}
+
+.cellStatus {
+  padding: 6px var(--space-3);
+  width: 100px;
+}
+
+.titleLink {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.loadingText {
+  color: var(--dim);
+}
+
+.errorText {
+  color: var(--accent);
+}

@@ -1,5 +1,6 @@
-import { ayu } from '../styles/theme';
+import type { RefObject } from 'react';
 import type { BrowseFilter } from '../api/types';
+import styles from './FilterBar.module.css';
 
 const statuses = ['', 'open', 'claimed', 'in_review', 'completed'];
 const types = ['', 'feature', 'bug', 'design', 'rfc', 'docs'];
@@ -8,30 +9,17 @@ const sorts = ['priority', 'newest', 'alpha'];
 interface FilterBarProps {
   filter: BrowseFilter;
   onChange: (filter: BrowseFilter) => void;
+  searchRef?: RefObject<HTMLInputElement | null>;
 }
 
-const selectStyle: React.CSSProperties = {
-  padding: '6px 10px',
-  borderRadius: '4px',
-  border: `1px solid ${ayu.border}`,
-  background: ayu.surface,
-  color: ayu.fg,
-  fontSize: '14px',
-  fontFamily: "'Crimson Text', Georgia, serif",
-};
-
-const inputStyle: React.CSSProperties = {
-  ...selectStyle,
-  width: '200px',
-};
-
-export function FilterBar({ filter, onChange }: FilterBarProps) {
+export function FilterBar({ filter, onChange, searchRef }: FilterBarProps) {
   return (
-    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+    <div className={styles.bar} role="search" aria-label="Filter wanted items">
       <select
+        className={styles.select}
+        aria-label="Filter by status"
         value={filter.status || ''}
         onChange={(e) => onChange({ ...filter, status: e.target.value || undefined })}
-        style={selectStyle}
       >
         {statuses.map((s) => (
           <option key={s} value={s}>
@@ -41,9 +29,10 @@ export function FilterBar({ filter, onChange }: FilterBarProps) {
       </select>
 
       <select
+        className={styles.select}
+        aria-label="Filter by type"
         value={filter.type || ''}
         onChange={(e) => onChange({ ...filter, type: e.target.value || undefined })}
-        style={selectStyle}
       >
         {types.map((t) => (
           <option key={t} value={t}>
@@ -53,9 +42,10 @@ export function FilterBar({ filter, onChange }: FilterBarProps) {
       </select>
 
       <select
+        className={styles.select}
+        aria-label="Sort order"
         value={filter.sort || 'priority'}
         onChange={(e) => onChange({ ...filter, sort: e.target.value })}
-        style={selectStyle}
       >
         {sorts.map((s) => (
           <option key={s} value={s}>
@@ -65,11 +55,13 @@ export function FilterBar({ filter, onChange }: FilterBarProps) {
       </select>
 
       <input
+        ref={searchRef}
+        className={styles.input}
+        aria-label="Search items"
         type="text"
         placeholder="search..."
         value={filter.search || ''}
         onChange={(e) => onChange({ ...filter, search: e.target.value || undefined })}
-        style={inputStyle}
       />
     </div>
   );

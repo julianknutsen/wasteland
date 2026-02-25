@@ -1,0 +1,64 @@
+:root {
+  /* Colors */
+  --bg: #e8dcc8;
+  --bg-alt: #d9c9b0;
+  --bg-dark: #3e2723;
+  --fg: #2c1810;
+  --fg-muted: #5d4037;
+  --fg-light: #f5e6d3;
+  --accent: #8b2500;
+  --accent-hover: #a0522d;
+  --accent-light: #d4a574;
+  --green: #2e7d32;
+  --red: #8b2500;
+  --blue: #4a6741;
+  --orange: #cd7f32;
+  --purple: #6a1b9a;
+  --cyan: #00695c;
+  --dim: #5d4037;
+  --surface: #f5e6d3;
+  --surface-dark: #4a3728;
+  --border: #8b7355;
+  --border-dark: #5d4037;
+  --brass: #cd7f32;
+  --bronze: #8b4513;
+  --copper: #b87333;
+  --steel: #70798c;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
+
+  /* Typography */
+  --font-heading: 'Cinzel', 'Times New Roman', serif;
+  --font-body: 'Crimson Text', Georgia, serif;
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 22px;
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 4px rgba(44, 24, 16, 0.1);
+  --shadow-md: 0 4px 12px rgba(44, 24, 16, 0.15);
+  --shadow-lg: 0 4px 24px rgba(44, 24, 16, 0.3);
+
+  /* Transitions */
+  --transition-fast: 100ms ease;
+  --transition-normal: 150ms ease;
+  --transition-slow: 250ms ease;
+}

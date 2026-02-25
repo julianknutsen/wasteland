@@ -1,0 +1,154 @@
+.page {}
+
+.header {
+  margin-bottom: var(--space-4);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.heading {
+  color: var(--fg);
+  font-size: var(--text-xl);
+  font-weight: 700;
+}
+
+.error {
+  color: var(--accent);
+  margin-top: var(--space-3);
+}
+
+.loading {
+  color: var(--dim);
+  margin-top: var(--space-3);
+}
+
+.empty {
+  color: var(--dim);
+  margin-top: var(--space-3);
+}
+
+.table {
+  width: 100%;
+  margin-top: var(--space-3);
+  border-collapse: collapse;
+  font-size: var(--text-base);
+}
+
+.thead {
+  border-bottom: 2px solid var(--border);
+  color: var(--dim);
+  text-align: left;
+  font-family: var(--font-heading);
+  font-size: var(--text-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.th {
+  padding: var(--space-2) var(--space-3);
+}
+
+.row {
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--surface);
+}
+
+.row[data-selected] {
+  background: var(--bg-alt);
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+}
+
+.td {
+  padding: var(--space-2) var(--space-3);
+}
+
+.tdMuted {
+  padding: var(--space-2) var(--space-3);
+  color: var(--dim);
+}
+
+.titleLink {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.branchTag {
+  color: var(--brass);
+  margin-left: 6px;
+  font-size: var(--text-xs);
+}
+
+.postBtn {
+  padding: 6px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--green);
+  background: transparent;
+  color: var(--green);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  min-height: 44px;
+}
+
+.cardList {
+  display: none;
+}
+
+.card {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.card:hover {
+  background: var(--surface);
+}
+
+.card[data-selected] {
+  background: var(--bg-alt);
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.cardTitle {
+  color: var(--fg);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: var(--text-md);
+  display: block;
+}
+
+.cardMeta {
+  display: flex;
+  gap: var(--space-2);
+  color: var(--dim);
+  font-size: var(--text-sm);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .table {
+    display: none;
+  }
+
+  .cardList {
+    display: block;
+    margin-top: var(--space-3);
+  }
+}

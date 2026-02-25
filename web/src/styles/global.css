@@ -1,36 +1,11 @@
+@import './tokens.css';
+
 *,
 *::before,
 *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-}
-
-:root {
-  --bg: #e8dcc8;
-  --bg-alt: #d9c9b0;
-  --bg-dark: #3e2723;
-  --fg: #2c1810;
-  --fg-muted: #5d4037;
-  --fg-light: #f5e6d3;
-  --accent: #8b2500;
-  --accent-hover: #a0522d;
-  --accent-light: #d4a574;
-  --green: #2e7d32;
-  --red: #8b2500;
-  --blue: #4a6741;
-  --orange: #cd7f32;
-  --purple: #6a1b9a;
-  --cyan: #00695c;
-  --dim: #5d4037;
-  --surface: #f5e6d3;
-  --surface-dark: #4a3728;
-  --border: #8b7355;
-  --border-dark: #5d4037;
-  --brass: #cd7f32;
-  --bronze: #8b4513;
-  --copper: #b87333;
-  --steel: #70798c;
 }
 
 html,
@@ -96,4 +71,40 @@ code, pre, .mono {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-dark);
+}
+
+/* Focus */
+:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* Skip link */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-dark);
+  color: var(--fg-light);
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  z-index: 1000;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

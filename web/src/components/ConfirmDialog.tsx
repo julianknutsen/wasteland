@@ -1,4 +1,6 @@
-import { ayu } from '../styles/theme';
+import { useEffect } from 'react';
+import { useFocusTrap } from '../hooks/useFocusTrap';
+import styles from './ConfirmDialog.module.css';
 
 interface ConfirmDialogProps {
   message: string;
@@ -7,65 +9,32 @@ interface ConfirmDialogProps {
 }
 
 export function ConfirmDialog({ message, onConfirm, onCancel }: ConfirmDialogProps) {
+  const trapRef = useFocusTrap(true);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onCancel]);
+
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'rgba(62,39,35,0.6)',
-        zIndex: 100,
-      }}
-    >
+    <div className={styles.overlay} onClick={onCancel}>
       <div
-        style={{
-          background: ayu.surface,
-          border: `2px solid ${ayu.border}`,
-          borderRadius: '6px',
-          padding: '24px',
-          maxWidth: '400px',
-          width: '90%',
-          boxShadow: '0 4px 24px rgba(44,24,16,0.3)',
-        }}
+        ref={trapRef}
+        className={styles.dialog}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Confirmation"
+        onClick={(e) => e.stopPropagation()}
       >
-        <p style={{ marginBottom: '16px', color: ayu.fg, fontSize: '15px' }}>{message}</p>
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onCancel}
-            style={{
-              padding: '6px 18px',
-              borderRadius: '4px',
-              border: `1px solid ${ayu.border}`,
-              background: 'transparent',
-              color: ayu.dim,
-              cursor: 'pointer',
-              fontFamily: "'Cinzel', 'Times New Roman', serif",
-              fontSize: '12px',
-              fontWeight: 600,
-              letterSpacing: '0.05em',
-              textTransform: 'uppercase',
-            }}
-          >
+        <p className={styles.message}>{message}</p>
+        <div className={styles.actions}>
+          <button className={styles.cancelBtn} onClick={onCancel}>
             Cancel
           </button>
-          <button
-            onClick={onConfirm}
-            style={{
-              padding: '6px 18px',
-              borderRadius: '4px',
-              border: `1px solid ${ayu.accent}`,
-              background: ayu.accent,
-              color: ayu.fgLight,
-              cursor: 'pointer',
-              fontFamily: "'Cinzel', 'Times New Roman', serif",
-              fontSize: '12px',
-              fontWeight: 600,
-              letterSpacing: '0.05em',
-              textTransform: 'uppercase',
-            }}
-          >
+          <button className={styles.confirmBtn} onClick={onConfirm}>
             Confirm
           </button>
         </div>

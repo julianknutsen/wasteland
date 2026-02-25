@@ -1,0 +1,43 @@
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-alt) 25%,
+    var(--surface) 50%,
+    var(--bg-alt) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.line {
+  composes: skeleton;
+  height: 14px;
+  margin-bottom: var(--space-2);
+}
+
+.badge {
+  composes: skeleton;
+  height: 20px;
+  width: 48px;
+  display: inline-block;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.block {
+  composes: skeleton;
+  height: 80px;
+  margin-bottom: var(--space-3);
+}
