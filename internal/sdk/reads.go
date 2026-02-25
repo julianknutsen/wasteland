@@ -84,19 +84,20 @@ func (c *Client) detailWildWest(wantedID string) (*DetailResult, error) {
 	}, nil
 }
 
-// computeBranchActions returns the mode-aware branch operations available for a detail result.
-// This mirrors the TUI's actionHints() logic for delta resolution:
+// ComputeBranchActions returns the mode-aware branch operations available
+// given the current mode, branch name, delta label, and existing PR URL.
+//
 //   - PR mode with delta and no existing PR: ["submit_pr", "discard"]
 //   - PR mode with delta and existing PR: ["discard"]
 //   - Wild-west mode with delta: ["apply", "discard"]
 //   - No branch or no delta: []
-func (c *Client) computeBranchActions(r *DetailResult) []string {
-	if r.Branch == "" || r.Delta == "" {
+func ComputeBranchActions(mode, branch, delta, prURL string) []string {
+	if branch == "" || delta == "" {
 		return nil
 	}
 	var actions []string
-	if c.mode == "pr" {
-		if r.PRURL == "" {
+	if mode == "pr" {
+		if prURL == "" {
 			actions = append(actions, "submit_pr")
 		}
 	} else {
@@ -104,6 +105,10 @@ func (c *Client) computeBranchActions(r *DetailResult) []string {
 	}
 	actions = append(actions, "discard")
 	return actions
+}
+
+func (c *Client) computeBranchActions(r *DetailResult) []string {
+	return ComputeBranchActions(c.mode, r.Branch, r.Delta, r.PRURL)
 }
 
 // Dashboard fetches the personal dashboard for the current rig handle.

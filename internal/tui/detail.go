@@ -40,6 +40,7 @@ type detailModel struct {
 	branch         string              // non-empty when showing branch state
 	mainStatus     string              // status on main when showing branch state
 	prURL          string              // non-empty when upstream PR already exists
+	branchActions  []string            // SDK-computed: "submit_pr", "apply", "discard"
 	confirming     *confirmAction      // non-nil → showing confirmation prompt
 	deltaConfirm   *deltaConfirmAction // non-nil → showing delta confirmation prompt
 	executing      bool                // true → showing spinner
@@ -85,6 +86,7 @@ func (m *detailModel) setData(msg detailDataMsg) {
 	m.branch = msg.branch
 	m.mainStatus = msg.mainStatus
 	m.prURL = msg.prURL
+	m.branchActions = msg.branchActions
 	// Clear mutation state so stale results don't mask action hints.
 	m.confirming = nil
 	m.deltaConfirm = nil
@@ -481,17 +483,20 @@ func (m detailModel) actionHints() string {
 		hints = append(hints, hint)
 	}
 
-	// Delta actions: only when a branch exists with a pending delta.
-	if m.branch != "" && m.mainStatus != "" && m.mainStatus != m.item.Status {
+	// Branch actions from SDK-computed list.
+	if len(m.branchActions) > 0 {
 		delta := commons.DeltaLabel(m.mainStatus, m.item.Status)
 		var deltaHints []string
-		if m.mode == "pr" && m.prURL == "" {
-			// Only show submit hint when no PR exists yet.
-			deltaHints = append(deltaHints, fmt.Sprintf("M:submit PR (%s)", delta))
-		} else if m.mode != "pr" {
-			deltaHints = append(deltaHints, fmt.Sprintf("M:apply %s", delta))
+		for _, action := range m.branchActions {
+			switch action {
+			case "submit_pr":
+				deltaHints = append(deltaHints, fmt.Sprintf("M:submit PR (%s)", delta))
+			case "apply":
+				deltaHints = append(deltaHints, fmt.Sprintf("M:apply %s", delta))
+			case "discard":
+				deltaHints = append(deltaHints, fmt.Sprintf("b:discard (→ %s)", m.mainStatus))
+			}
 		}
-		deltaHints = append(deltaHints, fmt.Sprintf("b:discard (→ %s)", m.mainStatus))
 		if len(hints) > 0 {
 			hints = append(hints, "|")
 		}

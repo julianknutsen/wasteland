@@ -27,13 +27,14 @@ type browseDataMsg struct {
 
 // detailDataMsg carries detail query results.
 type detailDataMsg struct {
-	item       *commons.WantedItem
-	completion *commons.CompletionRecord
-	stamp      *commons.Stamp
-	err        error
-	branch     string // non-empty when detail was read from a PR branch
-	mainStatus string // status on main when detail was read from a branch
-	prURL      string // non-empty when an upstream PR already exists for this branch
+	item          *commons.WantedItem
+	completion    *commons.CompletionRecord
+	stamp         *commons.Stamp
+	err           error
+	branch        string   // non-empty when detail was read from a PR branch
+	mainStatus    string   // status on main when detail was read from a branch
+	prURL         string   // non-empty when an upstream PR already exists for this branch
+	branchActions []string // SDK-computed branch operations: "submit_pr", "apply", "discard"
 }
 
 // meDataMsg carries dashboard query results.

@@ -9,6 +9,7 @@ import (
 	bubbletea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/julianknutsen/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/sdk"
 )
 
 // Config holds the parameters needed to launch the TUI.
@@ -400,9 +401,18 @@ func mutateOnBranch(cfg Config, wantedID, commitMsg string, stmts ...string) act
 
 	// Read post-mutation state from branch.
 	item, completion, stamp, _ := commons.QueryFullDetailAsOf(cfg.DB, wantedID, branch)
+	delta := ""
+	if mainStatus != "" && item != nil && item.Status != mainStatus {
+		delta = commons.DeltaLabel(mainStatus, item.Status)
+	}
+	var prURL string
+	if branch != "" && cfg.CheckPR != nil {
+		prURL = cfg.CheckPR(branch)
+	}
 	detail := detailDataMsg{
 		item: item, completion: completion, stamp: stamp,
-		branch: branch, mainStatus: mainStatus,
+		branch: branch, mainStatus: mainStatus, prURL: prURL,
+		branchActions: sdk.ComputeBranchActions(cfg.Mode, branch, delta, prURL),
 	}
 
 	var pushLog bytes.Buffer
@@ -476,6 +486,9 @@ func fetchDetail(cfg Config, wantedID string) bubbletea.Cmd {
 				if state.BranchName != "" && cfg.CheckPR != nil {
 					detail.prURL = cfg.CheckPR(state.BranchName)
 				}
+				detail.branchActions = sdk.ComputeBranchActions(
+					cfg.Mode, detail.branch, state.Delta(), detail.prURL,
+				)
 				return detail
 			}
 		}
