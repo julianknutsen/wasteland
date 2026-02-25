@@ -22,8 +22,18 @@ class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(path, init);
-  const body = await resp.json();
+  let resp: Response;
+  try {
+    resp = await fetch(path, init);
+  } catch {
+    throw new ApiError(0, 'Network error — is the server running?');
+  }
+  let body: unknown;
+  try {
+    body = await resp.json();
+  } catch {
+    throw new ApiError(resp.status, resp.statusText || 'Invalid response');
+  }
   if (!resp.ok) {
     throw new ApiError(resp.status, (body as ErrorResponse).error || resp.statusText);
   }

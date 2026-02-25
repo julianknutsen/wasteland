@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useOptimistic } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  detail, claim, unclaim, reject, close, deleteItem,
+  detail, config, claim, unclaim, reject, close, deleteItem,
   done, accept, submitPR, applyBranch, discardBranch, branchDiff,
 } from '../api/client';
 import type { DetailResponse } from '../api/types';
@@ -35,11 +35,16 @@ export function DetailView() {
   const [evidenceInput, setEvidenceInput] = useState('');
   const [showDoneForm, setShowDoneForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
+  const [rigHandle, setRigHandle] = useState('');
 
   const [optimisticStatus, setOptimisticStatus] = useOptimistic(
     data?.item.status ?? '',
     (_current: string, next: string) => next,
   );
+
+  useEffect(() => {
+    config().then((c) => setRigHandle(c.rig_handle)).catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -164,6 +169,7 @@ export function DetailView() {
   const { item, completion, stamp, branch, main_status, pr_url, delta, actions, branch_actions } = data;
   const branchActions = branch_actions || [];
   const displayStatus = optimisticStatus || item.status;
+  const canEdit = rigHandle && rigHandle === item.posted_by;
 
   return (
     <div className={styles.page}>
@@ -174,9 +180,11 @@ export function DetailView() {
       <div className={styles.header}>
         <div className={styles.titleRow}>
           <h2 className={styles.title}>{item.title}</h2>
-          <button className={styles.editBtn} onClick={() => setShowEditForm(true)}>
-            Edit
-          </button>
+          {canEdit && (
+            <button className={styles.editBtn} onClick={() => setShowEditForm(true)}>
+              Edit
+            </button>
+          )}
         </div>
         <div className={styles.badges}>
           <PriorityBadge priority={item.priority} />
