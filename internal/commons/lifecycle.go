@@ -195,7 +195,15 @@ func TransitionRequiresInput(t Transition) string {
 // Single-hop deltas map to transition names: "claim", "done", "reject".
 // Multi-hop or unrecognized deltas return "changes".
 func DeltaLabel(mainStatus, branchStatus string) string {
-	for _, rule := range transitionRules {
+	// Use a fixed order so ambiguous pairs (e.g. in_review→completed which
+	// matches both "accept" and "close") are deterministic.
+	order := []Transition{
+		TransitionClaim, TransitionUnclaim, TransitionDone,
+		TransitionAccept, TransitionReject, TransitionClose,
+		TransitionDelete, TransitionUpdate,
+	}
+	for _, t := range order {
+		rule := transitionRules[t]
 		if rule.from == mainStatus && rule.to == branchStatus {
 			return rule.name
 		}
