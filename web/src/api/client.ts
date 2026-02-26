@@ -1,11 +1,14 @@
 import type {
+  AuthStatusResponse,
   BrowseFilter,
   BrowseResponse,
   ConfigResponse,
+  ConnectInput,
   DashboardResponse,
   DetailResponse,
   ErrorResponse,
   MutationResponse,
+  NangoKeyResponse,
   PostInput,
   SettingsInput,
   UpdateInput,
@@ -28,6 +31,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch {
     throw new ApiError(0, "Network error — is the server running?");
   }
+
+  // Redirect to /connect on auth failures in hosted mode.
+  if (resp.status === 401 || resp.status === 412) {
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/connect")) {
+      window.location.href = "/connect";
+      // Return a never-resolving promise to prevent callers from processing stale data.
+      return new Promise<T>(() => {});
+    }
+  }
+
   let body: unknown;
   try {
     body = await resp.json();
@@ -161,6 +174,28 @@ export async function saveSettings(input: SettingsInput): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+// --- Hosted auth functions ---
+
+export async function authStatus(): Promise<AuthStatusResponse> {
+  return request<AuthStatusResponse>("/api/auth/status");
+}
+
+export async function nangoKey(): Promise<NangoKeyResponse> {
+  return request<NangoKeyResponse>("/api/auth/nango-key");
+}
+
+export async function notifyConnect(input: ConnectInput): Promise<void> {
+  await request<Record<string, string>>("/api/auth/connect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function logout(): Promise<void> {
+  await request<Record<string, string>>("/api/auth/logout", { method: "POST" });
 }
 
 export { ApiError };

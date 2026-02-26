@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 
 	"github.com/julianknutsen/wasteland/internal/api"
 	"github.com/julianknutsen/wasteland/internal/backend"
 	"github.com/julianknutsen/wasteland/internal/commons"
 	"github.com/julianknutsen/wasteland/internal/federation"
+	"github.com/julianknutsen/wasteland/internal/hosted"
 	"github.com/julianknutsen/wasteland/internal/sdk"
 	"github.com/julianknutsen/wasteland/internal/style"
 	"github.com/julianknutsen/wasteland/web"
@@ -23,11 +25,16 @@ func newServeCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short: "Start the web UI server",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			hostedMode, _ := cmd.Flags().GetBool("hosted")
+			if hostedMode {
+				return runServeHosted(cmd, stdout, stderr)
+			}
 			return runServe(cmd, stdout, stderr)
 		},
 	}
 	cmd.Flags().Int("port", 8999, "Port to listen on")
 	cmd.Flags().Bool("dev", false, "Enable CORS for development (Vite proxy)")
+	cmd.Flags().Bool("hosted", false, "Run in multi-tenant hosted mode (Nango)")
 	return cmd
 }
 
@@ -138,5 +145,57 @@ func runServe(cmd *cobra.Command, stdout, stderr io.Writer) error {
 
 	addr := fmt.Sprintf(":%d", port)
 	fmt.Fprintf(stdout, "Wasteland web UI listening on http://localhost%s\n", addr)
+	return http.ListenAndServe(addr, handler) //nolint:gosec // bind addr is user-controlled via --port flag
+}
+
+func runServeHosted(cmd *cobra.Command, stdout, stderr io.Writer) error {
+	port, _ := cmd.Flags().GetInt("port")
+	devMode, _ := cmd.Flags().GetBool("dev")
+
+	// Read required env vars.
+	nangoSecretKey := os.Getenv("NANGO_SECRET_KEY")
+	if nangoSecretKey == "" {
+		return fmt.Errorf("NANGO_SECRET_KEY environment variable is required for hosted mode")
+	}
+	nangoPublicKey := os.Getenv("NANGO_PUBLIC_KEY")
+	if nangoPublicKey == "" {
+		return fmt.Errorf("NANGO_PUBLIC_KEY environment variable is required for hosted mode")
+	}
+	sessionSecret := os.Getenv("WL_SESSION_SECRET")
+	if sessionSecret == "" {
+		return fmt.Errorf("WL_SESSION_SECRET environment variable is required for hosted mode")
+	}
+
+	// Optional env vars with defaults.
+	nangoBaseURL := os.Getenv("NANGO_BASE_URL")
+	nangoIntegrationID := os.Getenv("NANGO_INTEGRATION_ID")
+
+	// Build Nango client.
+	nangoCfg := hosted.NangoConfig{
+		BaseURL:       nangoBaseURL,
+		SecretKey:     nangoSecretKey,
+		PublicKey:     nangoPublicKey,
+		IntegrationID: nangoIntegrationID,
+	}
+	nangoClient := hosted.NewNangoClient(nangoCfg)
+
+	// Build session store and client resolver.
+	sessions := hosted.NewSessionStore()
+	resolver := hosted.NewClientResolver(nangoClient, sessions)
+
+	// Build the API server with hosted client resolution.
+	apiServer := api.NewWithClientFunc(hosted.NewClientFunc())
+
+	// Build the hosted server and compose handlers.
+	hostedServer := hosted.NewServer(resolver, sessions, nangoClient, nangoPublicKey, sessionSecret)
+
+	handler := hostedServer.Handler(apiServer, web.Assets)
+	if devMode {
+		handler = api.CORSMiddleware(handler)
+	}
+
+	addr := fmt.Sprintf(":%d", port)
+	fmt.Fprintf(stdout, "Wasteland hosted mode listening on http://localhost%s\n", addr)
+	fmt.Fprintf(stderr, "  Nango integration: %s\n", nangoClient.IntegrationID())
 	return http.ListenAndServe(addr, handler) //nolint:gosec // bind addr is user-controlled via --port flag
 }

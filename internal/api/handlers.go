@@ -7,11 +7,26 @@ import (
 	"github.com/julianknutsen/wasteland/internal/sdk"
 )
 
+// resolveClient extracts the sdk.Client from the request. Returns false if
+// the client cannot be resolved (writes a 401 error to w in that case).
+func (s *Server) resolveClient(w http.ResponseWriter, r *http.Request) (*sdk.Client, bool) {
+	client, err := s.clientFunc(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return nil, false
+	}
+	return client, true
+}
+
 // --- Read handlers ---
 
 func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	filter := parseQueryFilter(r)
-	result, err := s.client.Browse(filter)
+	result, err := client.Browse(filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -20,17 +35,25 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	id := r.PathValue("id")
-	result, err := s.client.Detail(id)
+	result, err := client.Detail(id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toDetailResponse(result, s.client.Mode()))
+	writeJSON(w, http.StatusOK, toDetailResponse(result, client.Mode()))
 }
 
-func (s *Server) handleDashboard(w http.ResponseWriter, _ *http.Request) {
-	data, err := s.client.Dashboard()
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
+	data, err := client.Dashboard()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -38,16 +61,24 @@ func (s *Server) handleDashboard(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, toDashboardResponse(data))
 }
 
-func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	writeJSON(w, http.StatusOK, ConfigResponse{
-		RigHandle: s.client.RigHandle(),
-		Mode:      s.client.Mode(),
+		RigHandle: client.RigHandle(),
+		Mode:      client.Mode(),
 	})
 }
 
 // --- Mutation handlers ---
 
 func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	var req PostRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
@@ -57,7 +88,7 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "title is required")
 		return
 	}
-	result, err := s.client.Post(sdk.PostInput{
+	result, err := client.Post(sdk.PostInput{
 		Title:       req.Title,
 		Description: req.Description,
 		Project:     req.Project,
@@ -70,10 +101,14 @@ func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, toMutationResponse(result, s.client.Mode()))
+	writeJSON(w, http.StatusCreated, toMutationResponse(result, client.Mode()))
 }
 
 func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	id := r.PathValue("id")
 	var req UpdateRequest
 	if err := decodeJSON(r, &req); err != nil {
@@ -93,45 +128,61 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	if req.Priority != nil {
 		fields.Priority = *req.Priority
 	}
-	result, err := s.client.Update(id, fields)
+	result, err := client.Update(id, fields)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, client.Mode()))
 }
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	id := r.PathValue("id")
-	result, err := s.client.Delete(id)
+	result, err := client.Delete(id)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, client.Mode()))
 }
 
 func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	id := r.PathValue("id")
-	result, err := s.client.Claim(id)
+	result, err := client.Claim(id)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, client.Mode()))
 }
 
 func (s *Server) handleUnclaim(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	id := r.PathValue("id")
-	result, err := s.client.Unclaim(id)
+	result, err := client.Unclaim(id)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, client.Mode()))
 }
 
 func (s *Server) handleDone(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	id := r.PathValue("id")
 	var req DoneRequest
 	if err := decodeJSON(r, &req); err != nil {
@@ -142,22 +193,26 @@ func (s *Server) handleDone(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "evidence is required")
 		return
 	}
-	result, err := s.client.Done(id, req.Evidence)
+	result, err := client.Done(id, req.Evidence)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, client.Mode()))
 }
 
 func (s *Server) handleAccept(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	id := r.PathValue("id")
 	var req AcceptRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	result, err := s.client.Accept(id, sdk.AcceptInput{
+	result, err := client.Accept(id, sdk.AcceptInput{
 		Quality:     req.Quality,
 		Reliability: req.Reliability,
 		Severity:    req.Severity,
@@ -168,39 +223,51 @@ func (s *Server) handleAccept(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, client.Mode()))
 }
 
 func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	id := r.PathValue("id")
 	var req RejectRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	result, err := s.client.Reject(id, req.Reason)
+	result, err := client.Reject(id, req.Reason)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, client.Mode()))
 }
 
 func (s *Server) handleClose(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	id := r.PathValue("id")
-	result, err := s.client.Close(id)
+	result, err := client.Close(id)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, toMutationResponse(result, s.client.Mode()))
+	writeJSON(w, http.StatusOK, toMutationResponse(result, client.Mode()))
 }
 
 // --- Branch handlers ---
 
 func (s *Server) handleApplyBranch(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	branch := r.PathValue("branch")
-	if err := s.client.ApplyBranch(branch); err != nil {
+	if err := client.ApplyBranch(branch); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -208,8 +275,12 @@ func (s *Server) handleApplyBranch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDiscardBranch(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	branch := r.PathValue("branch")
-	if err := s.client.DiscardBranch(branch); err != nil {
+	if err := client.DiscardBranch(branch); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -217,8 +288,12 @@ func (s *Server) handleDiscardBranch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSubmitPR(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	branch := r.PathValue("branch")
-	url, err := s.client.SubmitPR(branch)
+	url, err := client.SubmitPR(branch)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -227,8 +302,12 @@ func (s *Server) handleSubmitPR(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleBranchDiff(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	branch := r.PathValue("branch")
-	diff, err := s.client.BranchDiff(branch)
+	diff, err := client.BranchDiff(branch)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -239,6 +318,10 @@ func (s *Server) handleBranchDiff(w http.ResponseWriter, r *http.Request) {
 // --- Settings handlers ---
 
 func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
 	var req SettingsRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
@@ -248,15 +331,19 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "mode must be \"wild-west\" or \"pr\"")
 		return
 	}
-	if err := s.client.SaveSettings(req.Mode, req.Signing); err != nil {
+	if err := client.SaveSettings(req.Mode, req.Signing); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
 }
 
-func (s *Server) handleSync(w http.ResponseWriter, _ *http.Request) {
-	if err := s.client.Sync(); err != nil {
+func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
+	if err := client.Sync(); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

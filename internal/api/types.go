@@ -100,6 +100,8 @@ type DashboardResponse struct {
 type ConfigResponse struct {
 	RigHandle string `json:"rig_handle"`
 	Mode      string `json:"mode"`
+	Hosted    bool   `json:"hosted,omitempty"`
+	Connected bool   `json:"connected,omitempty"`
 }
 
 // ErrorResponse is the JSON error envelope.

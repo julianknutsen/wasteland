@@ -82,6 +82,36 @@ export interface DashboardResponse {
 export interface ConfigResponse {
   rig_handle: string;
   mode: string;
+  hosted?: boolean;
+  connected?: boolean;
+}
+
+export interface AuthStatusResponse {
+  authenticated: boolean;
+  connected: boolean;
+  config?: UserConfig;
+}
+
+export interface UserConfig {
+  rig_handle: string;
+  fork_org: string;
+  fork_db: string;
+  upstream: string;
+  mode: string;
+}
+
+export interface NangoKeyResponse {
+  public_key: string;
+  integration_id: string;
+}
+
+export interface ConnectInput {
+  connection_id: string;
+  rig_handle: string;
+  fork_org: string;
+  fork_db: string;
+  upstream: string;
+  mode?: string;
 }
 
 export interface ErrorResponse {

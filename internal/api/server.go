@@ -10,17 +10,29 @@ import (
 	"github.com/julianknutsen/wasteland/internal/sdk"
 )
 
+// ClientFunc resolves an sdk.Client from an HTTP request. In self-sovereign mode
+// this returns a static client; in hosted mode it resolves per-user from session.
+type ClientFunc func(r *http.Request) (*sdk.Client, error)
+
 // Server is the HTTP API server wrapping an SDK client.
 type Server struct {
-	client *sdk.Client
-	mux    *http.ServeMux
+	clientFunc ClientFunc
+	mux        *http.ServeMux
 }
 
 // New creates a Server backed by the given SDK client.
+// This is the backwards-compatible constructor for self-sovereign mode.
 func New(client *sdk.Client) *Server {
+	return NewWithClientFunc(func(_ *http.Request) (*sdk.Client, error) {
+		return client, nil
+	})
+}
+
+// NewWithClientFunc creates a Server that resolves a client per-request.
+func NewWithClientFunc(fn ClientFunc) *Server {
 	s := &Server{
-		client: client,
-		mux:    http.NewServeMux(),
+		clientFunc: fn,
+		mux:        http.NewServeMux(),
 	}
 	s.registerRoutes()
 	return s
