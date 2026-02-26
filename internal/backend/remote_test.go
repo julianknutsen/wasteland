@@ -497,13 +497,12 @@ func TestRemoteDB_MergeBranch(t *testing.T) {
 }
 
 func TestRemoteDB_DeleteRemoteBranch(t *testing.T) {
-	var writtenSQL string
+	var deletedPath string
 
 	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" {
-			writtenSQL = r.URL.Query().Get("q")
-			resp := map[string]string{"query_execution_status": "Success"}
-			_ = json.NewEncoder(w).Encode(resp)
+		if r.Method == "DELETE" {
+			deletedPath = r.URL.Path
+			w.WriteHeader(200)
 			return
 		}
 		t.Errorf("unexpected method: %s", r.Method)
@@ -517,12 +516,12 @@ func TestRemoteDB_DeleteRemoteBranch(t *testing.T) {
 		t.Fatalf("DeleteRemoteBranch error: %v", err)
 	}
 
-	// Should delegate to DeleteBranch, which uses DOLT_BRANCH('-D', ...).
-	if !strings.Contains(writtenSQL, "DOLT_BRANCH") {
-		t.Errorf("expected DOLT_BRANCH in SQL, got: %s", writtenSQL)
+	// Should use REST branches endpoint with DELETE method.
+	if !strings.Contains(deletedPath, "/branches/") {
+		t.Errorf("expected /branches/ in path, got: %s", deletedPath)
 	}
-	if !strings.Contains(writtenSQL, "wl/alice/w-001") {
-		t.Errorf("expected branch name in SQL, got: %s", writtenSQL)
+	if !strings.Contains(deletedPath, "wl") {
+		t.Errorf("expected branch name in path, got: %s", deletedPath)
 	}
 }
 

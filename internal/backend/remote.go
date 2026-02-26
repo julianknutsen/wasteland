@@ -141,26 +141,15 @@ func (r *RemoteDB) Branches(prefix string) ([]string, error) {
 	return branches, nil
 }
 
-// DeleteBranch removes a branch on the fork via the write API.
+// DeleteBranch removes a branch on the fork via the REST branches endpoint.
 func (r *RemoteDB) DeleteBranch(name string) error {
-	escaped := strings.ReplaceAll(name, "'", "''")
-	sql := fmt.Sprintf("CALL DOLT_BRANCH('-D', '%s')", escaped)
+	apiURL := fmt.Sprintf("%s/%s/%s/branches/%s",
+		DoltHubAPIBase, r.writeOwner, r.writeDB, url.PathEscape(name))
 
-	apiURL := fmt.Sprintf("%s/%s/%s/write/main/main?q=%s",
-		DoltHubAPIBase, r.writeOwner, r.writeDB, url.QueryEscape(sql))
-
-	body, err := r.doPost(apiURL, nil)
+	_, err := r.doRequest("DELETE", apiURL)
 	if err != nil {
-		return fmt.Errorf("delete branch failed: %w", err)
+		return fmt.Errorf("delete branch: %w", err)
 	}
-
-	var writeResp struct {
-		OperationName string `json:"operation_name"`
-	}
-	if err := json.Unmarshal(body, &writeResp); err == nil && writeResp.OperationName != "" {
-		return r.pollOperation(writeResp.OperationName)
-	}
-
 	return nil
 }
 
@@ -464,6 +453,30 @@ func (r *RemoteDB) doPost(apiURL string, payload []byte) ([]byte, error) {
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+
+	resp, err := r.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
+	}
+	return body, nil
+}
+
+func (r *RemoteDB) doRequest(method, apiURL string) ([]byte, error) {
+	req, err := http.NewRequest(method, apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("authorization", "token "+r.token)
 
 	resp, err := r.client.Do(req)
 	if err != nil {
