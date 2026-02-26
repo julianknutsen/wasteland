@@ -3,6 +3,9 @@ package sdk
 import (
 	"fmt"
 	"io"
+	"strings"
+
+	"github.com/julianknutsen/wasteland/internal/commons"
 )
 
 // ApplyBranch merges a mutation branch into main, deletes the branch, and pushes.
@@ -23,6 +26,8 @@ func (c *Client) ApplyBranch(branch string) error {
 }
 
 // DiscardBranch closes any associated PR and deletes the mutation branch.
+// On backends that don't support branch deletion (e.g. DoltHub remote),
+// it clears the item data from the branch so it no longer appears as pending.
 func (c *Client) DiscardBranch(branch string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -31,12 +36,29 @@ func (c *Client) DiscardBranch(branch string) error {
 	if c.ClosePR != nil {
 		_ = c.ClosePR(branch)
 	}
-	if err := c.db.DeleteBranch(branch); err != nil {
-		return fmt.Errorf("delete local branch: %w", err)
+
+	// Clear item data from the branch so it no longer differs from main.
+	// This is essential for remote backends where branch deletion is a no-op.
+	if wantedID := extractWantedID(branch); wantedID != "" {
+		esc := commons.EscapeSQL(wantedID)
+		_ = c.db.Exec(branch, "wl discard: "+wantedID, false,
+			fmt.Sprintf("DELETE FROM completions WHERE wanted_id='%s'", esc),
+			fmt.Sprintf("DELETE FROM wanted WHERE id='%s'", esc))
 	}
-	// Remote deletion is best-effort.
+
+	// Delete branch (no-op for remote backends).
+	_ = c.db.DeleteBranch(branch)
 	_ = c.db.DeleteRemoteBranch(branch)
 	return nil
+}
+
+// extractWantedID pulls the wanted ID from a branch name like "wl/{rig}/{wantedID}".
+func extractWantedID(branch string) string {
+	parts := strings.SplitN(branch, "/", 3)
+	if len(parts) == 3 && parts[0] == "wl" {
+		return parts[2]
+	}
+	return ""
 }
 
 // SubmitPR creates a pull request for the given branch.
