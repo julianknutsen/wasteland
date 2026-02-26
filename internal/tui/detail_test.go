@@ -52,7 +52,7 @@ func TestDetail_DeltaHints_PRMode_SubmitAndDiscard(t *testing.T) {
 	m.detail.branch = "wl/test-rig/w-abc123"
 	m.detail.mainStatus = "open"
 	m.detail.branchActions = sdk.ComputeBranchActions("pr", m.detail.branch,
-		commons.DeltaLabel("open", "claimed"), "")
+		commons.DeltaLabel("open", "claimed"), "", false)
 
 	hints := m.detail.actionHints()
 	// PR mode without existing PR: M opens submit PR view.
@@ -70,7 +70,7 @@ func TestDetail_DeltaHints_PRMode_ExistingPR_HidesSubmit(t *testing.T) {
 	m.detail.mainStatus = "open"
 	m.detail.prURL = "https://github.com/org/repo/pull/42"
 	m.detail.branchActions = sdk.ComputeBranchActions("pr", m.detail.branch,
-		commons.DeltaLabel("open", "claimed"), m.detail.prURL)
+		commons.DeltaLabel("open", "claimed"), m.detail.prURL, false)
 
 	hints := m.detail.actionHints()
 	// PR already exists: submit hint should NOT appear.
@@ -88,7 +88,7 @@ func TestDetail_DeltaHints_WildWest_ApplyAndDiscard(t *testing.T) {
 	m.detail.branch = "wl/test-rig/w-abc123"
 	m.detail.mainStatus = "open"
 	m.detail.branchActions = sdk.ComputeBranchActions("wild-west", m.detail.branch,
-		commons.DeltaLabel("open", "claimed"), "")
+		commons.DeltaLabel("open", "claimed"), "", false)
 
 	hints := m.detail.actionHints()
 	if !strings.Contains(hints, "M:apply claim") {
@@ -116,7 +116,7 @@ func TestDetail_DeltaHints_MultiHop_WildWest(t *testing.T) {
 	m.detail.branch = "wl/test-rig/w-abc123"
 	m.detail.mainStatus = "open"
 	m.detail.branchActions = sdk.ComputeBranchActions("wild-west", m.detail.branch,
-		commons.DeltaLabel("open", "in_review"), "")
+		commons.DeltaLabel("open", "in_review"), "", false)
 
 	hints := m.detail.actionHints()
 	if !strings.Contains(hints, "M:apply changes") {

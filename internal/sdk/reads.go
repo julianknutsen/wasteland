@@ -115,13 +115,15 @@ func (c *Client) detailWildWest(wantedID string) (*DetailResult, error) {
 }
 
 // ComputeBranchActions returns the mode-aware branch operations available
-// given the current mode, branch name, delta label, and existing PR URL.
+// given the current mode, branch name, delta label, existing PR URL, and
+// whether the item's regular actions include "delete".
 //
 //   - PR mode with delta and no existing PR: ["submit_pr", "discard"]
 //   - PR mode with delta and existing PR: ["discard"]
 //   - Wild-west mode with delta: ["apply", "discard"]
 //   - No branch or no delta: []
-func ComputeBranchActions(mode, branch, delta, prURL string) []string {
+//   - "discard" is suppressed when hasDelete is true (delete cleans up the branch)
+func ComputeBranchActions(mode, branch, delta, prURL string, hasDelete bool) []string {
 	if branch == "" || delta == "" {
 		return nil
 	}
@@ -133,12 +135,21 @@ func ComputeBranchActions(mode, branch, delta, prURL string) []string {
 	} else {
 		actions = append(actions, "apply")
 	}
-	actions = append(actions, "discard")
+	if !hasDelete {
+		actions = append(actions, "discard")
+	}
 	return actions
 }
 
 func (c *Client) computeBranchActions(r *DetailResult) []string {
-	return ComputeBranchActions(c.mode, r.Branch, r.Delta, r.PRURL)
+	hasDelete := false
+	for _, a := range r.Actions {
+		if commons.TransitionName(a) == "delete" {
+			hasDelete = true
+			break
+		}
+	}
+	return ComputeBranchActions(c.mode, r.Branch, r.Delta, r.PRURL, hasDelete)
 }
 
 // Dashboard fetches the personal dashboard for the current rig handle.
