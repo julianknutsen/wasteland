@@ -66,10 +66,13 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, ConfigResponse{
+	resp := ConfigResponse{
 		RigHandle: client.RigHandle(),
 		Mode:      client.Mode(),
-	})
+		Hosted:    s.hosted,
+		Connected: s.hosted, // in hosted mode, reaching this handler means connected
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // --- Mutation handlers ---

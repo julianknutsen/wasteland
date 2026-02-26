@@ -18,6 +18,7 @@ type ClientFunc func(r *http.Request) (*sdk.Client, error)
 type Server struct {
 	clientFunc ClientFunc
 	mux        *http.ServeMux
+	hosted     bool // true when running in multi-tenant hosted mode
 }
 
 // New creates a Server backed by the given SDK client.
@@ -26,6 +27,17 @@ func New(client *sdk.Client) *Server {
 	return NewWithClientFunc(func(_ *http.Request) (*sdk.Client, error) {
 		return client, nil
 	})
+}
+
+// NewHosted creates a Server for multi-tenant hosted mode.
+func NewHosted(fn ClientFunc) *Server {
+	s := &Server{
+		clientFunc: fn,
+		mux:        http.NewServeMux(),
+		hosted:     true,
+	}
+	s.registerRoutes()
+	return s
 }
 
 // NewWithClientFunc creates a Server that resolves a client per-request.

@@ -23,7 +23,8 @@ type UserConfig struct {
 	ForkOrg   string `json:"fork_org"`
 	ForkDB    string `json:"fork_db"`
 	Upstream  string `json:"upstream"`
-	Mode      string `json:"mode"` // "wild-west" or "pr"
+	Mode      string `json:"mode"`    // "wild-west" or "pr"
+	Signing   bool   `json:"signing"` // GPG-signed dolt commits
 }
 
 // NangoClient talks to the Nango REST API.
@@ -114,7 +115,7 @@ func (n *NangoClient) SetMetadata(connectionID string, cfg *UserConfig) error {
 		return fmt.Errorf("marshaling metadata: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", u, bytes.NewReader(body))
+	req, err := http.NewRequest("PATCH", u, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}

@@ -33,7 +33,7 @@ func setupHostedTestServer(t *testing.T) (*SessionStore, *httptest.Server) {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)
 
-		case r.Method == "POST" && strings.HasPrefix(r.URL.Path, "/connection/"):
+		case r.Method == "PATCH" && strings.HasPrefix(r.URL.Path, "/connection/"):
 			w.WriteHeader(http.StatusOK)
 
 		default:

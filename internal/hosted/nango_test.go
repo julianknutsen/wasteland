@@ -30,7 +30,7 @@ func newFakeNangoServer(t *testing.T, token string, metadata *UserConfig) *httpt
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)
 
-		case r.Method == "POST" && r.URL.Path == "/connection/conn-1/metadata":
+		case r.Method == "PATCH" && r.URL.Path == "/connection/conn-1/metadata":
 			w.WriteHeader(http.StatusOK)
 
 		default:

@@ -124,7 +124,8 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	// Fetch config from Nango.
 	_, cfg, err := s.nango.GetConnection(session.ConnectionID)
 	if err != nil {
-		writeJSON(w, http.StatusOK, authStatusResponse{Authenticated: true, Connected: true})
+		// Nango call failed — report as not connected so frontend can re-auth.
+		writeJSON(w, http.StatusOK, authStatusResponse{Authenticated: true, Connected: false})
 		return
 	}
 

@@ -24,7 +24,7 @@ type cachedClient struct {
 type ClientResolver struct {
 	nango    *NangoClient
 	sessions *SessionStore
-	mu       sync.RWMutex
+	mu       sync.Mutex
 	cache    map[string]*cachedClient // sessionID -> cached client
 }
 
@@ -39,15 +39,15 @@ func NewClientResolver(nango *NangoClient, sessions *SessionStore) *ClientResolv
 
 // Resolve builds or returns a cached sdk.Client for the given session.
 func (cr *ClientResolver) Resolve(session *UserSession) (*sdk.Client, error) {
-	// Check cache first.
-	cr.mu.RLock()
+	// Fast path: return cached client if still valid.
+	cr.mu.Lock()
 	if cached, ok := cr.cache[session.ID]; ok && time.Now().Before(cached.expiresAt) {
-		cr.mu.RUnlock()
+		cr.mu.Unlock()
 		return cached.client, nil
 	}
-	cr.mu.RUnlock()
+	cr.mu.Unlock()
 
-	// Fetch fresh credentials + config from Nango.
+	// Fetch fresh credentials + config from Nango (no lock held during network call).
 	token, userCfg, err := cr.nango.GetConnection(session.ConnectionID)
 	if err != nil {
 		return nil, fmt.Errorf("resolving credentials: %w", err)
@@ -59,29 +59,30 @@ func (cr *ClientResolver) Resolve(session *UserSession) (*sdk.Client, error) {
 		return nil, fmt.Errorf("no user config found for connection %s", session.ConnectionID)
 	}
 
-	// Check if cached client has the same token (just needs TTL refresh).
-	cr.mu.RLock()
-	if cached, ok := cr.cache[session.ID]; ok && cached.token == token {
-		cached.expiresAt = time.Now().Add(cacheTTL)
-		cr.mu.RUnlock()
-		return cached.client, nil
-	}
-	cr.mu.RUnlock()
+	// Re-check cache under lock to avoid duplicate client creation (TOCTOU).
+	cr.mu.Lock()
+	defer cr.mu.Unlock()
 
-	// Build a new client.
+	if cached, ok := cr.cache[session.ID]; ok {
+		if cached.token == token {
+			// Same token — just refresh the TTL.
+			cached.expiresAt = time.Now().Add(cacheTTL)
+			return cached.client, nil
+		}
+		// Token changed — fall through to build a new client.
+	}
+
+	// Build a new client (lock held, but buildClient only does in-memory work).
 	client, err := cr.buildClient(token, userCfg, session.ConnectionID)
 	if err != nil {
 		return nil, err
 	}
 
-	cr.mu.Lock()
 	cr.cache[session.ID] = &cachedClient{
 		client:    client,
 		token:     token,
 		expiresAt: time.Now().Add(cacheTTL),
 	}
-	cr.mu.Unlock()
-
 	return client, nil
 }
 
@@ -137,9 +138,11 @@ func (cr *ClientResolver) buildClient(token string, cfg *UserConfig, connectionI
 			return provider.ListPendingWantedIDs(upOrg, upDB)
 		},
 		BranchURL: branchURL,
-		SaveConfig: func(mode string, _ bool) error {
+		Signing:   cfg.Signing,
+		SaveConfig: func(mode string, signing bool) error {
 			newCfg := *cfg
 			newCfg.Mode = mode
+			newCfg.Signing = signing
 			return cr.nango.SetMetadata(connectionID, &newCfg)
 		},
 	})
