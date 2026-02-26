@@ -350,7 +350,16 @@ export function DetailView() {
         </div>
       )}
 
-      {showEditForm && <WantedForm item={item} onClose={() => setShowEditForm(false)} onSaved={load} />}
+      {showEditForm && (
+        <WantedForm
+          item={item}
+          onClose={() => setShowEditForm(false)}
+          onSaved={(detail) => {
+            if (detail) setData(detail);
+            else load();
+          }}
+        />
+      )}
 
       {confirm && (
         <ConfirmDialog

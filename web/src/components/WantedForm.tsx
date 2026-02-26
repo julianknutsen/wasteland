@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { createItem, updateItem } from "../api/client";
-import type { MutationResponse, WantedItem } from "../api/types";
+import type { DetailResponse, MutationResponse, WantedItem } from "../api/types";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import styles from "./WantedForm.module.css";
 
@@ -12,7 +12,7 @@ const efforts = ["trivial", "small", "medium", "large", "epic"];
 interface WantedFormProps {
   item?: WantedItem;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (detail?: DetailResponse) => void;
 }
 
 export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
@@ -76,7 +76,7 @@ export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
         toast.success(`PR submitted: ${resp.detail.pr_url}`);
       }
 
-      onSaved();
+      onSaved(resp.detail ?? undefined);
       onClose();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to save");
