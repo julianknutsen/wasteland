@@ -198,6 +198,21 @@ func TransitionRequiresInput(t Transition) string {
 	}
 }
 
+// ComputeDelta returns the delta label for an item given its main and branch status.
+// This is the single source of truth for delta computation.
+func ComputeDelta(mainStatus, branchStatus string, branchExists bool) string {
+	if !branchExists {
+		return ""
+	}
+	if mainStatus == "" {
+		return "new"
+	}
+	if mainStatus != branchStatus {
+		return DeltaLabel(mainStatus, branchStatus)
+	}
+	return "changes"
+}
+
 // DeltaLabel returns a human-readable label for a state delta.
 // Single-hop deltas map to transition names: "claim", "done", "reject".
 // Multi-hop or unrecognized deltas return "changes".

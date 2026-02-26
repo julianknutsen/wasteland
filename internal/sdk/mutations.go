@@ -97,11 +97,7 @@ func (c *Client) Delete(wantedID string) (*MutationResult, error) {
 			// Item only exists on branch — clean up branch and close any PR.
 			c.mu.Lock()
 			defer c.mu.Unlock()
-			if c.ClosePR != nil {
-				_ = c.ClosePR(branch)
-			}
-			_ = c.db.DeleteBranch(branch)
-			_ = c.db.DeleteRemoteBranch(branch)
+			c.cleanupBranch(branch)
 			return &MutationResult{
 				Hint: "branch-only item — branch deleted",
 			}, nil

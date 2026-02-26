@@ -108,11 +108,9 @@ export function DetailView() {
           break;
         case "submit_pr":
           if (data.branch) {
-            const prResp = await submitPR(data.branch);
-            setData({ ...data, pr_url: prResp.url });
-            toast.success("PR submitted");
+            await submitPR(data.branch);
           }
-          return;
+          break;
         case "apply":
           if (data.branch) {
             await applyBranch(data.branch);

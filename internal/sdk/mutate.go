@@ -63,14 +63,7 @@ func (c *Client) mutatePR(wantedID, commitMsg string, stmts ...string) (*Mutatio
 	}
 	if item != nil {
 		detail.Actions = commons.AvailableTransitions(item, c.rigHandle)
-		switch {
-		case mainStatus == "":
-			detail.Delta = "new"
-		case item.Status != mainStatus:
-			detail.Delta = commons.DeltaLabel(mainStatus, item.Status)
-		default:
-			detail.Delta = "changes"
-		}
+		detail.Delta = commons.ComputeDelta(mainStatus, item.Status, true)
 	}
 	if branch != "" && c.CheckPR != nil {
 		detail.PRURL = c.CheckPR(branch)
@@ -93,11 +86,13 @@ func (c *Client) mutatePR(wantedID, commitMsg string, stmts ...string) (*Mutatio
 
 	// Auto-cleanup: if mutation reverted item to main status, delete the branch.
 	if mainStatus != "" && item != nil && item.Status == mainStatus {
-		_ = c.db.DeleteBranch(branch)
-		_ = c.db.DeleteRemoteBranch(branch)
+		c.cleanupBranch(branch)
 		detail.Branch = ""
+		detail.BranchURL = ""
 		detail.MainStatus = ""
 		detail.Delta = ""
+		detail.PRURL = ""
+		detail.BranchActions = nil
 		result.Branch = ""
 		result.Hint = "reverted — branch cleaned up"
 	}

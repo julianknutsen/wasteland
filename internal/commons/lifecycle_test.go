@@ -201,6 +201,31 @@ func TestAvailableTransitions(t *testing.T) {
 	}
 }
 
+func TestComputeDelta(t *testing.T) {
+	tests := []struct {
+		name         string
+		mainStatus   string
+		branchStatus string
+		branchExists bool
+		want         string
+	}{
+		{"no branch", "open", "claimed", false, ""},
+		{"new item", "", "open", true, "new"},
+		{"claim delta", "open", "claimed", true, "claim"},
+		{"done delta", "claimed", "in_review", true, "done"},
+		{"same status", "open", "open", true, "changes"},
+		{"multi-hop", "open", "completed", true, "changes"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ComputeDelta(tc.mainStatus, tc.branchStatus, tc.branchExists)
+			if got != tc.want {
+				t.Errorf("ComputeDelta(%q, %q, %v) = %q, want %q", tc.mainStatus, tc.branchStatus, tc.branchExists, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDeltaLabel(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -273,11 +298,11 @@ func TestItemState_Delta(t *testing.T) {
 		want string
 	}{
 		{"no branch", ItemState{Main: &WantedItem{Status: "open"}}, ""},
-		{"no main", ItemState{Branch: &WantedItem{Status: "claimed"}}, ""},
-		{"same status", ItemState{
+		{"no main (new)", ItemState{Branch: &WantedItem{Status: "claimed"}}, "new"},
+		{"same status (changes)", ItemState{
 			Main:   &WantedItem{Status: "open"},
 			Branch: &WantedItem{Status: "open"},
-		}, ""},
+		}, "changes"},
 		{"claim delta", ItemState{
 			Main:   &WantedItem{Status: "open"},
 			Branch: &WantedItem{Status: "claimed"},

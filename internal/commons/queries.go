@@ -577,13 +577,14 @@ func (s *ItemState) EffectiveStatus() string {
 
 // Delta returns the human-readable delta label, or "" if no delta.
 func (s *ItemState) Delta() string {
-	if s.Main == nil || s.Branch == nil {
+	if s.Branch == nil {
 		return ""
 	}
-	if s.Main.Status == s.Branch.Status {
-		return ""
+	mainStatus := ""
+	if s.Main != nil {
+		mainStatus = s.Main.Status
 	}
-	return DeltaLabel(s.Main.Status, s.Branch.Status)
+	return ComputeDelta(mainStatus, s.Branch.Status, true)
 }
 
 // ResolveItemState gives the complete picture of an item without checkout.

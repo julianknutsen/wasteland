@@ -854,12 +854,13 @@ func TestDelete_PR_BranchOnly_CleansUpBranch(t *testing.T) {
 	if db.branches["wl/alice/w-1"] {
 		t.Error("expected branch to be deleted")
 	}
-	// Should NOT have committed a withdrawal or created a PR.
+	// Should NOT have created a PR.
 	if createPRCalled {
 		t.Error("should NOT create a PR for branch-only delete")
 	}
-	if len(db.execCalls) != 0 {
-		t.Errorf("expected no exec calls, got %d", len(db.execCalls))
+	// cleanupBranch clears item data (1 exec call) — important for remote backends.
+	if len(db.execCalls) != 1 {
+		t.Errorf("expected 1 exec call (cleanup), got %d", len(db.execCalls))
 	}
 	// Hint should indicate branch cleanup.
 	if result.Hint == "" {

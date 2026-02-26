@@ -25,30 +25,27 @@ func (c *Client) ApplyBranch(branch string) error {
 	return nil
 }
 
-// DiscardBranch closes any associated PR and deletes the mutation branch.
-// On backends that don't support branch deletion (e.g. DoltHub remote),
-// it clears the item data from the branch so it no longer appears as pending.
-func (c *Client) DiscardBranch(branch string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Close the PR first (best-effort).
+// cleanupBranch closes any associated PR, clears item data, and deletes the branch.
+// Caller must hold c.mu.
+func (c *Client) cleanupBranch(branch string) {
 	if c.ClosePR != nil {
 		_ = c.ClosePR(branch)
 	}
-
-	// Clear item data from the branch so it no longer differs from main.
-	// This is essential for remote backends where branch deletion is a no-op.
 	if wantedID := extractWantedID(branch); wantedID != "" {
 		esc := commons.EscapeSQL(wantedID)
 		_ = c.db.Exec(branch, "wl discard: "+wantedID, false,
 			fmt.Sprintf("DELETE FROM completions WHERE wanted_id='%s'", esc),
 			fmt.Sprintf("DELETE FROM wanted WHERE id='%s'", esc))
 	}
-
-	// Delete branch (no-op for remote backends).
 	_ = c.db.DeleteBranch(branch)
 	_ = c.db.DeleteRemoteBranch(branch)
+}
+
+// DiscardBranch closes any associated PR and deletes the mutation branch.
+func (c *Client) DiscardBranch(branch string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cleanupBranch(branch)
 	return nil
 }
 
