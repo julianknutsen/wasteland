@@ -374,3 +374,87 @@ func TestDoltHubProvider_Type(t *testing.T) {
 		t.Errorf("Type() = %q, want %q", got, "dolthub")
 	}
 }
+
+func TestDoltHubProvider_ListPendingWantedIDs(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/upstream-org/wl-commons/pulls", func(w http.ResponseWriter, r *http.Request) {
+		// If it's a request for a specific pull, serve the detail.
+		if strings.Contains(r.URL.Path, "/pulls/") {
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"pulls": []map[string]any{
+				{"pull_id": "1", "state": "open"},
+				{"pull_id": "2", "state": "open"},
+				{"pull_id": "3", "state": "closed"},
+			},
+		})
+	})
+	mux.HandleFunc("/upstream-org/wl-commons/pulls/1", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"from_branch": "wl/alice/fix-login",
+		})
+	})
+	mux.HandleFunc("/upstream-org/wl-commons/pulls/2", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"from_branch": "wl/bob/add-feature",
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	dolthubAPIBase = server.URL
+
+	provider := NewDoltHubProvider("token")
+	ids, err := provider.ListPendingWantedIDs("upstream-org", "wl-commons")
+	if err != nil {
+		t.Fatalf("ListPendingWantedIDs() error: %v", err)
+	}
+
+	if !ids["fix-login"] {
+		t.Errorf("expected fix-login in pending IDs")
+	}
+	if !ids["add-feature"] {
+		t.Errorf("expected add-feature in pending IDs")
+	}
+	if len(ids) != 2 {
+		t.Errorf("expected 2 pending IDs, got %d", len(ids))
+	}
+}
+
+func TestDoltHubProvider_ListPendingWantedIDs_SkipsNonWLBranches(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/org/db/pulls", func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/pulls/") {
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"pulls": []map[string]any{
+				{"pull_id": "1", "state": "open"},
+			},
+		})
+	})
+	mux.HandleFunc("/org/db/pulls/1", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"from_branch": "feature/other-work",
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	dolthubAPIBase = server.URL
+
+	provider := NewDoltHubProvider("token")
+	ids, err := provider.ListPendingWantedIDs("org", "db")
+	if err != nil {
+		t.Fatalf("ListPendingWantedIDs() error: %v", err)
+	}
+	if len(ids) != 0 {
+		t.Errorf("expected 0 pending IDs for non-wl branches, got %d", len(ids))
+	}
+}

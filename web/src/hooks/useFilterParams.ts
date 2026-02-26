@@ -12,11 +12,13 @@ export function useFilterParams(): [BrowseFilter, (filter: BrowseFilter) => void
     const sort = searchParams.get("sort");
     const search = searchParams.get("search");
     const priority = searchParams.get("priority");
+    const view = searchParams.get("view");
     if (status) f.status = status;
     if (type) f.type = type;
     if (sort) f.sort = sort;
     if (search) f.search = search;
     if (priority) f.priority = Number(priority);
+    if (view) f.view = view;
     return f;
   }, [searchParams]);
 
@@ -28,6 +30,7 @@ export function useFilterParams(): [BrowseFilter, (filter: BrowseFilter) => void
       if (f.sort && f.sort !== "priority") params.set("sort", f.sort);
       if (f.search) params.set("search", f.search);
       if (f.priority !== undefined && f.priority >= 0) params.set("priority", String(f.priority));
+      if (f.view && f.view !== "mine") params.set("view", f.view);
       setSearchParams(params, { replace: true });
     },
     [setSearchParams],

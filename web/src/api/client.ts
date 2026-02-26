@@ -49,6 +49,7 @@ function buildQuery(filter: BrowseFilter): string {
   if (filter.search) params.set("search", filter.search);
   if (filter.sort) params.set("sort", filter.sort);
   if (filter.limit) params.set("limit", String(filter.limit));
+  if (filter.view && filter.view !== "mine") params.set("view", filter.view);
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }

@@ -354,28 +354,28 @@ func TestBrowseView_BranchIndicator(t *testing.T) {
 		{ID: "w-abc123", Title: "Has branch", Status: "claimed", Priority: 1, Project: "proj", Type: "bug"},
 		{ID: "w-def456", Title: "No branch", Status: "open", Priority: 2, Project: "proj", Type: "bug"},
 	}
-	m.branchIDs = map[string]bool{"w-abc123": true}
+	m.pendingIDs = map[string]int{"w-abc123": 1}
 
 	v := m.view()
-	// The item with a branch should have * after its status.
+	// The item with a pending change should have * after its status.
 	if !strings.Contains(v, "claimed*") {
-		t.Errorf("view should contain 'claimed*' for branched item, got:\n%s", v)
+		t.Errorf("view should contain 'claimed*' for pending item, got:\n%s", v)
 	}
-	// The item without a branch should not have *.
+	// The item without pending changes should not have *.
 	// "open" should appear without * (we check it doesn't have "open*").
 	if strings.Contains(v, "open*") {
-		t.Errorf("view should NOT contain 'open*' for non-branched item, got:\n%s", v)
+		t.Errorf("view should NOT contain 'open*' for non-pending item, got:\n%s", v)
 	}
 }
 
-func TestBrowseSetData_StoresBranchIDs(t *testing.T) {
+func TestBrowseSetData_StoresPendingIDs(t *testing.T) {
 	m := newBrowseModel()
-	branchIDs := map[string]bool{"w-abc123": true}
+	pendingIDs := map[string]int{"w-abc123": 1}
 	m.setData(browseDataMsg{
-		items:     []commons.WantedSummary{{ID: "w-abc123", Status: "claimed"}},
-		branchIDs: branchIDs,
+		items:      []commons.WantedSummary{{ID: "w-abc123", Status: "claimed"}},
+		pendingIDs: pendingIDs,
 	})
-	if !m.branchIDs["w-abc123"] {
-		t.Error("branchIDs should contain w-abc123")
+	if m.pendingIDs["w-abc123"] != 1 {
+		t.Error("pendingIDs should contain w-abc123 with count 1")
 	}
 }

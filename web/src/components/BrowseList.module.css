@@ -80,7 +80,7 @@
   text-decoration: none;
 }
 
-.branchTag {
+.pendingTag {
   color: var(--brass);
   margin-left: 6px;
   font-size: var(--text-xs);

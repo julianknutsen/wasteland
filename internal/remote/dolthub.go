@@ -463,5 +463,58 @@ func (d *DoltHubProvider) UpdatePR(upstreamOrg, db, prID, title, description str
 	return nil
 }
 
+// ListPendingWantedIDs returns a set of wanted IDs that have open upstream PRs.
+// It lists open PRs on the upstream repo, fetches each PR's detail to get the
+// from_branch, and extracts the wanted ID from the wl/{rig}/{wantedID} convention.
+func (d *DoltHubProvider) ListPendingWantedIDs(upstreamOrg, db string) (map[string]bool, error) {
+	listURL := fmt.Sprintf("%s/%s/%s/pulls", dolthubAPIBase, upstreamOrg, db)
+	body, err := d.dolthubGet(listURL)
+	if err != nil {
+		return nil, fmt.Errorf("listing PRs: %w", err)
+	}
+
+	var result struct {
+		Pulls []struct {
+			PullID string `json:"pull_id"`
+			State  string `json:"state"`
+		} `json:"pulls"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("parsing PR list: %w", err)
+	}
+
+	ids := make(map[string]bool)
+	for _, pr := range result.Pulls {
+		if !strings.EqualFold(pr.State, "open") {
+			continue
+		}
+		detailURL := fmt.Sprintf("%s/%s/%s/pulls/%s", dolthubAPIBase, upstreamOrg, db, pr.PullID)
+		detail, err := d.dolthubGet(detailURL)
+		if err != nil {
+			continue
+		}
+		var prDetail struct {
+			FromBranch string `json:"from_branch"`
+		}
+		if err := json.Unmarshal(detail, &prDetail); err != nil {
+			continue
+		}
+		// Extract wanted ID from wl/{rig}/{wantedID} convention.
+		if !strings.HasPrefix(prDetail.FromBranch, "wl/") {
+			continue
+		}
+		rest := strings.TrimPrefix(prDetail.FromBranch, "wl/")
+		slashIdx := strings.Index(rest, "/")
+		if slashIdx < 0 {
+			continue
+		}
+		wantedID := rest[slashIdx+1:]
+		if wantedID != "" {
+			ids[wantedID] = true
+		}
+	}
+	return ids, nil
+}
+
 // Type returns "dolthub".
 func (d *DoltHubProvider) Type() string { return "dolthub" }

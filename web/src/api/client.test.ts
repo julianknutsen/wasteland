@@ -110,6 +110,24 @@ describe("buildQuery()", () => {
     const url = vi.mocked(globalThis.fetch).mock.calls[0][0] as string;
     expect(url).not.toContain("priority");
   });
+
+  it("includes view=all in query string", async () => {
+    await browse({ view: "all" });
+    const url = vi.mocked(globalThis.fetch).mock.calls[0][0] as string;
+    expect(url).toContain("view=all");
+  });
+
+  it("omits view=mine (default)", async () => {
+    await browse({ view: "mine" });
+    const url = vi.mocked(globalThis.fetch).mock.calls[0][0] as string;
+    expect(url).not.toContain("view");
+  });
+
+  it("includes view=upstream in query string", async () => {
+    await browse({ view: "upstream" });
+    const url = vi.mocked(globalThis.fetch).mock.calls[0][0] as string;
+    expect(url).toContain("view=upstream");
+  });
 });
 
 describe("API functions", () => {

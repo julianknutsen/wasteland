@@ -19,10 +19,11 @@ type ClientConfig struct {
 	HopURI    string     // rig's HOP protocol URI
 
 	// Optional callbacks — nil disables the feature.
-	CreatePR   func(branch string) (string, error)
-	CheckPR    func(branch string) string
-	LoadDiff   func(branch string) (string, error)
-	SaveConfig func(mode string, signing bool) error
+	CreatePR         func(branch string) (string, error)
+	CheckPR          func(branch string) string
+	LoadDiff         func(branch string) (string, error)
+	SaveConfig       func(mode string, signing bool) error
+	ListPendingItems func() (map[string]bool, error) // returns wanted IDs with open upstream PRs
 }
 
 // Client provides mode-aware operations against the Wasteland wanted board.
@@ -42,20 +43,23 @@ type Client struct {
 	LoadDiff func(branch string) (string, error)
 	// SaveConfig persists mode and signing settings. Nil disables the feature.
 	SaveConfig func(mode string, signing bool) error
+	// ListPendingItems returns wanted IDs that have open upstream PRs. Nil disables the feature.
+	ListPendingItems func() (map[string]bool, error)
 }
 
 // New creates a Client from the given config.
 func New(cfg ClientConfig) *Client {
 	return &Client{
-		db:         cfg.DB,
-		rigHandle:  cfg.RigHandle,
-		mode:       cfg.Mode,
-		signing:    cfg.Signing,
-		hopURI:     cfg.HopURI,
-		CreatePR:   cfg.CreatePR,
-		CheckPR:    cfg.CheckPR,
-		LoadDiff:   cfg.LoadDiff,
-		SaveConfig: cfg.SaveConfig,
+		db:               cfg.DB,
+		rigHandle:        cfg.RigHandle,
+		mode:             cfg.Mode,
+		signing:          cfg.Signing,
+		hopURI:           cfg.HopURI,
+		CreatePR:         cfg.CreatePR,
+		CheckPR:          cfg.CheckPR,
+		LoadDiff:         cfg.LoadDiff,
+		SaveConfig:       cfg.SaveConfig,
+		ListPendingItems: cfg.ListPendingItems,
 	}
 }
 

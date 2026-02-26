@@ -14,7 +14,7 @@ import (
 
 type browseModel struct {
 	items         []commons.WantedSummary
-	branchIDs     map[string]bool // wanted IDs with pending branch deltas
+	pendingIDs    map[string]int // wanted IDs with pending changes; value is PR count
 	cursor        int
 	statusIdx     int // index into statusCycle
 	typeIdx       int // index into typeCycle
@@ -76,7 +76,7 @@ func (m *browseModel) setData(msg browseDataMsg) {
 	m.loading = false
 	m.err = msg.err
 	m.items = msg.items
-	m.branchIDs = msg.branchIDs
+	m.pendingIDs = msg.pendingIDs
 	if m.cursor >= len(m.items) {
 		m.cursor = max(0, len(m.items)-1)
 	}
@@ -331,7 +331,7 @@ func (m browseModel) view() string {
 		}
 		pri := padANSI(colorizePriority(item.Priority), 3)
 		status := colorizeStatus(item.Status)
-		if m.branchIDs[item.ID] {
+		if m.pendingIDs[item.ID] > 0 {
 			status += "*"
 		}
 		status = padANSI(status, 10)

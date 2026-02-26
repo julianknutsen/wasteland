@@ -5,6 +5,8 @@ import styles from "./FilterBar.module.css";
 const statuses = ["", "open", "claimed", "in_review", "completed"];
 const types = ["", "feature", "bug", "design", "rfc", "docs"];
 const sorts = ["priority", "newest", "alpha"];
+const views = ["mine", "all", "upstream"] as const;
+const viewLabels: Record<string, string> = { mine: "my PRs", all: "all PRs", upstream: "upstream" };
 
 interface FilterBarProps {
   filter: BrowseFilter;
@@ -50,6 +52,19 @@ export function FilterBar({ filter, onChange, searchRef }: FilterBarProps) {
         {sorts.map((s) => (
           <option key={s} value={s}>
             {s}
+          </option>
+        ))}
+      </select>
+
+      <select
+        className={styles.select}
+        aria-label="View mode"
+        value={filter.view || "mine"}
+        onChange={(e) => onChange({ ...filter, view: e.target.value || undefined })}
+      >
+        {views.map((v) => (
+          <option key={v} value={v}>
+            {viewLabels[v]}
           </option>
         ))}
       </select>

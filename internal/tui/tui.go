@@ -343,7 +343,7 @@ func fetchBrowse(cfg Config, f commons.BrowseFilter) bubbletea.Cmd {
 		if err != nil {
 			return browseDataMsg{err: err}
 		}
-		return browseDataMsg{items: result.Items, branchIDs: result.BranchIDs}
+		return browseDataMsg{items: result.Items, pendingIDs: result.PendingIDs}
 	}
 }
 

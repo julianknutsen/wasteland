@@ -46,6 +46,7 @@ type BrowseFilter struct {
 	Search    string
 	MyItems   string    // rig handle for OR filter (posted_by OR claimed_by); empty = disabled
 	Sort      SortOrder // result ordering
+	View      string    // "mine" (default), "all", or "upstream"
 }
 
 // WantedSummary holds the columns returned by BrowseWanted.
@@ -177,6 +178,53 @@ func queryItemBranchState(db DB, wantedID, branch string) (string, string) {
 		return "", ""
 	}
 	return rows[0]["status"], rows[0]["claimed_by"]
+}
+
+// DetectAllBranchOverrides scans all wl/* branches (all rigs) and returns
+// overrides for items whose branch status differs from main, plus a count
+// of how many branches touch each wanted ID.
+func DetectAllBranchOverrides(db DB) ([]BranchOverride, map[string]int) {
+	branches, err := db.Branches("wl/")
+	if err != nil || len(branches) == 0 {
+		return nil, nil
+	}
+
+	counts := make(map[string]int)
+	var overrides []BranchOverride
+	seen := make(map[string]bool) // track first override per wanted ID
+	for _, branch := range branches {
+		// Branch format: wl/{rigHandle}/{wantedID}
+		rest := strings.TrimPrefix(branch, "wl/")
+		slashIdx := strings.Index(rest, "/")
+		if slashIdx < 0 {
+			continue
+		}
+		wantedID := rest[slashIdx+1:]
+		if wantedID == "" {
+			continue
+		}
+		counts[wantedID]++
+
+		if seen[wantedID] {
+			continue // already have an override for this item
+		}
+
+		branchStatus, branchClaimedBy := queryItemBranchState(db, wantedID, branch)
+		if branchStatus == "" {
+			continue
+		}
+		mainStatus, _, _ := QueryItemStatus(db, wantedID, "")
+		if branchStatus != mainStatus {
+			seen[wantedID] = true
+			overrides = append(overrides, BranchOverride{
+				WantedID:  wantedID,
+				Branch:    branch,
+				Status:    branchStatus,
+				ClaimedBy: branchClaimedBy,
+			})
+		}
+	}
+	return overrides, counts
 }
 
 // ApplyBranchOverrides adjusts browse results to reflect branch mutations.
@@ -430,20 +478,42 @@ func applyDashboardOverrides(db DB, items []WantedSummary, overrides []BranchOve
 }
 
 // BrowseWantedBranchAware wraps BrowseWanted with branch overlay in PR mode.
-func BrowseWantedBranchAware(db DB, mode, rigHandle string, f BrowseFilter) ([]WantedSummary, map[string]bool, error) {
+// The view parameter controls which branches are considered:
+//   - "upstream": no overlay, pure main data
+//   - "mine" (default): only the current rig's branches
+//   - "all": all rigs' branches
+//
+// Returns items, pending counts per wanted ID, and an error.
+func BrowseWantedBranchAware(db DB, mode, rigHandle string, f BrowseFilter) ([]WantedSummary, map[string]int, error) {
 	items, err := BrowseWanted(db, f)
 	if err != nil {
 		return nil, nil, err
 	}
-	branchIDs := make(map[string]bool)
-	if mode == "pr" {
+	pendingIDs := make(map[string]int)
+	if mode != "pr" || f.View == "upstream" {
+		return items, pendingIDs, nil
+	}
+
+	view := f.View
+	if view == "" {
+		view = "mine"
+	}
+
+	if view == "all" {
+		overrides, counts := DetectAllBranchOverrides(db)
+		for id, c := range counts {
+			pendingIDs[id] = c
+		}
+		items = ApplyBranchOverrides(db, items, overrides, f.Status)
+	} else {
+		// "mine": existing behavior
 		overrides := DetectBranchOverrides(db, rigHandle)
 		for _, o := range overrides {
-			branchIDs[o.WantedID] = true
+			pendingIDs[o.WantedID] = 1
 		}
 		items = ApplyBranchOverrides(db, items, overrides, f.Status)
 	}
-	return items, branchIDs, nil
+	return items, pendingIDs, nil
 }
 
 // QueryFullDetail fetches a wanted item with all related records.

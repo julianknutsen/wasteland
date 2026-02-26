@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/julianknutsen/wasteland/internal/commons"
 	"github.com/julianknutsen/wasteland/internal/federation"
@@ -695,5 +697,45 @@ func checkPRForBranch(cfg *federation.Config, branch string) string {
 		return url
 	default:
 		return ""
+	}
+}
+
+// listPendingItemsFromPRs returns a callback that lists wanted IDs with open
+// upstream PRs. Uses a 30-second TTL cache to avoid hammering the API.
+// Returns nil if the provider type does not support PR listing.
+func listPendingItemsFromPRs(cfg *federation.Config) func() (map[string]bool, error) {
+	if cfg.ResolveProviderType() != "dolthub" {
+		return nil
+	}
+	token := commons.DoltHubToken()
+	if token == "" {
+		return nil
+	}
+	upstreamOrg, db, err := federation.ParseUpstream(cfg.Upstream)
+	if err != nil {
+		return nil
+	}
+
+	var (
+		mu       sync.Mutex
+		cached   map[string]bool
+		cachedAt time.Time
+		cacheTTL = 30 * time.Second
+	)
+
+	return func() (map[string]bool, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if cached != nil && time.Since(cachedAt) < cacheTTL {
+			return cached, nil
+		}
+		provider := remote.NewDoltHubProvider(token)
+		ids, err := provider.ListPendingWantedIDs(upstreamOrg, db)
+		if err != nil {
+			return nil, err
+		}
+		cached = ids
+		cachedAt = time.Now()
+		return cached, nil
 	}
 }

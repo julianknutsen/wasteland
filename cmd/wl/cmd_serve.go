@@ -122,6 +122,7 @@ func runServe(cmd *cobra.Command, stdout, stderr io.Writer) error {
 		CheckPR: func(branch string) string {
 			return checkPRForBranch(cfg, branch)
 		},
+		ListPendingItems: listPendingItemsFromPRs(cfg),
 	})
 
 	server := api.New(client)

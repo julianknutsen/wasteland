@@ -68,4 +68,32 @@ describe("useFilterParams", () => {
     // sort "priority" is not serialized to URL, so it should be undefined when re-parsed
     expect(filter.sort).toBeUndefined();
   });
+
+  it("parses view param from URL", () => {
+    const { result } = renderHook(() => useFilterParams(), {
+      wrapper: wrapperWithRoute("/?view=all"),
+    });
+    const [filter] = result.current;
+    expect(filter.view).toBe("all");
+  });
+
+  it("default view 'mine' is omitted from URL", () => {
+    const { result } = renderHook(() => useFilterParams(), { wrapper });
+    act(() => {
+      const [, setFilter] = result.current;
+      setFilter({ view: "mine" });
+    });
+    const [filter] = result.current;
+    expect(filter.view).toBeUndefined();
+  });
+
+  it("setFilter serializes non-default view to URL", () => {
+    const { result } = renderHook(() => useFilterParams(), { wrapper });
+    act(() => {
+      const [, setFilter] = result.current;
+      setFilter({ view: "upstream" });
+    });
+    const [filter] = result.current;
+    expect(filter.view).toBe("upstream");
+  });
 });

@@ -129,7 +129,11 @@ export function BrowseList() {
                   <td className={styles.td}>
                     <Link to={`/wanted/${item.id}`} className={styles.titleLink}>
                       {item.title}
-                      {item.has_branch && <span className={styles.branchTag}>branch</span>}
+                      {item.pending_count != null && item.pending_count > 0 && (
+                        <span className={styles.pendingTag}>
+                          pending{item.pending_count > 1 ? ` (${item.pending_count})` : ""}
+                        </span>
+                      )}
                     </Link>
                   </td>
                   <td className={styles.td}>
@@ -149,7 +153,11 @@ export function BrowseList() {
                 <div className={styles.cardTop}>
                   <PriorityBadge priority={item.priority} />
                   <StatusBadge status={item.status} />
-                  {item.has_branch && <span className={styles.branchTag}>branch</span>}
+                  {item.pending_count != null && item.pending_count > 0 && (
+                    <span className={styles.pendingTag}>
+                      pending{item.pending_count > 1 ? ` (${item.pending_count})` : ""}
+                    </span>
+                  )}
                 </div>
                 <Link to={`/wanted/${item.id}`} className={styles.cardTitle}>
                   {item.title}

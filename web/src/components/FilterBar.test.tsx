@@ -41,4 +41,21 @@ describe("FilterBar", () => {
     expect(screen.getByLabelText("Sort order")).toHaveValue("alpha");
     expect(screen.getByLabelText("Search items")).toHaveValue("hello");
   });
+
+  it("view mode select calls onChange with updated filter", () => {
+    render(<FilterBar filter={baseFilter} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("View mode"), { target: { value: "all" } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ view: "all" }));
+  });
+
+  it("view mode defaults to mine", () => {
+    render(<FilterBar filter={baseFilter} onChange={onChange} />);
+    expect(screen.getByLabelText("View mode")).toHaveValue("mine");
+  });
+
+  it("view mode reflects current filter prop", () => {
+    const filter: BrowseFilter = { view: "upstream" };
+    render(<FilterBar filter={filter} onChange={onChange} />);
+    expect(screen.getByLabelText("View mode")).toHaveValue("upstream");
+  });
 });

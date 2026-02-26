@@ -118,6 +118,7 @@ func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 			c.Signing = signing
 			return store.Save(c)
 		},
+		ListPendingItems: listPendingItemsFromPRs(cfg),
 	})
 
 	m := tui.New(tui.Config{

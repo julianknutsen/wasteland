@@ -9,16 +9,16 @@ import (
 
 // WantedSummaryJSON is the JSON representation of a browse list item.
 type WantedSummaryJSON struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Project     string `json:"project,omitempty"`
-	Type        string `json:"type,omitempty"`
-	Priority    int    `json:"priority"`
-	PostedBy    string `json:"posted_by,omitempty"`
-	ClaimedBy   string `json:"claimed_by,omitempty"`
-	Status      string `json:"status"`
-	EffortLevel string `json:"effort_level"`
-	HasBranch   bool   `json:"has_branch,omitempty"`
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Project      string `json:"project,omitempty"`
+	Type         string `json:"type,omitempty"`
+	Priority     int    `json:"priority"`
+	PostedBy     string `json:"posted_by,omitempty"`
+	ClaimedBy    string `json:"claimed_by,omitempty"`
+	Status       string `json:"status"`
+	EffortLevel  string `json:"effort_level"`
+	PendingCount int    `json:"pending_count,omitempty"`
 }
 
 // BrowseResponse is the JSON response for GET /api/wanted.
@@ -254,25 +254,25 @@ func toMutationResponse(r *sdk.MutationResult, mode string) *MutationResponse {
 	}
 }
 
-func toSummaryJSON(s commons.WantedSummary, hasBranch bool) WantedSummaryJSON {
+func toSummaryJSON(s commons.WantedSummary, pendingCount int) WantedSummaryJSON {
 	return WantedSummaryJSON{
-		ID:          s.ID,
-		Title:       s.Title,
-		Project:     s.Project,
-		Type:        s.Type,
-		Priority:    s.Priority,
-		PostedBy:    s.PostedBy,
-		ClaimedBy:   s.ClaimedBy,
-		Status:      s.Status,
-		EffortLevel: s.EffortLevel,
-		HasBranch:   hasBranch,
+		ID:           s.ID,
+		Title:        s.Title,
+		Project:      s.Project,
+		Type:         s.Type,
+		Priority:     s.Priority,
+		PostedBy:     s.PostedBy,
+		ClaimedBy:    s.ClaimedBy,
+		Status:       s.Status,
+		EffortLevel:  s.EffortLevel,
+		PendingCount: pendingCount,
 	}
 }
 
 func toBrowseResponse(r *sdk.BrowseResult) *BrowseResponse {
 	items := make([]WantedSummaryJSON, len(r.Items))
 	for i, s := range r.Items {
-		items[i] = toSummaryJSON(s, r.BranchIDs[s.ID])
+		items[i] = toSummaryJSON(s, r.PendingIDs[s.ID])
 	}
 	return &BrowseResponse{Items: items}
 }
@@ -281,7 +281,7 @@ func toDashboardResponse(d *commons.DashboardData) *DashboardResponse {
 	convert := func(items []commons.WantedSummary) []WantedSummaryJSON {
 		result := make([]WantedSummaryJSON, len(items))
 		for i, s := range items {
-			result[i] = toSummaryJSON(s, false)
+			result[i] = toSummaryJSON(s, 0)
 		}
 		return result
 	}

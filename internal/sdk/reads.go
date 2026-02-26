@@ -6,8 +6,8 @@ import (
 
 // BrowseResult holds the items returned by Browse along with branch metadata.
 type BrowseResult struct {
-	Items     []commons.WantedSummary
-	BranchIDs map[string]bool // wanted IDs that have a local mutation branch
+	Items      []commons.WantedSummary
+	PendingIDs map[string]int // wanted IDs with pending changes; value is the count of PRs/branches
 }
 
 // DetailResult holds the full picture of a wanted item for display.
@@ -27,11 +27,28 @@ type DetailResult struct {
 
 // Browse queries the wanted board with filters, applying branch overlays in PR mode.
 func (c *Client) Browse(filter commons.BrowseFilter) (*BrowseResult, error) {
-	items, branchIDs, err := commons.BrowseWantedBranchAware(c.db, c.mode, c.rigHandle, filter)
+	items, pendingIDs, err := commons.BrowseWantedBranchAware(c.db, c.mode, c.rigHandle, filter)
 	if err != nil {
 		return nil, err
 	}
-	return &BrowseResult{Items: items, BranchIDs: branchIDs}, nil
+
+	// In "all" view, merge upstream PR IDs if the callback is set.
+	view := filter.View
+	if view == "" {
+		view = "mine"
+	}
+	if view == "all" && c.ListPendingItems != nil {
+		upstreamIDs, err := c.ListPendingItems()
+		if err == nil {
+			for id := range upstreamIDs {
+				if pendingIDs[id] == 0 {
+					pendingIDs[id] = 1
+				}
+			}
+		}
+	}
+
+	return &BrowseResult{Items: items, PendingIDs: pendingIDs}, nil
 }
 
 // Detail fetches the complete state of a wanted item including actions.

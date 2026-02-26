@@ -8,7 +8,7 @@ export interface WantedSummary {
   claimed_by?: string;
   status: string;
   effort_level: string;
-  has_branch?: boolean;
+  pending_count?: number;
 }
 
 export interface BrowseResponse {
@@ -95,6 +95,7 @@ export interface BrowseFilter {
   search?: string;
   sort?: string;
   limit?: number;
+  view?: string;
 }
 
 export interface PostInput {

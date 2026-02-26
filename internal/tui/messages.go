@@ -23,9 +23,9 @@ type navigateMsg struct {
 
 // browseDataMsg carries browse query results.
 type browseDataMsg struct {
-	items     []commons.WantedSummary
-	branchIDs map[string]bool // wanted IDs with active branches
-	err       error
+	items      []commons.WantedSummary
+	pendingIDs map[string]int // wanted IDs with pending changes; value is PR count
+	err        error
 }
 
 // detailDataMsg carries detail query results.
