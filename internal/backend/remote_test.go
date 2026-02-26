@@ -497,31 +497,11 @@ func TestRemoteDB_MergeBranch(t *testing.T) {
 }
 
 func TestRemoteDB_DeleteRemoteBranch(t *testing.T) {
-	var deletedPath string
-
-	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "DELETE" {
-			deletedPath = r.URL.Path
-			w.WriteHeader(200)
-			return
-		}
-		t.Errorf("unexpected method: %s", r.Method)
-	})
-	defer cleanup()
-
+	// DeleteBranch is a no-op for remote — DoltHub has no branch deletion API.
 	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
-	db.client = srv.Client()
 
 	if err := db.DeleteRemoteBranch("wl/alice/w-001"); err != nil {
 		t.Fatalf("DeleteRemoteBranch error: %v", err)
-	}
-
-	// Should use REST branches endpoint with DELETE method.
-	if !strings.Contains(deletedPath, "/branches/") {
-		t.Errorf("expected /branches/ in path, got: %s", deletedPath)
-	}
-	if !strings.Contains(deletedPath, "wl") {
-		t.Errorf("expected branch name in path, got: %s", deletedPath)
 	}
 }
 

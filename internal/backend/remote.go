@@ -141,15 +141,9 @@ func (r *RemoteDB) Branches(prefix string) ([]string, error) {
 	return branches, nil
 }
 
-// DeleteBranch removes a branch on the fork via the REST branches endpoint.
-func (r *RemoteDB) DeleteBranch(name string) error {
-	apiURL := fmt.Sprintf("%s/%s/%s/branches/%s",
-		DoltHubAPIBase, r.writeOwner, r.writeDB, url.PathEscape(name))
-
-	_, err := r.doRequest("DELETE", apiURL)
-	if err != nil {
-		return fmt.Errorf("delete branch: %w", err)
-	}
+// DeleteBranch is a no-op for remote — the DoltHub REST API does not support
+// branch deletion. Branches are cleaned up implicitly when PRs are closed.
+func (r *RemoteDB) DeleteBranch(_ string) error {
 	return nil
 }
 
@@ -453,30 +447,6 @@ func (r *RemoteDB) doPost(apiURL string, payload []byte) ([]byte, error) {
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-
-	resp, err := r.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
-	}
-	return body, nil
-}
-
-func (r *RemoteDB) doRequest(method, apiURL string) ([]byte, error) {
-	req, err := http.NewRequest(method, apiURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("authorization", "token "+r.token)
 
 	resp, err := r.client.Do(req)
 	if err != nil {
