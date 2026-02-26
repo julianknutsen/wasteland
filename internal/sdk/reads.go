@@ -16,6 +16,7 @@ type DetailResult struct {
 	Completion *commons.CompletionRecord
 	Stamp      *commons.Stamp
 	Branch     string // mutation branch name ("" if none)
+	BranchURL  string // web URL for the branch ("" if none)
 	MainStatus string // status on main ("" if no branch)
 	PRURL      string // existing PR URL ("" if none)
 	Delta      string // human-readable delta label ("" if none)
@@ -83,6 +84,9 @@ func (c *Client) detailPR(wantedID string) (*DetailResult, error) {
 	}
 	if state.BranchName != "" && c.CheckPR != nil {
 		result.PRURL = c.CheckPR(state.BranchName)
+	}
+	if state.BranchName != "" && c.BranchURL != nil {
+		result.BranchURL = c.BranchURL(state.BranchName)
 	}
 	result.BranchActions = c.computeBranchActions(result)
 	return result, nil

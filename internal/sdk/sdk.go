@@ -24,6 +24,7 @@ type ClientConfig struct {
 	LoadDiff         func(branch string) (string, error)
 	SaveConfig       func(mode string, signing bool) error
 	ListPendingItems func() (map[string]bool, error) // returns wanted IDs with open upstream PRs
+	BranchURL        func(branch string) string      // returns a web URL for the branch
 }
 
 // Client provides mode-aware operations against the Wasteland wanted board.
@@ -45,6 +46,8 @@ type Client struct {
 	SaveConfig func(mode string, signing bool) error
 	// ListPendingItems returns wanted IDs that have open upstream PRs. Nil disables the feature.
 	ListPendingItems func() (map[string]bool, error)
+	// BranchURL returns a web URL for the given branch. Nil disables the feature.
+	BranchURL func(branch string) string
 }
 
 // New creates a Client from the given config.
@@ -60,6 +63,7 @@ func New(cfg ClientConfig) *Client {
 		LoadDiff:         cfg.LoadDiff,
 		SaveConfig:       cfg.SaveConfig,
 		ListPendingItems: cfg.ListPendingItems,
+		BranchURL:        cfg.BranchURL,
 	}
 }
 

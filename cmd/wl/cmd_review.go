@@ -739,3 +739,14 @@ func listPendingItemsFromPRs(cfg *federation.Config) func() (map[string]bool, er
 		return cached, nil
 	}
 }
+
+// branchURLCallback returns a callback that builds a DoltHub branch URL.
+// Returns nil if the provider is not DoltHub or fork info is missing.
+func branchURLCallback(cfg *federation.Config) func(string) string {
+	if cfg.ResolveProviderType() != "dolthub" || cfg.ForkOrg == "" || cfg.ForkDB == "" {
+		return nil
+	}
+	return func(branch string) string {
+		return fmt.Sprintf("https://www.dolthub.com/repositories/%s/%s/compare/%s", cfg.ForkOrg, cfg.ForkDB, branch)
+	}
+}

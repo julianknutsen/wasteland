@@ -73,6 +73,7 @@ type DetailResponse struct {
 	Completion    *CompletionJSON `json:"completion,omitempty"`
 	Stamp         *StampJSON      `json:"stamp,omitempty"`
 	Branch        string          `json:"branch,omitempty"`
+	BranchURL     string          `json:"branch_url,omitempty"`
 	MainStatus    string          `json:"main_status,omitempty"`
 	PRURL         string          `json:"pr_url,omitempty"`
 	Delta         string          `json:"delta,omitempty"`
@@ -234,6 +235,7 @@ func toDetailResponse(d *sdk.DetailResult, mode string) *DetailResponse {
 		Completion:    toCompletionJSON(d.Completion),
 		Stamp:         toStampJSON(d.Stamp),
 		Branch:        d.Branch,
+		BranchURL:     d.BranchURL,
 		MainStatus:    d.MainStatus,
 		PRURL:         d.PRURL,
 		Delta:         d.Delta,

@@ -58,6 +58,7 @@ export interface DetailResponse {
   completion?: Completion;
   stamp?: Stamp;
   branch?: string;
+  branch_url?: string;
   main_status?: string;
   pr_url?: string;
   delta?: string;

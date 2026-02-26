@@ -191,7 +191,7 @@ export function DetailView() {
   if (error) return <p className={styles.errorText}>{error}</p>;
   if (!data) return <p className={styles.notFound}>Not found.</p>;
 
-  const { item, completion, stamp, branch, main_status, pr_url, delta, actions, branch_actions } = data;
+  const { item, completion, stamp, branch, branch_url, main_status, pr_url, delta, actions, branch_actions } = data;
   const branchActions = branch_actions || [];
   const displayStatus = optimisticStatus || item.status;
   const canEdit = rigHandle && rigHandle === item.posted_by;
@@ -244,7 +244,13 @@ export function DetailView() {
         {branch && (
           <>
             <span className={styles.metaLabel}>Branch</span>
-            <span className={styles.metaMono}>{branch}</span>
+            {branch_url ? (
+              <a href={branch_url} target="_blank" rel="noopener noreferrer" className={styles.metaMono}>
+                {branch}
+              </a>
+            ) : (
+              <span className={styles.metaMono}>{branch}</span>
+            )}
           </>
         )}
         {pr_url && (
