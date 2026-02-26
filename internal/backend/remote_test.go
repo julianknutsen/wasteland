@@ -97,9 +97,9 @@ func TestRemoteDB_Exec(t *testing.T) {
 	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		callCount++
 		if r.Method == "POST" {
-			// Verify write path includes branch.
-			if !strings.Contains(r.URL.Path, "/fork-org/wl-commons/write/main/wl/alice/w-001") {
-				t.Errorf("unexpected write path: %s", r.URL.Path)
+			// Verify write path includes path-escaped branch (slashes encoded as %2F).
+			if !strings.Contains(r.URL.RawPath, "/fork-org/wl-commons/write/main/wl%2Falice%2Fw-001") {
+				t.Errorf("unexpected write path: %s (raw: %s)", r.URL.Path, r.URL.RawPath)
 			}
 			resp := map[string]string{
 				"query_execution_status": "Success",
@@ -222,6 +222,46 @@ func TestRemoteDB_Exec_Poll(t *testing.T) {
 	err := db.Exec("main", "test", false, "UPDATE wanted SET status='open'")
 	if err != nil {
 		t.Fatalf("Exec with poll error: %v", err)
+	}
+	if pollCount < 2 {
+		t.Errorf("expected at least 2 polls, got %d", pollCount)
+	}
+}
+
+func TestRemoteDB_Exec_Poll_DoneResDetails(t *testing.T) {
+	pollCount := 0
+	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			resp := map[string]string{
+				"operation_name": "users/testuser/userOperations/abc-123",
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		// GET = poll — return the current DoltHub response format with done + res_details.
+		pollCount++
+		if pollCount < 2 {
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"done": false,
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"done": true,
+			"res_details": map[string]string{
+				"query_execution_status":  "Success",
+				"query_execution_message": "Query OK, 1 row affected.",
+			},
+		})
+	})
+	defer cleanup()
+
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
+	db.client = srv.Client()
+
+	err := db.Exec("main", "test", false, "INSERT INTO wanted VALUES (...)")
+	if err != nil {
+		t.Fatalf("Exec with done+res_details poll error: %v", err)
 	}
 	if pollCount < 2 {
 		t.Errorf("expected at least 2 polls, got %d", pollCount)

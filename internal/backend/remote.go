@@ -71,11 +71,13 @@ func (r *RemoteDB) Exec(branch, _ string, _ bool, stmts ...string) error {
 		branch = "main"
 	}
 
-	// Join all statements with semicolons.
+	// Note: the DoltHub write API auto-commits with the SQL text as the
+	// commit message. Custom commit messages aren't supported — the API
+	// accepts only a single statement and has no session persistence for SET.
 	joined := strings.Join(stmts, ";\n") + ";"
 
 	apiURL := fmt.Sprintf("%s/%s/%s/write/main/%s?q=%s",
-		DoltHubAPIBase, r.writeOwner, r.writeDB, branch,
+		DoltHubAPIBase, r.writeOwner, r.writeDB, url.PathEscape(branch),
 		url.QueryEscape(joined))
 
 	body, err := r.doPost(apiURL, nil)
@@ -484,6 +486,8 @@ func (r *RemoteDB) doPost(apiURL string, payload []byte) ([]byte, error) {
 func (r *RemoteDB) pollOperation(operationName string) error {
 	backoff := 500 * time.Millisecond
 	deadline := time.Now().Add(2 * time.Minute)
+	var lastErr error
+	consecutiveErrors := 0
 
 	for time.Now().Before(deadline) {
 		time.Sleep(backoff)
@@ -493,23 +497,47 @@ func (r *RemoteDB) pollOperation(operationName string) error {
 
 		body, err := r.doGet(apiURL)
 		if err != nil {
+			lastErr = err
+			consecutiveErrors++
+			// Fail fast: if every poll attempt errors, don't wait the full 2 minutes.
+			if consecutiveErrors >= 5 {
+				return fmt.Errorf("polling write operation %q: %w", operationName, lastErr)
+			}
 			if backoff < 8*time.Second {
 				backoff *= 2
 			}
 			continue
 		}
+		consecutiveErrors = 0
 
 		var pollResp struct {
+			Done       bool `json:"done"`
+			ResDetails struct {
+				QueryExecutionStatus  string `json:"query_execution_status"`
+				QueryExecutionMessage string `json:"query_execution_message"`
+			} `json:"res_details"`
+			// Legacy flat fields (older API responses).
 			QueryExecutionStatus  string `json:"query_execution_status"`
 			QueryExecutionMessage string `json:"query_execution_message"`
 		}
 		if err := json.Unmarshal(body, &pollResp); err == nil {
-			status := strings.ToLower(pollResp.QueryExecutionStatus)
-			if status == "success" || status == "successwithwarning" {
+			// Prefer nested res_details (current API), fall back to flat fields (legacy).
+			status := pollResp.ResDetails.QueryExecutionStatus
+			message := pollResp.ResDetails.QueryExecutionMessage
+			if status == "" {
+				status = pollResp.QueryExecutionStatus
+				message = pollResp.QueryExecutionMessage
+			}
+
+			status = strings.ToLower(status)
+			if pollResp.Done || status == "success" || status == "successwithwarning" {
+				if status == "error" {
+					return fmt.Errorf("write operation failed: %s", message)
+				}
 				return nil
 			}
 			if status == "error" {
-				return fmt.Errorf("write operation failed: %s", pollResp.QueryExecutionMessage)
+				return fmt.Errorf("write operation failed: %s", message)
 			}
 		}
 
@@ -518,6 +546,9 @@ func (r *RemoteDB) pollOperation(operationName string) error {
 		}
 	}
 
+	if lastErr != nil {
+		return fmt.Errorf("timed out waiting for write operation %q (last error: %w)", operationName, lastErr)
+	}
 	return fmt.Errorf("timed out waiting for write operation %q", operationName)
 }
 
