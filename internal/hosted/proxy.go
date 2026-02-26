@@ -63,6 +63,8 @@ func (t *NangoProxyTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	proxyReq.Header.Set("Authorization", "Bearer "+t.SecretKey)
 	proxyReq.Header.Set("Connection-Id", t.ConnectionID)
 	proxyReq.Header.Set("Provider-Config-Key", t.IntegrationID)
+	// Override the provider's default base URL (e.g. apify) with DoltHub's.
+	proxyReq.Header.Set("Base-Url-Override", base)
 
 	return t.inner().RoundTrip(proxyReq)
 }

@@ -56,6 +56,11 @@ func TestNangoProxyTransport_RewritesGET(t *testing.T) {
 		t.Errorf("expected dolthub, got %s", got)
 	}
 
+	// Base-Url-Override should point to the DoltHub API.
+	if got := gotReq.Header.Get("Base-Url-Override"); got != "https://www.dolthub.com/api/v1alpha1" {
+		t.Errorf("expected DoltHub base URL override, got %s", got)
+	}
+
 	// Old auth header must be stripped.
 	if gotReq.Header.Get("authorization") == "token old-token" {
 		t.Error("old authorization header was not stripped")
