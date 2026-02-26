@@ -1,0 +1,5 @@
+bin/
+web/node_modules/
+web/dist/
+.git/
+*.md

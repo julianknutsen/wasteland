@@ -33,6 +33,12 @@ func NewServer(resolver *ClientResolver, sessions *SessionStore, nango *NangoCli
 func (s *Server) Handler(apiServer *api.Server, assets fs.FS) http.Handler {
 	mux := http.NewServeMux()
 
+	// Health check for Railway / load balancers.
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
 	// Auth endpoints (no auth middleware required).
 	mux.HandleFunc("POST /api/auth/connect", s.handleConnect)
 	mux.HandleFunc("GET /api/auth/status", s.handleAuthStatus)

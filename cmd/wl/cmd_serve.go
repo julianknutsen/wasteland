@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 
 	"github.com/julianknutsen/wasteland/internal/api"
 	"github.com/julianknutsen/wasteland/internal/backend"
@@ -38,8 +39,20 @@ func newServeCmd(stdout, stderr io.Writer) *cobra.Command {
 	return cmd
 }
 
-func runServe(cmd *cobra.Command, stdout, stderr io.Writer) error {
+// resolvePort returns the port from the --port flag, or from the PORT env var
+// if set (Railway and similar PaaS platforms set PORT automatically).
+func resolvePort(cmd *cobra.Command) int {
 	port, _ := cmd.Flags().GetInt("port")
+	if envPort := os.Getenv("PORT"); envPort != "" {
+		if p, err := strconv.Atoi(envPort); err == nil {
+			port = p
+		}
+	}
+	return port
+}
+
+func runServe(cmd *cobra.Command, stdout, stderr io.Writer) error {
+	port := resolvePort(cmd)
 	devMode, _ := cmd.Flags().GetBool("dev")
 
 	cfg, err := resolveWasteland(cmd)
@@ -149,7 +162,7 @@ func runServe(cmd *cobra.Command, stdout, stderr io.Writer) error {
 }
 
 func runServeHosted(cmd *cobra.Command, stdout, stderr io.Writer) error {
-	port, _ := cmd.Flags().GetInt("port")
+	port := resolvePort(cmd)
 	devMode, _ := cmd.Flags().GetBool("dev")
 
 	// Read required env vars.
