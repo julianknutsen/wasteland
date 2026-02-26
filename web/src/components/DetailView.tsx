@@ -121,8 +121,10 @@ export function DetailView() {
         case "discard":
           if (data.branch) {
             await discardBranch(data.branch);
+            toast.success("Changes discarded");
+            navigate("/");
           }
-          break;
+          return;
         default:
           return;
       }
