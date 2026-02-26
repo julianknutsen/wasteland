@@ -827,6 +827,65 @@ func TestBranchActions_NoBranch(t *testing.T) {
 	}
 }
 
+func TestDelete_PR_BranchOnly_CleansUpBranch(t *testing.T) {
+	db := newFakeDB()
+	// Item only exists on branch, NOT on main.
+	db.branches["wl/alice/w-1"] = true
+	db.branchItems["wl/alice/w-1"] = map[string]*fakeItem{
+		"w-1": {ID: "w-1", Title: "New thing", Status: "open", PostedBy: "alice", EffortLevel: "medium"},
+	}
+
+	createPRCalled := false
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "pr",
+		CreatePR: func(_ string) (string, error) {
+			createPRCalled = true
+			return "https://example.com/pr/1", nil
+		},
+	})
+
+	result, err := c.Delete("w-1")
+	if err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	// Branch should be cleaned up.
+	if db.branches["wl/alice/w-1"] {
+		t.Error("expected branch to be deleted")
+	}
+	// Should NOT have committed a withdrawal or created a PR.
+	if createPRCalled {
+		t.Error("should NOT create a PR for branch-only delete")
+	}
+	if len(db.execCalls) != 0 {
+		t.Errorf("expected no exec calls, got %d", len(db.execCalls))
+	}
+	// Hint should indicate branch cleanup.
+	if result.Hint == "" {
+		t.Error("expected a hint about branch cleanup")
+	}
+}
+
+func TestDelete_PR_ExistsOnMain_CommitsWithdrawal(t *testing.T) {
+	db := newFakeDB()
+	// Item exists on main — delete should proceed normally (commit withdrawn).
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{DB: db, RigHandle: "alice", Mode: "pr"})
+
+	result, err := c.Delete("w-1")
+	if err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if result.Detail == nil || result.Detail.Item == nil {
+		t.Fatal("expected detail with item")
+	}
+	if result.Detail.Item.Status != "withdrawn" {
+		t.Errorf("expected withdrawn, got %s", result.Detail.Item.Status)
+	}
+}
+
 func TestMode(t *testing.T) {
 	c := New(ClientConfig{DB: newFakeDB(), RigHandle: "bob", Mode: "pr"})
 	if c.Mode() != "pr" {

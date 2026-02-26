@@ -87,7 +87,24 @@ func (c *Client) Close(wantedID string) (*MutationResult, error) {
 }
 
 // Delete soft-deletes a wanted item by setting status=withdrawn.
+// In PR mode, if the item only exists on a branch (never on main),
+// we skip the mutation and just clean up the branch instead.
 func (c *Client) Delete(wantedID string) (*MutationResult, error) {
+	if c.mode == "pr" {
+		branch := commons.BranchName(c.rigHandle, wantedID)
+		mainStatus, _, _ := commons.QueryItemStatus(c.db, wantedID, "main")
+		if mainStatus == "" {
+			// Item only exists on branch — clean up branch entirely.
+			// Deleting the remote branch auto-closes any existing PR.
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			_ = c.db.DeleteBranch(branch)
+			_ = c.db.DeleteRemoteBranch(branch)
+			return &MutationResult{
+				Hint: "branch-only item — branch deleted",
+			}, nil
+		}
+	}
 	stmts := []string{commons.DeleteWantedDML(wantedID)}
 	return c.mutate(wantedID, "wl delete: "+wantedID, stmts...)
 }
