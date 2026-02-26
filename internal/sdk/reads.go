@@ -71,12 +71,21 @@ func (c *Client) detailPR(wantedID string) (*DetailResult, error) {
 		return c.detailWildWest(wantedID)
 	}
 
+	delta := state.Delta()
+	if delta == "" && state.BranchName != "" {
+		if state.Main == nil {
+			delta = "new"
+		} else {
+			delta = "changes"
+		}
+	}
+
 	result := &DetailResult{
 		Item:       effective,
 		Completion: state.Completion,
 		Stamp:      state.Stamp,
 		Branch:     state.BranchName,
-		Delta:      state.Delta(),
+		Delta:      delta,
 		Actions:    commons.AvailableTransitions(effective, c.rigHandle),
 	}
 	if state.Main != nil {

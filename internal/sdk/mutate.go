@@ -63,8 +63,13 @@ func (c *Client) mutatePR(wantedID, commitMsg string, stmts ...string) (*Mutatio
 	}
 	if item != nil {
 		detail.Actions = commons.AvailableTransitions(item, c.rigHandle)
-		if mainStatus != "" && item.Status != mainStatus {
+		switch {
+		case mainStatus == "":
+			detail.Delta = "new"
+		case item.Status != mainStatus:
 			detail.Delta = commons.DeltaLabel(mainStatus, item.Status)
+		default:
+			detail.Delta = "changes"
 		}
 	}
 	if branch != "" && c.CheckPR != nil {
@@ -86,14 +91,6 @@ func (c *Client) mutatePR(wantedID, commitMsg string, stmts ...string) (*Mutatio
 
 	result := &MutationResult{Detail: detail, Branch: branch}
 
-	// Auto-submit PR if there is a delta and no PR exists yet.
-	if detail.Delta != "" && detail.PRURL == "" && c.CreatePR != nil {
-		if url, err := c.CreatePR(branch); err == nil {
-			detail.PRURL = url
-			detail.BranchActions = c.computeBranchActions(detail)
-		}
-	}
-
 	// Auto-cleanup: if mutation reverted item to main status, delete the branch.
 	if mainStatus != "" && item != nil && item.Status == mainStatus {
 		_ = c.db.DeleteBranch(branch)
@@ -103,6 +100,14 @@ func (c *Client) mutatePR(wantedID, commitMsg string, stmts ...string) (*Mutatio
 		detail.Delta = ""
 		result.Branch = ""
 		result.Hint = "reverted — branch cleaned up"
+	}
+
+	// Auto-submit PR if branch survived cleanup and no PR exists yet.
+	if result.Branch != "" && detail.PRURL == "" && c.CreatePR != nil {
+		if url, err := c.CreatePR(result.Branch); err == nil {
+			detail.PRURL = url
+			detail.BranchActions = c.computeBranchActions(detail)
+		}
 	}
 
 	return result, nil
