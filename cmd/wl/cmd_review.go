@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/julianknutsen/wasteland/internal/backend"
 	"github.com/julianknutsen/wasteland/internal/commons"
 	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/julianknutsen/wasteland/internal/remote"
@@ -637,7 +638,7 @@ func createPRForBranchDoltHub(cfg *federation.Config, doltPath, branch, base str
 
 // createPRForBranchRemote creates a DoltHub PR in remote mode. The branch already
 // exists on the fork (the write API auto-pushes), so no local dolt is needed.
-func createPRForBranchRemote(cfg *federation.Config, branch string) (string, error) {
+func createPRForBranchRemote(cfg *federation.Config, cdb commons.DB, branch string) (string, error) {
 	if cfg.ResolveProviderType() != "dolthub" {
 		return "", fmt.Errorf("remote backend only supports DoltHub PRs")
 	}
@@ -652,15 +653,28 @@ func createPRForBranchRemote(cfg *federation.Config, branch string) (string, err
 		return "", fmt.Errorf("parsing upstream: %w", err)
 	}
 
+	// Build PR title from the wanted item title.
 	wantedID := extractWantedID(branch)
 	prTitle := fmt.Sprintf("[wl] %s", wantedID)
+	if item, _, _, qerr := commons.QueryFullDetailAsOf(cdb, wantedID, branch); qerr == nil && item != nil {
+		prTitle = fmt.Sprintf("[wl] %s", item.Title)
+	}
+
+	// Build PR description from the branch diff.
+	var prBody string
+	if rdb, ok := cdb.(*backend.RemoteDB); ok {
+		if diff, derr := rdb.Diff(branch); derr == nil {
+			prBody = diff
+		}
+	}
 
 	provider := remote.NewDoltHubProvider(token)
-	prURL, err := provider.CreatePR(cfg.ForkOrg, upstreamOrg, db, branch, prTitle, "")
+	prURL, err := provider.CreatePR(cfg.ForkOrg, upstreamOrg, db, branch, prTitle, prBody)
 	if err != nil {
 		if strings.Contains(err.Error(), "already exists") {
 			existingURL, existingID := provider.FindPR(upstreamOrg, db, cfg.ForkOrg, branch)
 			if existingID != "" {
+				_ = provider.UpdatePR(upstreamOrg, db, existingID, prTitle, prBody)
 				return existingURL, nil
 			}
 			return fmt.Sprintf("%s/%s/%s/pulls", "https://www.dolthub.com/repositories", upstreamOrg, db), nil

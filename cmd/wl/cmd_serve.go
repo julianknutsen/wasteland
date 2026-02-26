@@ -115,7 +115,7 @@ func runServe(cmd *cobra.Command, stdout, stderr io.Writer) error {
 		LoadDiff: loadDiff,
 		CreatePR: func(branch string) (string, error) {
 			if cfg.ResolveBackend() != federation.BackendLocal {
-				return createPRForBranchRemote(cfg, branch)
+				return createPRForBranchRemote(cfg, db, branch)
 			}
 			return createPRForBranch(cfg, branch)
 		},

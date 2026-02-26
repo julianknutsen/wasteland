@@ -101,7 +101,7 @@ func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 		LoadDiff:  loadDiff,
 		CreatePR: func(branch string) (string, error) {
 			if cfg.ResolveBackend() != federation.BackendLocal {
-				return createPRForBranchRemote(cfg, branch)
+				return createPRForBranchRemote(cfg, db, branch)
 			}
 			return createPRForBranch(cfg, branch)
 		},
