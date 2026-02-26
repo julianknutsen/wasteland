@@ -13,7 +13,6 @@ import (
 type NangoConfig struct {
 	BaseURL       string // default "https://api.nango.dev"
 	SecretKey     string // server-side only
-	PublicKey     string // for frontend SDK
 	IntegrationID string // default "dolthub"
 }
 
@@ -109,6 +108,61 @@ func (n *NangoClient) GetConnection(connectionID string) (string, *UserConfig, e
 	}
 
 	return apiKey, cfg, nil
+}
+
+// connectSessionRequest is the JSON body for POST /connect/sessions.
+type connectSessionAPIRequest struct {
+	EndUser             connectSessionEndUser `json:"end_user"`
+	AllowedIntegrations []string              `json:"allowed_integrations"`
+}
+
+type connectSessionEndUser struct {
+	ID string `json:"id"`
+}
+
+// connectSessionAPIResponse is the JSON shape returned by POST /connect/sessions.
+type connectSessionAPIResponse struct {
+	Data struct {
+		Token string `json:"token"`
+	} `json:"data"`
+}
+
+// CreateConnectSession creates a short-lived connect session token for the frontend SDK.
+func (n *NangoClient) CreateConnectSession(endUserID string) (string, error) {
+	u := fmt.Sprintf("%s/connect/sessions", n.baseURL)
+
+	body, err := json.Marshal(connectSessionAPIRequest{
+		EndUser:             connectSessionEndUser{ID: endUserID},
+		AllowedIntegrations: []string{n.integrationID},
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshaling request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", u, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+n.secretKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := n.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("nango request failed: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // best-effort close
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("nango returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var sessionResp connectSessionAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&sessionResp); err != nil {
+		return "", fmt.Errorf("decoding nango response: %w", err)
+	}
+
+	return sessionResp.Data.Token, nil
 }
 
 // SetMetadata writes/updates the persistent user config on the Nango connection.

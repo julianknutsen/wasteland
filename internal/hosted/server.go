@@ -11,21 +11,19 @@ import (
 
 // Server provides hosted-mode handler composition.
 type Server struct {
-	resolver       *ClientResolver
-	sessions       *SessionStore
-	nango          *NangoClient
-	nangoPublicKey string
-	sessionSecret  string
+	resolver      *ClientResolver
+	sessions      *SessionStore
+	nango         *NangoClient
+	sessionSecret string
 }
 
 // NewServer creates a hosted Server.
-func NewServer(resolver *ClientResolver, sessions *SessionStore, nango *NangoClient, nangoPublicKey, sessionSecret string) *Server {
+func NewServer(resolver *ClientResolver, sessions *SessionStore, nango *NangoClient, sessionSecret string) *Server {
 	return &Server{
-		resolver:       resolver,
-		sessions:       sessions,
-		nango:          nango,
-		nangoPublicKey: nangoPublicKey,
-		sessionSecret:  sessionSecret,
+		resolver:      resolver,
+		sessions:      sessions,
+		nango:         nango,
+		sessionSecret: sessionSecret,
 	}
 }
 
@@ -43,7 +41,7 @@ func (s *Server) Handler(apiServer *api.Server, assets fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/auth/connect", s.handleConnect)
 	mux.HandleFunc("GET /api/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
-	mux.HandleFunc("GET /api/auth/nango-key", s.handleNangoKey)
+	mux.HandleFunc("POST /api/auth/connect-session", s.handleConnectSession)
 
 	// All other routes go through auth middleware → SPA handler.
 	mux.Handle("/", s.AuthMiddleware(api.SPAHandler(apiServer, assets)))
@@ -152,16 +150,37 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged out"})
 }
 
-// nangoKeyResponse is the JSON response for GET /api/auth/nango-key.
-type nangoKeyResponse struct {
-	PublicKey     string `json:"public_key"`
+// connectSessionRequest is the JSON body for POST /api/auth/connect-session.
+type connectSessionRequest struct {
+	EndUserID string `json:"end_user_id"`
+}
+
+// connectSessionResponse is the JSON response for POST /api/auth/connect-session.
+type connectSessionResponse struct {
+	Token         string `json:"token"`
 	IntegrationID string `json:"integration_id"`
 }
 
-// handleNangoKey returns the Nango public key and integration ID for the frontend SDK.
-func (s *Server) handleNangoKey(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, nangoKeyResponse{
-		PublicKey:     s.nangoPublicKey,
+// handleConnectSession creates a Nango connect session token for the frontend SDK.
+func (s *Server) handleConnectSession(w http.ResponseWriter, r *http.Request) {
+	var req connectSessionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+	if req.EndUserID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "end_user_id is required"})
+		return
+	}
+
+	token, err := s.nango.CreateConnectSession(req.EndUserID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create session: " + err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, connectSessionResponse{
+		Token:         token,
 		IntegrationID: s.nango.integrationID,
 	})
 }

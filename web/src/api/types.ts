@@ -100,8 +100,8 @@ export interface UserConfig {
   mode: string;
 }
 
-export interface NangoKeyResponse {
-  public_key: string;
+export interface ConnectSessionResponse {
+  token: string;
   integration_id: string;
 }
 

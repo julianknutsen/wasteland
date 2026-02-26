@@ -1,13 +1,8 @@
 import Nango from "@nangohq/frontend";
 
-let nangoInstance: Nango | null = null;
-
-/** Initialize or return the Nango frontend SDK instance. */
-export function initNango(publicKey: string): Nango {
-  if (!nangoInstance) {
-    nangoInstance = new Nango({ publicKey });
-  }
-  return nangoInstance;
+/** Create a Nango frontend SDK instance for a connect session token. */
+export function initNango(connectSessionToken: string): Nango {
+  return new Nango({ connectSessionToken });
 }
 
 /**

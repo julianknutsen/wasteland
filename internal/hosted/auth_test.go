@@ -36,6 +36,12 @@ func setupHostedTestServer(t *testing.T) (*SessionStore, *httptest.Server) {
 		case r.Method == "PATCH" && strings.HasPrefix(r.URL.Path, "/connection/"):
 			w.WriteHeader(http.StatusOK)
 
+		case r.Method == "POST" && r.URL.Path == "/connect/sessions":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]string{"token": "nango_connect_session_test"},
+			})
+
 		default:
 			http.Error(w, "not found", http.StatusNotFound)
 		}
@@ -49,7 +55,7 @@ func setupHostedTestServer(t *testing.T) (*SessionStore, *httptest.Server) {
 	})
 	sessions := NewSessionStore()
 	resolver := NewClientResolver(nango, sessions)
-	server := NewServer(resolver, sessions, nango, "pub-key-123", testSecret)
+	server := NewServer(resolver, sessions, nango, testSecret)
 
 	// Create a simple test handler for the auth middleware.
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +79,7 @@ func setupHostedTestServer(t *testing.T) (*SessionStore, *httptest.Server) {
 	mux.HandleFunc("POST /api/auth/connect", server.handleConnect)
 	mux.HandleFunc("GET /api/auth/status", server.handleAuthStatus)
 	mux.HandleFunc("POST /api/auth/logout", server.handleLogout)
-	mux.HandleFunc("GET /api/auth/nango-key", server.handleNangoKey)
+	mux.HandleFunc("POST /api/auth/connect-session", server.handleConnectSession)
 	mux.Handle("/", server.AuthMiddleware(inner))
 
 	ts := httptest.NewServer(mux)
@@ -182,7 +188,8 @@ func TestAuthMiddleware_AuthRoutes(t *testing.T) {
 	_, ts := setupHostedTestServer(t)
 
 	// Auth routes should not require auth.
-	resp, err := http.Get(ts.URL + "/api/auth/nango-key")
+	body := `{"end_user_id": "test-user"}`
+	resp, err := http.Post(ts.URL+"/api/auth/connect-session", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,21 +324,42 @@ func TestHandleLogout(t *testing.T) {
 	}
 }
 
-func TestHandleNangoKey(t *testing.T) {
+func TestHandleConnectSession(t *testing.T) {
 	_, ts := setupHostedTestServer(t)
 
-	resp, err := http.Get(ts.URL + "/api/auth/nango-key")
+	body := `{"end_user_id": "alice"}`
+	resp, err := http.Post(ts.URL+"/api/auth/connect-session", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close() //nolint:errcheck // test cleanup
 
-	var key nangoKeyResponse
-	_ = json.NewDecoder(resp.Body).Decode(&key)
-	if key.PublicKey != "pub-key-123" {
-		t.Errorf("expected pub-key-123, got %s", key.PublicKey)
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(respBody))
 	}
-	if key.IntegrationID != "dolthub" {
-		t.Errorf("expected dolthub, got %s", key.IntegrationID)
+
+	var session connectSessionResponse
+	_ = json.NewDecoder(resp.Body).Decode(&session)
+	if session.Token != "nango_connect_session_test" {
+		t.Errorf("expected nango_connect_session_test, got %s", session.Token)
+	}
+	if session.IntegrationID != "dolthub" {
+		t.Errorf("expected dolthub, got %s", session.IntegrationID)
+	}
+}
+
+func TestHandleConnectSession_MissingEndUserID(t *testing.T) {
+	_, ts := setupHostedTestServer(t)
+
+	body := `{}`
+	resp, err := http.Post(ts.URL+"/api/auth/connect-session", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
 	}
 }

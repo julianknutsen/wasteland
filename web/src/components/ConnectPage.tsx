@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { authStatus, nangoKey, notifyConnect } from "../api/client";
+import { authStatus, connectSession, notifyConnect } from "../api/client";
 import { connectDoltHub, initNango } from "../api/nango";
 import styles from "./ConnectPage.module.css";
 
@@ -20,10 +20,6 @@ export function ConnectPage() {
   // DoltHub token step.
   const [apiToken, setApiToken] = useState("");
 
-  // Nango config from server.
-  const [publicKey, setPublicKey] = useState("");
-  const [integrationId, setIntegrationId] = useState("");
-
   // Check if already authenticated on mount.
   useEffect(() => {
     (async () => {
@@ -33,11 +29,8 @@ export function ConnectPage() {
           navigate("/", { replace: true });
           return;
         }
-        const key = await nangoKey();
-        setPublicKey(key.public_key);
-        setIntegrationId(key.integration_id);
       } catch {
-        // Server may not be in hosted mode — nango-key 404 is expected.
+        // Server may not be in hosted mode — status 404 is expected.
       } finally {
         setLoading(false);
       }
@@ -63,10 +56,11 @@ export function ConnectPage() {
     setSubmitting(true);
     try {
       const connectionId = rigHandle.trim();
-      const nango = initNango(publicKey);
 
-      // Store the token in Nango.
-      await connectDoltHub(nango, integrationId, connectionId, apiToken.trim());
+      // Create a connect session token and store the token in Nango.
+      const session = await connectSession(connectionId);
+      const nango = initNango(session.token);
+      await connectDoltHub(nango, session.integration_id, connectionId, apiToken.trim());
 
       // Notify the backend to create the session and store config.
       await notifyConnect({

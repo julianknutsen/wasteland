@@ -170,10 +170,6 @@ func runServeHosted(cmd *cobra.Command, stdout, stderr io.Writer) error {
 	if nangoSecretKey == "" {
 		return fmt.Errorf("NANGO_SECRET_KEY environment variable is required for hosted mode")
 	}
-	nangoPublicKey := os.Getenv("NANGO_PUBLIC_KEY")
-	if nangoPublicKey == "" {
-		return fmt.Errorf("NANGO_PUBLIC_KEY environment variable is required for hosted mode")
-	}
 	sessionSecret := os.Getenv("WL_SESSION_SECRET")
 	if sessionSecret == "" {
 		return fmt.Errorf("WL_SESSION_SECRET environment variable is required for hosted mode")
@@ -187,7 +183,6 @@ func runServeHosted(cmd *cobra.Command, stdout, stderr io.Writer) error {
 	nangoCfg := hosted.NangoConfig{
 		BaseURL:       nangoBaseURL,
 		SecretKey:     nangoSecretKey,
-		PublicKey:     nangoPublicKey,
 		IntegrationID: nangoIntegrationID,
 	}
 	nangoClient := hosted.NewNangoClient(nangoCfg)
@@ -200,7 +195,7 @@ func runServeHosted(cmd *cobra.Command, stdout, stderr io.Writer) error {
 	apiServer := api.NewHosted(hosted.NewClientFunc())
 
 	// Build the hosted server and compose handlers.
-	hostedServer := hosted.NewServer(resolver, sessions, nangoClient, nangoPublicKey, sessionSecret)
+	hostedServer := hosted.NewServer(resolver, sessions, nangoClient, sessionSecret)
 
 	handler := hostedServer.Handler(apiServer, web.Assets)
 	if devMode {

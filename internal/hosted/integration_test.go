@@ -48,7 +48,7 @@ func TestHostedEndToEnd(t *testing.T) {
 	})
 	sessions := NewSessionStore()
 	resolver := NewClientResolver(nango, sessions)
-	hostedServer := NewServer(resolver, sessions, nango, "pub-key", "session-secret")
+	hostedServer := NewServer(resolver, sessions, nango, "session-secret")
 
 	// Use the real api.NewHosted with NewClientFunc — this is the production path.
 	apiServer := api.NewHosted(NewClientFunc())
@@ -166,7 +166,7 @@ func TestConfigNotHosted(t *testing.T) {
 	// Use NewWithClientFunc (self-sovereign style) — NOT NewHosted.
 	apiServer := api.NewWithClientFunc(NewClientFunc())
 
-	hostedServer := NewServer(resolver, sessions, nango, "pub-key", "session-secret")
+	hostedServer := NewServer(resolver, sessions, nango, "session-secret")
 	handler := hostedServer.Handler(apiServer, emptyFS{})
 
 	ts := httptest.NewServer(handler)
