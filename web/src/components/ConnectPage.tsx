@@ -149,7 +149,13 @@ export function ConnectPage() {
           <div className={styles.section}>
             <h3 className={styles.sectionTitle}>Connect DoltHub</h3>
             <p className={styles.hint}>
-              Paste your DoltHub API token. It will be stored securely via Nango and never saved on this server.
+              Your token is sent directly to{" "}
+              <a href="https://www.nango.dev" target="_blank" rel="noopener noreferrer" className={styles.link}>
+                Nango
+              </a>
+              , a third-party credentials vault. It is encrypted at rest and never stored on or transmitted to the
+              Wasteland server. Our server retrieves it from Nango on each request to call the DoltHub API on your
+              behalf.
             </p>
 
             <label className={styles.fieldLabel}>

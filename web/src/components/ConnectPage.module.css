@@ -98,6 +98,12 @@
   text-transform: uppercase;
 }
 
+.link {
+  color: var(--brass);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .loadingText {
   color: var(--dim);
 }
