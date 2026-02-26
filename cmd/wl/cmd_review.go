@@ -747,6 +747,7 @@ func branchURLCallback(cfg *federation.Config) func(string) string {
 		return nil
 	}
 	return func(branch string) string {
-		return fmt.Sprintf("https://www.dolthub.com/repositories/%s/%s/compare/%s", cfg.ForkOrg, cfg.ForkDB, branch)
+		return fmt.Sprintf("https://www.dolthub.com/repositories/%s/%s/data/%s",
+			cfg.ForkOrg, cfg.ForkDB, strings.ReplaceAll(branch, "/", "%2F"))
 	}
 }
