@@ -55,16 +55,17 @@ export function ConnectPage() {
 
     setSubmitting(true);
     try {
-      const connectionId = rigHandle.trim();
+      const endUserId = rigHandle.trim();
 
       // Create a connect session token and store the token in Nango.
-      const session = await connectSession(connectionId);
+      const session = await connectSession(endUserId);
       const nango = initNango(session.token);
-      await connectDoltHub(nango, session.integration_id, connectionId, apiToken.trim());
+      await connectDoltHub(nango, session.integration_id, apiToken.trim());
 
       // Notify the backend to create the session and store config.
+      // Nango derives connectionId from the connect session's end_user.id.
       await notifyConnect({
-        connection_id: connectionId,
+        connection_id: endUserId,
         rig_handle: rigHandle.trim(),
         fork_org: forkOrg.trim(),
         fork_db: forkDB.trim(),
@@ -74,7 +75,7 @@ export function ConnectPage() {
       toast.success("Connected to DoltHub");
       navigate("/", { replace: true });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Connection failed");
+      toast.error(err instanceof Error && err.message ? err.message : "Connection failed");
     } finally {
       setSubmitting(false);
     }
@@ -153,9 +154,8 @@ export function ConnectPage() {
               <a href="https://www.nango.dev" target="_blank" rel="noopener noreferrer" className={styles.link}>
                 Nango
               </a>
-              , a third-party credentials vault. It is encrypted at rest and never stored on or transmitted to the
-              Wasteland server. Our server retrieves it from Nango on each request to call the DoltHub API on your
-              behalf.
+              , a third-party credentials vault. It is encrypted at rest and never touches the Wasteland server. DoltHub
+              API calls are proxied through Nango, which injects your token — our server never sees it.
             </p>
 
             <label className={styles.fieldLabel}>
