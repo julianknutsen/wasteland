@@ -112,7 +112,8 @@ describe("BrowseList", () => {
   it("shows pending count badge when pending_count > 1", async () => {
     cleanupFetch = mockFetch(() => makeBrowseResponse([makeSummary({ id: "1", title: "Multi PR", pending_count: 3 })]));
     renderBrowse();
-    await waitFor(() => expect(screen.getAllByText("pending (3)").length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText(/pending/).length).toBeGreaterThan(0));
+    expect(screen.getAllByText(/×3/).length).toBeGreaterThan(0);
   });
 
   it("does not show pending tag when pending_count is 0", async () => {

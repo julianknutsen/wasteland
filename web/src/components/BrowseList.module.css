@@ -80,10 +80,24 @@
   text-decoration: none;
 }
 
-.pendingTag {
+.statusCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pendingIndicator {
   color: var(--brass);
-  margin-left: 6px;
   font-size: var(--text-xs);
+  font-weight: 600;
+  font-family: var(--font-heading);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pendingCount {
+  margin-left: 2px;
+  font-variant-numeric: tabular-nums;
 }
 
 .postBtn {

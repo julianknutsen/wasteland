@@ -129,15 +129,20 @@ export function BrowseList() {
                   <td className={styles.td}>
                     <Link to={`/wanted/${item.id}`} className={styles.titleLink}>
                       {item.title}
-                      {item.pending_count != null && item.pending_count > 0 && (
-                        <span className={styles.pendingTag}>
-                          pending{item.pending_count > 1 ? ` (${item.pending_count})` : ""}
-                        </span>
-                      )}
                     </Link>
                   </td>
                   <td className={styles.td}>
-                    <StatusBadge status={item.status} />
+                    <span className={styles.statusCell}>
+                      <StatusBadge status={item.status} />
+                      {item.pending_count != null && item.pending_count > 0 && (
+                        <span className={styles.pendingIndicator}>
+                          pending
+                          {item.pending_count > 1 && (
+                            <span className={styles.pendingCount}>&times;{item.pending_count}</span>
+                          )}
+                        </span>
+                      )}
+                    </span>
                   </td>
                   <td className={styles.tdMuted}>{item.type || "-"}</td>
                   <td className={styles.tdMuted}>{item.posted_by || "-"}</td>
@@ -154,8 +159,11 @@ export function BrowseList() {
                   <PriorityBadge priority={item.priority} />
                   <StatusBadge status={item.status} />
                   {item.pending_count != null && item.pending_count > 0 && (
-                    <span className={styles.pendingTag}>
-                      pending{item.pending_count > 1 ? ` (${item.pending_count})` : ""}
+                    <span className={styles.pendingIndicator}>
+                      pending
+                      {item.pending_count > 1 && (
+                        <span className={styles.pendingCount}>&times;{item.pending_count}</span>
+                      )}
                     </span>
                   )}
                 </div>
