@@ -70,6 +70,9 @@ func (c *Client) mutatePR(wantedID, commitMsg string, stmts ...string) (*Mutatio
 	if branch != "" && c.CheckPR != nil {
 		detail.PRURL = c.CheckPR(branch)
 	}
+	if branch != "" && c.BranchURL != nil {
+		detail.BranchURL = c.BranchURL(branch)
+	}
 	detail.BranchActions = c.computeBranchActions(detail)
 
 	// Push the branch.
@@ -82,6 +85,14 @@ func (c *Client) mutatePR(wantedID, commitMsg string, stmts ...string) (*Mutatio
 	}
 
 	result := &MutationResult{Detail: detail, Branch: branch}
+
+	// Auto-submit PR if there is a delta and no PR exists yet.
+	if detail.Delta != "" && detail.PRURL == "" && c.CreatePR != nil {
+		if url, err := c.CreatePR(branch); err == nil {
+			detail.PRURL = url
+			detail.BranchActions = c.computeBranchActions(detail)
+		}
+	}
 
 	// Auto-cleanup: if mutation reverted item to main status, delete the branch.
 	if mainStatus != "" && item != nil && item.Status == mainStatus {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { createItem, updateItem } from "../api/client";
-import type { WantedItem } from "../api/types";
+import type { MutationResponse, WantedItem } from "../api/types";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import styles from "./WantedForm.module.css";
 
@@ -46,8 +46,9 @@ export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
       .filter(Boolean);
 
     try {
+      let resp: MutationResponse;
       if (isEdit && item) {
-        await updateItem(item.id, {
+        resp = await updateItem(item.id, {
           title: title.trim(),
           description: description.trim() || undefined,
           project: project.trim() || undefined,
@@ -59,7 +60,7 @@ export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
         });
         toast.success("Item updated");
       } else {
-        await createItem({
+        resp = await createItem({
           title: title.trim(),
           description: description.trim() || undefined,
           project: project.trim() || undefined,
@@ -70,6 +71,11 @@ export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
         });
         toast.success("Item posted");
       }
+
+      if (resp.detail?.pr_url) {
+        toast.success(`PR submitted: ${resp.detail.pr_url}`);
+      }
+
       onSaved();
       onClose();
     } catch (e) {
