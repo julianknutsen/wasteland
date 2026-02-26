@@ -463,6 +463,37 @@ func (d *DoltHubProvider) UpdatePR(upstreamOrg, db, prID, title, description str
 	return nil
 }
 
+// ClosePR closes a DoltHub pull request by setting its state to "closed".
+func (d *DoltHubProvider) ClosePR(upstreamOrg, db, prID string) error {
+	patchURL := fmt.Sprintf("%s/%s/%s/pulls/%s", dolthubAPIBase, upstreamOrg, db, prID)
+	reqBody, err := json.Marshal(map[string]string{
+		"state": "closed",
+	})
+	if err != nil {
+		return fmt.Errorf("marshaling PR close: %w", err)
+	}
+
+	req, err := http.NewRequest("PATCH", patchURL, bytes.NewReader(reqBody))
+	if err != nil {
+		return fmt.Errorf("creating PR close request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("authorization", d.token)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("DoltHub close PR request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("DoltHub close PR error (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
 // ListPendingWantedIDs returns a set of wanted IDs that have open upstream PRs.
 // It lists open PRs on the upstream repo, fetches each PR's detail to get the
 // from_branch, and extracts the wanted ID from the wl/{rig}/{wantedID} convention.

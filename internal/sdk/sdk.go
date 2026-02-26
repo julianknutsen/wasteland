@@ -21,6 +21,7 @@ type ClientConfig struct {
 	// Optional callbacks — nil disables the feature.
 	CreatePR         func(branch string) (string, error)
 	CheckPR          func(branch string) string
+	ClosePR          func(branch string) error // close the PR for the given branch
 	LoadDiff         func(branch string) (string, error)
 	SaveConfig       func(mode string, signing bool) error
 	ListPendingItems func() (map[string]bool, error) // returns wanted IDs with open upstream PRs
@@ -40,6 +41,8 @@ type Client struct {
 	CreatePR func(branch string) (string, error)
 	// CheckPR returns an existing PR URL for the branch, or "".
 	CheckPR func(branch string) string
+	// ClosePR closes the PR associated with the given branch. Nil disables the feature.
+	ClosePR func(branch string) error
 	// LoadDiff returns a diff for the given branch. Nil disables the feature.
 	LoadDiff func(branch string) (string, error)
 	// SaveConfig persists mode and signing settings. Nil disables the feature.
@@ -60,6 +63,7 @@ func New(cfg ClientConfig) *Client {
 		hopURI:           cfg.HopURI,
 		CreatePR:         cfg.CreatePR,
 		CheckPR:          cfg.CheckPR,
+		ClosePR:          cfg.ClosePR,
 		LoadDiff:         cfg.LoadDiff,
 		SaveConfig:       cfg.SaveConfig,
 		ListPendingItems: cfg.ListPendingItems,

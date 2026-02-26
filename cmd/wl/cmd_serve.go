@@ -122,6 +122,9 @@ func runServe(cmd *cobra.Command, stdout, stderr io.Writer) error {
 		CheckPR: func(branch string) string {
 			return checkPRForBranch(cfg, branch)
 		},
+		ClosePR: func(branch string) error {
+			return closePRForBranch(cfg, branch)
+		},
 		ListPendingItems: listPendingItemsFromPRs(cfg),
 		BranchURL:        branchURLCallback(cfg),
 	})

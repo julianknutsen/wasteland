@@ -714,6 +714,42 @@ func checkPRForBranch(cfg *federation.Config, branch string) string {
 	}
 }
 
+// closePRForBranch finds and closes the PR associated with the given branch.
+// Returns nil on success or if no PR exists.
+func closePRForBranch(cfg *federation.Config, branch string) error {
+	switch cfg.ResolveProviderType() {
+	case "github":
+		ghPath, err := exec.LookPath("gh")
+		if err != nil {
+			return nil // no gh CLI, best-effort
+		}
+		client := newGHClient(ghPath)
+		head := cfg.ForkOrg + ":" + branch
+		_, number := client.FindPR(cfg.Upstream, head)
+		if number == "" {
+			return nil
+		}
+		return client.ClosePR(cfg.Upstream, number)
+	case "dolthub":
+		token := os.Getenv("DOLTHUB_TOKEN")
+		if token == "" {
+			return nil
+		}
+		upstreamOrg, db, err := federation.ParseUpstream(cfg.Upstream)
+		if err != nil {
+			return nil
+		}
+		provider := remote.NewDoltHubProvider(token)
+		_, prID := provider.FindPR(upstreamOrg, db, cfg.ForkOrg, branch)
+		if prID == "" {
+			return nil
+		}
+		return provider.ClosePR(upstreamOrg, db, prID)
+	default:
+		return nil
+	}
+}
+
 // listPendingItemsFromPRs returns a callback that lists wanted IDs with open
 // upstream PRs. Uses a 30-second TTL cache to avoid hammering the API.
 // Returns nil if the provider type does not support PR listing.

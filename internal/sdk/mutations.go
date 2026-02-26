@@ -94,10 +94,12 @@ func (c *Client) Delete(wantedID string) (*MutationResult, error) {
 		branch := commons.BranchName(c.rigHandle, wantedID)
 		mainStatus, _, _ := commons.QueryItemStatus(c.db, wantedID, "main")
 		if mainStatus == "" {
-			// Item only exists on branch — clean up branch entirely.
-			// Deleting the remote branch auto-closes any existing PR.
+			// Item only exists on branch — clean up branch and close any PR.
 			c.mu.Lock()
 			defer c.mu.Unlock()
+			if c.ClosePR != nil {
+				_ = c.ClosePR(branch)
+			}
 			_ = c.db.DeleteBranch(branch)
 			_ = c.db.DeleteRemoteBranch(branch)
 			return &MutationResult{

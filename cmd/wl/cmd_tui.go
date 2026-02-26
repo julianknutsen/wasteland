@@ -108,6 +108,9 @@ func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 		CheckPR: func(branch string) string {
 			return checkPRForBranch(cfg, branch)
 		},
+		ClosePR: func(branch string) error {
+			return closePRForBranch(cfg, branch)
+		},
 		SaveConfig: func(mode string, signing bool) error {
 			store := federation.NewConfigStore()
 			c, err := store.Load(cfg.Upstream)

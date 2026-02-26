@@ -22,11 +22,15 @@ func (c *Client) ApplyBranch(branch string) error {
 	return nil
 }
 
-// DiscardBranch deletes a mutation branch locally and on the remote.
+// DiscardBranch closes any associated PR and deletes the mutation branch.
 func (c *Client) DiscardBranch(branch string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// Close the PR first (best-effort).
+	if c.ClosePR != nil {
+		_ = c.ClosePR(branch)
+	}
 	if err := c.db.DeleteBranch(branch); err != nil {
 		return fmt.Errorf("delete local branch: %w", err)
 	}
