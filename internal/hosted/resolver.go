@@ -2,6 +2,7 @@ package hosted
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -16,7 +17,6 @@ const cacheTTL = 5 * time.Minute
 
 type cachedClient struct {
 	client    *sdk.Client
-	token     string
 	expiresAt time.Time
 }
 
@@ -47,13 +47,11 @@ func (cr *ClientResolver) Resolve(session *UserSession) (*sdk.Client, error) {
 	}
 	cr.mu.Unlock()
 
-	// Fetch fresh credentials + config from Nango (no lock held during network call).
-	token, userCfg, err := cr.nango.GetConnection(session.ConnectionID)
+	// Fetch config from Nango (no lock held during network call).
+	// Token is discarded — the proxy transport injects it per-request.
+	_, userCfg, err := cr.nango.GetConnection(session.ConnectionID)
 	if err != nil {
 		return nil, fmt.Errorf("resolving credentials: %w", err)
-	}
-	if token == "" {
-		return nil, fmt.Errorf("no API token found for connection %s", session.ConnectionID)
 	}
 	if userCfg == nil {
 		return nil, fmt.Errorf("no user config found for connection %s", session.ConnectionID)
@@ -63,30 +61,24 @@ func (cr *ClientResolver) Resolve(session *UserSession) (*sdk.Client, error) {
 	cr.mu.Lock()
 	defer cr.mu.Unlock()
 
-	if cached, ok := cr.cache[session.ID]; ok {
-		if cached.token == token {
-			// Same token — just refresh the TTL.
-			cached.expiresAt = time.Now().Add(cacheTTL)
-			return cached.client, nil
-		}
-		// Token changed — fall through to build a new client.
+	if cached, ok := cr.cache[session.ID]; ok && time.Now().Before(cached.expiresAt) {
+		return cached.client, nil
 	}
 
 	// Build a new client (lock held, but buildClient only does in-memory work).
-	client, err := cr.buildClient(token, userCfg, session.ConnectionID)
+	client, err := cr.buildClient(userCfg, session.ConnectionID)
 	if err != nil {
 		return nil, err
 	}
 
 	cr.cache[session.ID] = &cachedClient{
 		client:    client,
-		token:     token,
 		expiresAt: time.Now().Add(cacheTTL),
 	}
 	return client, nil
 }
 
-func (cr *ClientResolver) buildClient(token string, cfg *UserConfig, connectionID string) (*sdk.Client, error) {
+func (cr *ClientResolver) buildClient(cfg *UserConfig, connectionID string) (*sdk.Client, error) {
 	upOrg, upDB, err := federation.ParseUpstream(cfg.Upstream)
 	if err != nil {
 		return nil, fmt.Errorf("parsing upstream %q: %w", cfg.Upstream, err)
@@ -97,9 +89,10 @@ func (cr *ClientResolver) buildClient(token string, cfg *UserConfig, connectionI
 		mode = "wild-west"
 	}
 
-	db := backend.NewRemoteDB(token, upOrg, upDB, cfg.ForkOrg, cfg.ForkDB, mode)
+	proxyClient := cr.newProxyClient(connectionID)
+	db := backend.NewRemoteDBWithClient(proxyClient, upOrg, upDB, cfg.ForkOrg, cfg.ForkDB, mode)
 
-	provider := remote.NewDoltHubProvider(token)
+	provider := remote.NewDoltHubProviderWithClient(proxyClient)
 
 	branchURL := func(branch string) string {
 		return fmt.Sprintf("https://www.dolthub.com/repositories/%s/%s/data/%s",
@@ -148,4 +141,15 @@ func (cr *ClientResolver) buildClient(token string, cfg *UserConfig, connectionI
 	})
 
 	return client, nil
+}
+
+// newProxyClient creates an HTTP client that routes DoltHub API calls
+// through Nango's proxy, so the server never sees user tokens.
+func (cr *ClientResolver) newProxyClient(connectionID string) *http.Client {
+	return NewNangoProxyClient(
+		cr.nango.BaseURL(),
+		cr.nango.SecretKey(),
+		cr.nango.IntegrationID(),
+		connectionID,
+	)
 }

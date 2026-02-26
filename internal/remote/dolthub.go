@@ -24,12 +24,28 @@ const (
 
 // DoltHubProvider implements Provider for DoltHub-hosted databases.
 type DoltHubProvider struct {
-	token string
+	token      string
+	httpClient *http.Client // optional; if set, used instead of creating new clients
 }
 
 // NewDoltHubProvider creates a DoltHubProvider with the given API token.
 func NewDoltHubProvider(token string) *DoltHubProvider {
 	return &DoltHubProvider{token: token}
+}
+
+// NewDoltHubProviderWithClient creates a DoltHubProvider using a pre-configured
+// HTTP client whose transport handles auth (e.g. Nango proxy).
+func NewDoltHubProviderWithClient(client *http.Client) *DoltHubProvider {
+	return &DoltHubProvider{httpClient: client}
+}
+
+// getClient returns the injected HTTP client if set, otherwise creates a new
+// one with the given timeout.
+func (d *DoltHubProvider) getClient(timeout time.Duration) *http.Client {
+	if d.httpClient != nil {
+		return d.httpClient
+	}
+	return &http.Client{Timeout: timeout}
 }
 
 // ForkRequiredError is returned when the user needs to manually fork on DoltHub.
@@ -89,8 +105,7 @@ func (d *DoltHubProvider) forkREST(fromOrg, fromDB, toOrg string) error {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("authorization", "token "+d.token)
 
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := d.getClient(60 * time.Second).Do(req)
 	if err != nil {
 		return d.forkRESTFallback(fromOrg, fromDB, toOrg,
 			fmt.Errorf("REST fork request failed: %w", err))
@@ -137,7 +152,7 @@ func (d *DoltHubProvider) forkREST(fromOrg, fromDB, toOrg string) error {
 // Falls back to checking if the database exists when the poll times out,
 // since the fork may complete with a response format we don't recognize.
 func (d *DoltHubProvider) pollForkOperation(operationName, forkOrg, forkDB string) error {
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := d.getClient(30 * time.Second)
 	backoff := 500 * time.Millisecond
 	deadline := time.Now().Add(2 * time.Minute)
 
@@ -239,8 +254,7 @@ func (d *DoltHubProvider) forkGraphQL(fromOrg, fromDB, toOrg, sessionToken strin
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Cookie", "dolthubToken="+sessionToken)
 
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := d.getClient(60 * time.Second).Do(req)
 	if err != nil {
 		return fmt.Errorf("DoltHub GraphQL fork request failed: %w", err)
 	}
@@ -282,8 +296,7 @@ func (d *DoltHubProvider) databaseExists(org, db string) bool {
 	}
 	req.Header.Set("authorization", "token "+d.token)
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := d.getClient(10 * time.Second).Do(req)
 	if err != nil {
 		return false
 	}
@@ -329,8 +342,7 @@ func (d *DoltHubProvider) CreatePR(forkOrg, upstreamOrg, db, fromBranch, title, 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("authorization", "token "+d.token)
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := d.getClient(30 * time.Second).Do(req)
 	if err != nil {
 		return "", fmt.Errorf("DoltHub create PR request failed: %w", err)
 	}
@@ -414,8 +426,7 @@ func (d *DoltHubProvider) dolthubGet(url string) ([]byte, error) {
 	}
 	req.Header.Set("authorization", d.token)
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := d.getClient(30 * time.Second).Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -449,8 +460,7 @@ func (d *DoltHubProvider) UpdatePR(upstreamOrg, db, prID, title, description str
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("authorization", d.token)
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := d.getClient(30 * time.Second).Do(req)
 	if err != nil {
 		return fmt.Errorf("DoltHub update PR request failed: %w", err)
 	}
@@ -480,8 +490,7 @@ func (d *DoltHubProvider) ClosePR(upstreamOrg, db, prID string) error {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("authorization", d.token)
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := d.getClient(30 * time.Second).Do(req)
 	if err != nil {
 		return fmt.Errorf("DoltHub close PR request failed: %w", err)
 	}

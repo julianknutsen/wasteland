@@ -56,6 +56,12 @@ func NewNangoClient(cfg NangoConfig) *NangoClient {
 // IntegrationID returns the configured Nango integration ID.
 func (n *NangoClient) IntegrationID() string { return n.integrationID }
 
+// BaseURL returns the Nango API base URL.
+func (n *NangoClient) BaseURL() string { return n.baseURL }
+
+// SecretKey returns the Nango server-side secret key.
+func (n *NangoClient) SecretKey() string { return n.secretKey }
+
 // nangoConnectionResponse is the JSON shape returned by GET /connection/{id}.
 type nangoConnectionResponse struct {
 	ConnectionID string `json:"connection_id"`

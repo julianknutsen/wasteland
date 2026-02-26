@@ -41,6 +41,20 @@ func NewRemoteDB(token, readOwner, readDB, writeOwner, writeDB, mode string) *Re
 	}
 }
 
+// NewRemoteDBWithClient creates a DB backed by the DoltHub REST API using a
+// pre-configured HTTP client. The client's transport is responsible for auth
+// (e.g. Nango proxy), so no token is stored.
+func NewRemoteDBWithClient(client *http.Client, readOwner, readDB, writeOwner, writeDB, mode string) *RemoteDB {
+	return &RemoteDB{
+		readOwner:  readOwner,
+		readDB:     readDB,
+		writeOwner: writeOwner,
+		writeDB:    writeDB,
+		mode:       mode,
+		client:     client,
+	}
+}
+
 // Query runs a read-only SQL SELECT via the DoltHub API.
 func (r *RemoteDB) Query(sql, ref string) (string, error) {
 	owner := r.readOwner

@@ -107,10 +107,21 @@ func TestClientResolver_CachesClient(t *testing.T) {
 	}
 }
 
-func TestClientResolver_NoToken(t *testing.T) {
+func TestClientResolver_NoToken_StillWorks(t *testing.T) {
+	// With proxy mode, missing token is fine — Nango injects the token.
+	// But missing config should still fail.
+	cfg := &UserConfig{
+		RigHandle: "alice",
+		ForkOrg:   "alice-org",
+		ForkDB:    "wl-commons",
+		Upstream:  "wasteland/wl-commons",
+		Mode:      "wild-west",
+	}
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		resp := nangoConnectionResponse{ConnectionID: "conn-1"}
-		// No API key set.
+		// No API key set — this is fine now.
+		b, _ := json.Marshal(cfg)
+		resp.Metadata = json.RawMessage(b)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
@@ -130,9 +141,12 @@ func TestClientResolver_NoToken(t *testing.T) {
 		CreatedAt:    time.Now(),
 	}
 
-	_, err := resolver.Resolve(session)
-	if err == nil {
-		t.Fatal("expected error for missing token")
+	client, err := resolver.Resolve(session)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if client == nil {
+		t.Fatal("expected non-nil client")
 	}
 }
 
