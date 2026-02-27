@@ -2,7 +2,6 @@ package hosted
 
 import (
 	"fmt"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -47,8 +46,8 @@ func (wr *WorkspaceResolver) Resolve(session *UserSession) (*sdk.Workspace, erro
 	}
 	wr.mu.Unlock()
 
-	// Fetch metadata from Nango (no lock held during network call).
-	_, meta, err := wr.nango.GetConnection(session.ConnectionID)
+	// Fetch metadata and API key from Nango (no lock held during network call).
+	apiKey, meta, err := wr.nango.GetConnection(session.ConnectionID)
 	if err != nil {
 		return nil, fmt.Errorf("resolving credentials: %w", err)
 	}
@@ -68,7 +67,7 @@ func (wr *WorkspaceResolver) Resolve(session *UserSession) (*sdk.Workspace, erro
 	ws := sdk.NewWorkspace(meta.RigHandle)
 	for i := range meta.Wastelands {
 		wl := &meta.Wastelands[i]
-		client, err := wr.buildClient(wl, meta.RigHandle, session.ConnectionID, meta)
+		client, err := wr.buildClient(wl, meta.RigHandle, session.ConnectionID, apiKey, meta)
 		if err != nil {
 			return nil, fmt.Errorf("building client for %s: %w", wl.Upstream, err)
 		}
@@ -94,7 +93,7 @@ func (wr *WorkspaceResolver) InvalidateConnection(connectionID string) {
 	delete(wr.cache, connectionID)
 }
 
-func (wr *WorkspaceResolver) buildClient(wl *WastelandConfig, rigHandle, connectionID string, fullMeta *UserMetadata) (*sdk.Client, error) {
+func (wr *WorkspaceResolver) buildClient(wl *WastelandConfig, rigHandle, connectionID, apiKey string, fullMeta *UserMetadata) (*sdk.Client, error) {
 	upOrg, upDB, err := federation.ParseUpstream(wl.Upstream)
 	if err != nil {
 		return nil, fmt.Errorf("parsing upstream %q: %w", wl.Upstream, err)
@@ -105,10 +104,9 @@ func (wr *WorkspaceResolver) buildClient(wl *WastelandConfig, rigHandle, connect
 		mode = "wild-west"
 	}
 
-	proxyClient := wr.newProxyClient(connectionID)
-	db := backend.NewRemoteDBWithClient(proxyClient, upOrg, upDB, wl.ForkOrg, wl.ForkDB, mode)
+	db := backend.NewRemoteDB(apiKey, upOrg, upDB, wl.ForkOrg, wl.ForkDB, mode)
 
-	provider := remote.NewDoltHubProviderWithClient(proxyClient)
+	provider := remote.NewDoltHubProvider(apiKey)
 
 	branchURL := func(branch string) string {
 		return fmt.Sprintf("https://www.dolthub.com/repositories/%s/%s/data/%s",
@@ -170,15 +168,4 @@ func (wr *WorkspaceResolver) buildClient(wl *WastelandConfig, rigHandle, connect
 	})
 
 	return client, nil
-}
-
-// newProxyClient creates an HTTP client that routes DoltHub API calls
-// through Nango's proxy, so the server never sees user tokens.
-func (wr *WorkspaceResolver) newProxyClient(connectionID string) *http.Client {
-	return NewNangoProxyClient(
-		wr.nango.BaseURL(),
-		wr.nango.SecretKey(),
-		wr.nango.IntegrationID(),
-		connectionID,
-	)
 }
