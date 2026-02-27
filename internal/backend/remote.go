@@ -89,7 +89,7 @@ func (r *RemoteDB) Exec(branch, _ string, _ bool, stmts ...string) error {
 	// If the target branch already exists on the fork, write from that branch
 	// to preserve prior mutations (e.g. claim → done). Otherwise write from main.
 	fromBranch := "main"
-	if branch != "main" && r.forkBranchExists(branch) {
+	if branch != "main" && r.branchHasData(branch) {
 		fromBranch = branch
 	}
 
@@ -386,8 +386,28 @@ func formatDiffRow(buf *strings.Builder, header, fields []string) {
 	}
 }
 
-// forkBranchExists checks whether a branch exists on the fork database.
-func (r *RemoteDB) forkBranchExists(branch string) bool {
+// branchHasData checks whether a wl/ branch has item data worth preserving.
+// Branches cleared by discard (no wanted row) should start fresh from main.
+func (r *RemoteDB) branchHasData(branch string) bool {
+	// Extract wanted ID from wl/{rig}/{wantedID} convention.
+	parts := strings.SplitN(branch, "/", 3)
+	if len(parts) != 3 || parts[0] != "wl" || parts[2] == "" {
+		// Not a wl branch — fall back to branch existence check.
+		return r.branchExists(branch)
+	}
+	wantedID := strings.ReplaceAll(parts[2], "'", "''")
+	sql := fmt.Sprintf("SELECT COUNT(*) AS cnt FROM wanted WHERE id='%s'", wantedID)
+	csv, err := r.queryForkBranch(sql, branch)
+	if err != nil {
+		// Branch probably doesn't exist — start from main.
+		return false
+	}
+	lines := strings.Split(strings.TrimSpace(csv), "\n")
+	return len(lines) >= 2 && strings.TrimSpace(lines[1]) != "0"
+}
+
+// branchExists checks whether a branch exists on the fork database.
+func (r *RemoteDB) branchExists(branch string) bool {
 	escaped := strings.ReplaceAll(branch, "'", "''")
 	sql := fmt.Sprintf("SELECT COUNT(*) AS cnt FROM dolt_branches WHERE name='%s'", escaped)
 	csv, err := r.queryForkBranch(sql, "main")
