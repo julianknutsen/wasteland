@@ -167,8 +167,12 @@ func (r *RemoteDB) PushBranch(_ string, _ io.Writer) error { return nil }
 // PushMain is a no-op for remote.
 func (r *RemoteDB) PushMain(_ io.Writer) error { return nil }
 
-// PushWithSync is a no-op for remote.
-func (r *RemoteDB) PushWithSync(_ io.Writer) error { return nil }
+// PushWithSync returns an error for remote — the DoltHub REST API cannot push
+// from a fork to the upstream. Wild-west mode requires direct upstream access;
+// use PR mode for hosted usage.
+func (r *RemoteDB) PushWithSync(_ io.Writer) error {
+	return fmt.Errorf("wild-west mode requires direct upstream access; switch to PR mode in settings")
+}
 
 // Sync attempts to sync the fork's main branch from upstream.
 // It ensures an upstream remote exists on the fork, fetches it, and then
