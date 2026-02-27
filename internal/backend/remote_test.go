@@ -440,6 +440,47 @@ func TestRemoteDB_DeleteBranch(t *testing.T) {
 	}
 }
 
+func TestRemoteDB_DeleteBranch_Fallback(t *testing.T) {
+	// When DOLT_BRANCH fails, DeleteBranch should fall back to resetting the
+	// branch via write/main/{branch} with a no-op DML.
+	callCount := 0
+	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			callCount++
+			q := r.URL.Query().Get("q")
+			if strings.Contains(q, "DOLT_BRANCH") {
+				// Simulate DOLT_BRANCH not supported.
+				resp := map[string]string{
+					"query_execution_status":  "Error",
+					"query_execution_message": "stored procedure not found",
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+				return
+			}
+			// Fallback: reset branch via write/main/{branch}.
+			if strings.Contains(r.URL.RawPath, "/write/main/wl%2Falice%2Fw-001") {
+				resp := map[string]string{"query_execution_status": "Success"}
+				_ = json.NewEncoder(w).Encode(resp)
+				return
+			}
+			t.Errorf("unexpected POST path: %s", r.URL.Path)
+			return
+		}
+		t.Errorf("unexpected method: %s", r.Method)
+	})
+	defer cleanup()
+
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
+	db.client = srv.Client()
+
+	if err := db.DeleteBranch("wl/alice/w-001"); err != nil {
+		t.Fatalf("DeleteBranch fallback error: %v", err)
+	}
+	if callCount < 2 {
+		t.Errorf("expected at least 2 POST calls (DOLT_BRANCH + fallback), got %d", callCount)
+	}
+}
+
 func TestRemoteDB_DeleteBranch_MainNoOp(t *testing.T) {
 	// Deleting main or empty branch should be a no-op.
 	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")

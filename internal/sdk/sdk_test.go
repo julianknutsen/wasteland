@@ -1150,9 +1150,10 @@ func TestDelete_PR_BranchOnly_CleansUpBranch(t *testing.T) {
 	if createPRCalled {
 		t.Error("should NOT create a PR for branch-only delete")
 	}
-	// cleanupBranch clears item data (1 exec call) — important for remote backends.
-	if len(db.execCalls) != 1 {
-		t.Errorf("expected 1 exec call (cleanup), got %d", len(db.execCalls))
+	// cleanupBranch should NOT exec data deletion before deleting the branch —
+	// that creates divergent commits which are counterproductive for remote backends.
+	if len(db.execCalls) != 0 {
+		t.Errorf("expected 0 exec calls (branch delete handles cleanup), got %d", len(db.execCalls))
 	}
 	// Hint should indicate branch cleanup.
 	if result.Hint == "" {

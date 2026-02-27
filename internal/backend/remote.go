@@ -164,13 +164,53 @@ func (r *RemoteDB) Branches(prefix string) ([]string, error) {
 	return branches, nil
 }
 
-// DeleteBranch deletes a branch on the fork via DOLT_BRANCH('-D', ...).
+// DeleteBranch deletes a branch on the fork.
+// Tries DOLT_BRANCH('-D', ...) first. If that fails (some DoltHub environments
+// don't support branch management stored procedures via the write API), falls
+// back to overwriting the branch from main so it no longer diverges — this
+// prevents DetectBranchOverrides from flagging the item as pending.
 func (r *RemoteDB) DeleteBranch(branch string) error {
 	if branch == "" || branch == "main" {
 		return nil
 	}
 	escaped := strings.ReplaceAll(branch, "'", "''")
-	return r.execOnMain(fmt.Sprintf("CALL DOLT_BRANCH('-D', '%s')", escaped))
+	err := r.execOnMain(fmt.Sprintf("CALL DOLT_BRANCH('-D', '%s')", escaped))
+	if err == nil {
+		return nil
+	}
+	// Fallback: overwrite the branch from main so it matches main exactly.
+	// write/main/{branch} replays from main, making status identical.
+	return r.resetBranchToMain(branch)
+}
+
+// resetBranchToMain overwrites a branch with main's state by writing a no-op
+// DML through the write/main/{branch} endpoint.
+func (r *RemoteDB) resetBranchToMain(branch string) error {
+	noopSQL := "UPDATE wanted SET id = id WHERE 1=0"
+	apiURL := fmt.Sprintf("%s/%s/%s/write/main/%s?q=%s",
+		DoltHubAPIBase, r.writeOwner, r.writeDB,
+		url.PathEscape(branch), url.QueryEscape(noopSQL))
+
+	body, err := r.doPost(apiURL, nil)
+	if err != nil {
+		return fmt.Errorf("reset branch to main: %w", err)
+	}
+
+	var writeResp struct {
+		OperationName         string `json:"operation_name"`
+		QueryExecutionStatus  string `json:"query_execution_status"`
+		QueryExecutionMessage string `json:"query_execution_message"`
+	}
+	if err := json.Unmarshal(body, &writeResp); err != nil {
+		return fmt.Errorf("parsing reset response: %w", err)
+	}
+	if writeResp.QueryExecutionStatus == "Error" {
+		return fmt.Errorf("reset branch: %s", writeResp.QueryExecutionMessage)
+	}
+	if writeResp.OperationName != "" {
+		return r.pollOperation(writeResp.OperationName)
+	}
+	return nil
 }
 
 // PushBranch is a no-op for remote — the write API auto-pushes.
