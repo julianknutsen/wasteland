@@ -42,4 +42,8 @@ type DB interface {
 
 	// PushWithSync pushes to both upstream and origin with sync retry. No-op for remote.
 	PushWithSync(stdout io.Writer) error
+
+	// CanWildWest returns nil if the backend supports wild-west mode (direct
+	// upstream writes). Returns an error with a user-facing message if not.
+	CanWildWest() error
 }

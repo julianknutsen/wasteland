@@ -200,6 +200,7 @@ func (f *fakeDB) Sync() error                            { return nil }
 func (f *fakeDB) MergeBranch(_ string) error             { return nil }
 func (f *fakeDB) DeleteRemoteBranch(_ string) error      { return nil }
 func (f *fakeDB) PushWithSync(_ io.Writer) error         { return nil }
+func (f *fakeDB) CanWildWest() error                     { return nil }
 
 func (f *fakeDB) resolve(id, ref string) *fakeItem {
 	if ref != "" && ref != "main" {

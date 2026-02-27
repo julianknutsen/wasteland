@@ -506,6 +506,8 @@ func (f *fakeDB) PushWithSync(_ io.Writer) error {
 	return nil
 }
 
+func (f *fakeDB) CanWildWest() error { return nil }
+
 // resolveItem returns the item from branch or main.
 func (f *fakeDB) resolveItem(id, ref string) *fakeItem {
 	if ref != "" && ref != "main" {

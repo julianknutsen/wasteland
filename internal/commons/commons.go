@@ -49,6 +49,9 @@ type DB interface {
 
 	// PushWithSync pushes to both upstream and origin with sync retry.
 	PushWithSync(stdout io.Writer) error
+
+	// CanWildWest returns nil if the backend supports wild-west mode.
+	CanWildWest() error
 }
 
 // WLCommonsStore abstracts wl-commons database operations.

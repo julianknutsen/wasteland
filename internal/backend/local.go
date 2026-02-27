@@ -87,6 +87,9 @@ func (l *LocalDB) PushWithSync(stdout io.Writer) error {
 	return commons.PushWithSync(l.dir, stdout)
 }
 
+// CanWildWest returns nil — local databases support wild-west mode.
+func (l *LocalDB) CanWildWest() error { return nil }
+
 // Sync pulls latest from upstream. In PR mode, resets main to upstream.
 func (l *LocalDB) Sync() error {
 	if l.mode == "pr" {

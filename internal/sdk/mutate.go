@@ -30,6 +30,11 @@ func (c *Client) mutate(wantedID, commitMsg string, stmts ...string) (*MutationR
 }
 
 func (c *Client) mutateWildWest(wantedID, commitMsg string, stmts ...string) (*MutationResult, error) {
+	// Preflight: verify this backend supports wild-west (direct upstream push).
+	// RemoteDB fails here because the DoltHub API can't push fork→upstream.
+	if err := c.db.CanWildWest(); err != nil {
+		return nil, err
+	}
 	if err := c.db.Exec("", commitMsg, c.signing, stmts...); err != nil {
 		return nil, err
 	}

@@ -185,8 +185,11 @@ func TestRemoteDB_PushNoOps(t *testing.T) {
 	if err := db.PushMain(nil); err != nil {
 		t.Errorf("PushMain should be no-op, got: %v", err)
 	}
-	if err := db.PushWithSync(nil); err == nil {
-		t.Error("PushWithSync should return error for remote DB (wild-west not supported)")
+	if err := db.PushWithSync(nil); err != nil {
+		t.Errorf("PushWithSync should be no-op, got: %v", err)
+	}
+	if err := db.CanWildWest(); err == nil {
+		t.Error("CanWildWest should return error for remote DB")
 	}
 }
 
