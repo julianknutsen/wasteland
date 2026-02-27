@@ -176,31 +176,10 @@ func (r *RemoteDB) CanWildWest() error {
 	return fmt.Errorf("wild-west mode requires direct upstream access; switch to PR mode in settings")
 }
 
-// Sync attempts to sync the fork's main branch from upstream.
-// It ensures an upstream remote exists on the fork, fetches it, and then
-// resets (PR mode) or merges (wild-west mode) fork main to upstream/main.
-//
-// Best-effort: DoltHub's hosted SQL API may not support remote operations
-// (dolt_remotes, DOLT_REMOTE, DOLT_FETCH). Callers should treat errors as
-// non-fatal — reads always go to the upstream API and are always fresh.
-func (r *RemoteDB) Sync() error {
-	if err := r.ensureUpstreamRemote(); err != nil {
-		return fmt.Errorf("remote operations not supported: %w", err)
-	}
-	if err := r.execOnMain("CALL DOLT_FETCH('upstream')"); err != nil {
-		return fmt.Errorf("fetch upstream: %w", err)
-	}
-	if r.mode == "pr" {
-		if err := r.execOnMain("CALL DOLT_RESET('--hard', 'upstream/main')"); err != nil {
-			return fmt.Errorf("reset to upstream: %w", err)
-		}
-	} else {
-		if err := r.execOnMain("CALL DOLT_MERGE('upstream/main')"); err != nil {
-			return fmt.Errorf("merge upstream: %w", err)
-		}
-	}
-	return nil
-}
+// Sync is a no-op for remote — reads always go to the upstream API and are
+// always fresh. The DoltHub hosted SQL API does not support remote operations
+// (dolt_remotes, DOLT_REMOTE, DOLT_FETCH), so fork-level sync is not possible.
+func (r *RemoteDB) Sync() error { return nil }
 
 // MergeBranch merges a branch into the fork's main via the write API.
 func (r *RemoteDB) MergeBranch(branch string) error {
@@ -296,19 +275,6 @@ func (r *RemoteDB) execOnMain(sql string) error {
 	return nil
 }
 
-// queryForkMain runs a read-only SELECT against the fork's main branch.
-func (r *RemoteDB) queryForkMain(sql string) (string, error) {
-	apiURL := fmt.Sprintf("%s/%s/%s/main?q=%s",
-		DoltHubAPIBase, r.writeOwner, r.writeDB, url.QueryEscape(sql))
-
-	body, err := r.doGet(apiURL)
-	if err != nil {
-		return "", fmt.Errorf("queryForkMain failed: %w", err)
-	}
-
-	return JSONToCSV(body)
-}
-
 // queryForkBranch runs a read-only SELECT against a specific branch on the fork.
 func (r *RemoteDB) queryForkBranch(sql, branch string) (string, error) {
 	apiURL := fmt.Sprintf("%s/%s/%s/%s?q=%s",
@@ -320,27 +286,6 @@ func (r *RemoteDB) queryForkBranch(sql, branch string) (string, error) {
 	}
 
 	return JSONToCSV(body)
-}
-
-// ensureUpstreamRemote checks if the "upstream" remote exists on the fork and
-// adds it if missing.
-func (r *RemoteDB) ensureUpstreamRemote() error {
-	csv, err := r.queryForkMain("SELECT name FROM dolt_remotes WHERE name = 'upstream'")
-	if err != nil {
-		return err
-	}
-
-	// If we got rows beyond the header, the remote exists.
-	lines := strings.Split(strings.TrimSpace(csv), "\n")
-	if len(lines) >= 2 {
-		return nil
-	}
-
-	// Add the upstream remote.
-	remoteURL := fmt.Sprintf("https://doltremoteapi.dolthub.com/%s/%s", r.readOwner, r.readDB)
-	escaped := strings.ReplaceAll(remoteURL, "'", "''")
-	sql := fmt.Sprintf("CALL DOLT_REMOTE('add', 'upstream', '%s')", escaped)
-	return r.execOnMain(sql)
 }
 
 // parseDiffTables extracts table names from a dolt_diff CSV result.

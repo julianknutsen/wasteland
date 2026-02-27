@@ -14,6 +14,7 @@ export function Settings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [hosted, setHosted] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -21,6 +22,7 @@ export function Settings() {
         const cfg = await config();
         setRigHandle(cfg.rig_handle);
         setMode(cfg.mode || "wild-west");
+        setHosted(!!cfg.hosted);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Failed to load config");
       } finally {
@@ -115,9 +117,11 @@ export function Settings() {
         <button type="button" className={styles.saveBtn} onClick={handleSave} disabled={saving}>
           {saving ? "Saving..." : "Save"}
         </button>
-        <button type="button" className={styles.syncBtn} onClick={handleSync} disabled={syncing}>
-          {syncing ? "Syncing..." : "Sync"}
-        </button>
+        {!hosted && (
+          <button type="button" className={styles.syncBtn} onClick={handleSync} disabled={syncing}>
+            {syncing ? "Syncing..." : "Sync"}
+          </button>
+        )}
         <button type="button" className={styles.syncBtn} onClick={() => navigate("/join")}>
           Join New Wasteland
         </button>
