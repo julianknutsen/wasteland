@@ -4,20 +4,27 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/julianknutsen/wasteland/internal/federation"
+	"github.com/julianknutsen/wasteland/internal/remote"
+	"github.com/julianknutsen/wasteland/internal/style"
 	"github.com/julianknutsen/wasteland/schema"
 	"github.com/spf13/cobra"
 )
 
 func newCreateCmd(stdout, stderr io.Writer) *cobra.Command {
 	var (
-		name      string
-		localOnly bool
-		signed    bool
+		handle      string
+		displayName string
+		email       string
+		name        string
+		remoteBase  string
+		gitRemote   string
+		github      bool
+		githubLocal string
+		localOnly   bool
+		signed      bool
 	)
 
 	cmd := &cobra.Command{
@@ -27,9 +34,10 @@ func newCreateCmd(stdout, stderr io.Writer) *cobra.Command {
 
 This command:
   1. Initializes a new dolt database with the commons schema
-  2. Seeds the _meta table with schema version
+  2. Registers the creator as a rig
   3. Commits the initial schema
-  4. Pushes to DoltHub (unless --local-only)
+  4. Pushes to remote (unless --local-only)
+  5. Saves wasteland configuration locally
 
 Examples:
   wl create myorg/wl-commons                       # create and push to DoltHub
@@ -38,18 +46,29 @@ Examples:
   wl create myorg/wl-commons --signed                # GPG-sign initial commit`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			return runCreate(stdout, stderr, args[0], name, localOnly, signed)
+			return runCreate(stdout, stderr, args[0], name, handle, displayName, email,
+				remoteBase, gitRemote, github, githubLocal, localOnly, signed)
 		},
 	}
 
+	cmd.Flags().StringVar(&handle, "handle", "", "Rig handle for registration (default: org)")
+	cmd.Flags().StringVar(&displayName, "display-name", "", "Display name for the rig registry")
+	cmd.Flags().StringVar(&email, "email", "", "Registration email (default: GPG key email if --signed, else git config user.email)")
 	cmd.Flags().StringVar(&name, "name", "", "Display name for the wasteland (stored in _meta)")
+	cmd.Flags().StringVar(&remoteBase, "remote-base", "", "Base directory for file:// remotes (offline mode)")
+	cmd.Flags().StringVar(&gitRemote, "git-remote", "", "Base directory for bare git remotes")
+	cmd.Flags().BoolVar(&github, "github", false, "Use GitHub as the upstream provider")
+	cmd.Flags().StringVar(&githubLocal, "github-local", "", "Local base directory for GitHub-compatible testing mode")
 	cmd.Flags().BoolVar(&localOnly, "local-only", false, "Skip pushing to remote")
 	cmd.Flags().BoolVar(&signed, "signed", false, "GPG-sign the initial commit")
+	cmd.MarkFlagsMutuallyExclusive("remote-base", "git-remote", "github", "github-local")
 
 	return cmd
 }
 
-func runCreate(stdout, _ io.Writer, upstream, name string, localOnly, signed bool) error {
+func runCreate(stdout, stderr io.Writer, upstream, name, handle, displayName, email,
+	remoteBase, gitRemote string, github bool, githubLocal string, localOnly, signed bool,
+) error {
 	if err := requireDolt(); err != nil {
 		return err
 	}
@@ -61,80 +80,85 @@ func runCreate(stdout, _ io.Writer, upstream, name string, localOnly, signed boo
 
 	localDir := federation.LocalCloneDir(org, db)
 
-	// Check if already exists.
+	// Check if .dolt already exists for a clear error message.
 	if _, err := os.Stat(filepath.Join(localDir, ".dolt")); err == nil {
 		return fmt.Errorf("database already exists at %s", localDir)
 	}
 
-	// Create parent directory and init.
-	if err := os.MkdirAll(localDir, 0o755); err != nil {
-		return fmt.Errorf("creating directory: %w", err)
+	store := federation.NewConfigStore()
+
+	// Resolve provider.
+	var provider remote.Provider
+	switch {
+	case localOnly:
+		// Local-only mode doesn't need a real provider, but Service needs one for the interface.
+		provider = remote.NewDoltHubProvider("")
+
+	case remoteBase != "":
+		provider = remote.NewFileProvider(remoteBase)
+
+	case gitRemote != "":
+		provider = remote.NewGitProvider(gitRemote)
+
+	case github:
+		provider = remote.NewGitHubProvider()
+
+	case githubLocal != "":
+		provider = remote.NewFakeGitHubProvider(githubLocal)
+
+	default:
+		provider = remote.NewDoltHubProvider("")
+	}
+
+	// Resolve handle — defaults to org.
+	if handle == "" {
+		handle = org
+	}
+
+	// Resolve display name from flag or git config.
+	if displayName == "" {
+		displayName = gitConfigValue("user.name")
+	}
+
+	// Resolve email from flag, GPG key (if signed), or git config.
+	if email == "" && signed {
+		email = gpgKeyEmail()
+	}
+	if email == "" {
+		email = gitConfigValue("user.email")
+	}
+
+	svc := federation.NewServiceWith(provider, store)
+	svc.OnProgress = func(step string) {
+		fmt.Fprintf(stdout, "  %s\n", step)
 	}
 
 	fmt.Fprintf(stdout, "Creating wasteland %s...\n", upstream)
 
-	// dolt init
-	initCmd := exec.Command("dolt", "init")
-	initCmd.Dir = localDir
-	if out, err := initCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("dolt init: %w (%s)", err, strings.TrimSpace(string(out)))
-	}
-	fmt.Fprintf(stdout, "  Initialized dolt database\n")
-
-	// Apply schema via dolt sql
-	sqlScript := schema.SQL
-	if name != "" {
-		sqlScript += fmt.Sprintf("\nINSERT IGNORE INTO _meta (`key`, value) VALUES ('wasteland_name', '%s');\n",
-			strings.ReplaceAll(name, "'", "''"))
-	}
-
-	sqlCmd := exec.Command("dolt", "sql", "-q", sqlScript)
-	sqlCmd.Dir = localDir
-	if out, err := sqlCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("applying schema: %w (%s)", err, strings.TrimSpace(string(out)))
-	}
-	fmt.Fprintf(stdout, "  Applied commons schema v1.0\n")
-
-	// Stage and commit
-	addCmd := exec.Command("dolt", "add", "-A")
-	addCmd.Dir = localDir
-	if out, err := addCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("dolt add: %w (%s)", err, strings.TrimSpace(string(out)))
+	result, err := svc.Create(federation.CreateOptions{
+		Upstream:    upstream,
+		Handle:      handle,
+		DisplayName: displayName,
+		OwnerEmail:  email,
+		Version:     "dev",
+		SchemaSQL:   schema.SQL,
+		Name:        name,
+		LocalOnly:   localOnly,
+		Signed:      signed,
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "wl create: %v\n", err)
+		return errExit
 	}
 
-	commitArgs := []string{"commit", "-m", "Initialize commons schema v1.0"}
-	if signed {
-		commitArgs = []string{"commit", "-S", "-m", "Initialize commons schema v1.0"}
-	}
-	commitCmd := exec.Command("dolt", commitArgs...)
-	commitCmd.Dir = localDir
-	if out, err := commitCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("dolt commit: %w (%s)", err, strings.TrimSpace(string(out)))
-	}
-	fmt.Fprintf(stdout, "  Committed initial schema\n")
-
+	cfg := result.Config
+	fmt.Fprintf(stdout, "\n%s Created wasteland: %s\n", style.Bold.Render("✓"), upstream)
+	fmt.Fprintf(stdout, "  Handle: %s\n", cfg.RigHandle)
+	fmt.Fprintf(stdout, "  Local: %s\n", cfg.LocalDir)
 	if !localOnly {
-		remoteURL := fmt.Sprintf("https://doltremoteapi.dolthub.com/%s/%s", org, db)
-		remoteCmd := exec.Command("dolt", "remote", "add", "origin", remoteURL)
-		remoteCmd.Dir = localDir
-		if out, err := remoteCmd.CombinedOutput(); err != nil {
-			msg := strings.TrimSpace(string(out))
-			if !strings.Contains(strings.ToLower(msg), "already exists") {
-				return fmt.Errorf("dolt remote add: %w (%s)", err, msg)
-			}
-		}
-
-		pushCmd := exec.Command("dolt", "push", "origin", "main")
-		pushCmd.Dir = localDir
-		if out, err := pushCmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("dolt push: %w (%s)", err, strings.TrimSpace(string(out)))
-		}
 		fmt.Fprintf(stdout, "  Pushed to %s/%s\n", org, db)
 	}
-
-	fmt.Fprintf(stdout, "\n✓ Created wasteland: %s\n", upstream)
-	fmt.Fprintf(stdout, "  Local: %s\n", localDir)
-	fmt.Fprintf(stdout, "\n  Share: wl join %s\n", upstream)
+	fmt.Fprintf(stdout, "\n  %s\n", style.Dim.Render("Share: wl join "+upstream))
 
 	return nil
 }

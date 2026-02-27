@@ -330,6 +330,10 @@ func (f *fakeProviderForConfig) Type() string                                   
 type noopDoltCLI struct{}
 
 func (n *noopDoltCLI) Clone(_, _ string) error                           { return nil }
+func (n *noopDoltCLI) Init(_ string) error                               { return nil }
+func (n *noopDoltCLI) SQLExec(_, _ string) error                         { return nil }
+func (n *noopDoltCLI) StageAndCommit(_, _ string, _ bool) error          { return nil }
+func (n *noopDoltCLI) AddRemote(_, _, _ string) error                    { return nil }
 func (n *noopDoltCLI) RegisterRig(_, _, _, _, _, _ string, _ bool) error { return nil }
 func (n *noopDoltCLI) Push(_ string) error                               { return nil }
 func (n *noopDoltCLI) PushBranch(_, _ string, _ bool) error              { return nil }

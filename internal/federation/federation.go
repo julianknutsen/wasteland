@@ -147,6 +147,10 @@ func escapeSQLString(s string) string {
 // DoltCLI abstracts dolt CLI subprocess operations.
 type DoltCLI interface {
 	Clone(remoteURL, targetDir string) error
+	Init(localDir string) error
+	SQLExec(localDir, query string) error
+	StageAndCommit(localDir, message string, signed bool) error
+	AddRemote(localDir, name, remoteURL string) error
 	RegisterRig(localDir, handle, dolthubOrg, displayName, ownerEmail, version string, signed bool) error
 	Push(localDir string) error
 	PushBranch(localDir, branch string, force bool) error
@@ -322,6 +326,106 @@ func (s *Service) Join(upstream, forkOrg, handle, displayName, ownerEmail, versi
 	return &JoinResult{Config: cfg, PRURL: prURL}, nil
 }
 
+// CreateOptions holds parameters for creating a new wasteland commons.
+type CreateOptions struct {
+	Upstream    string // "org/db" path
+	Handle      string // rig handle for creator
+	DisplayName string
+	OwnerEmail  string
+	Version     string // wl version
+	SchemaSQL   string // DDL passed in by caller (avoids federation→schema import)
+	Name        string // optional wasteland display name for _meta
+	LocalOnly   bool
+	Signed      bool
+}
+
+// CreateResult holds the output of a successful Create operation.
+type CreateResult struct {
+	Config *Config
+}
+
+// Create orchestrates creating a new wasteland commons: init -> schema -> commit -> register -> push -> save config.
+func (s *Service) Create(opts CreateOptions) (*CreateResult, error) {
+	org, db, err := ParseUpstream(opts.Upstream)
+	if err != nil {
+		return nil, err
+	}
+
+	// Idempotent: if config already exists, return early.
+	if existing, err := s.Config.Load(opts.Upstream); err == nil {
+		return &CreateResult{Config: existing}, nil
+	}
+
+	localDir := LocalCloneDir(org, db)
+	progress := s.OnProgress
+	if progress == nil {
+		progress = func(string) {}
+	}
+
+	progress("Initializing dolt database...")
+	if err := s.CLI.Init(localDir); err != nil {
+		return nil, fmt.Errorf("initializing database: %w", err)
+	}
+
+	sqlScript := opts.SchemaSQL
+	if opts.Name != "" {
+		sqlScript += fmt.Sprintf("\nINSERT IGNORE INTO _meta (`key`, value) VALUES ('wasteland_name', '%s');\n",
+			escapeSQLString(opts.Name))
+	}
+
+	progress("Applying commons schema...")
+	if err := s.CLI.SQLExec(localDir, sqlScript); err != nil {
+		return nil, fmt.Errorf("applying schema: %w", err)
+	}
+
+	progress("Committing initial schema...")
+	if err := s.CLI.StageAndCommit(localDir, "Initialize commons schema v1.0", opts.Signed); err != nil {
+		return nil, fmt.Errorf("committing schema: %w", err)
+	}
+
+	progress("Registering rig...")
+	if err := s.CLI.RegisterRig(localDir, opts.Handle, org, opts.DisplayName, opts.OwnerEmail, opts.Version, opts.Signed); err != nil {
+		return nil, fmt.Errorf("registering rig: %w", err)
+	}
+
+	if !opts.LocalOnly {
+		remoteURL := s.Remote.DatabaseURL(org, db)
+
+		progress("Adding origin remote...")
+		if err := s.CLI.AddRemote(localDir, "origin", remoteURL); err != nil {
+			return nil, fmt.Errorf("adding origin remote: %w", err)
+		}
+
+		progress("Pushing to remote...")
+		if err := s.CLI.Push(localDir); err != nil {
+			return nil, fmt.Errorf("pushing: %w", err)
+		}
+	}
+
+	hopURI := fmt.Sprintf("hop://%s/%s/", opts.OwnerEmail, opts.Handle)
+	cfg := &Config{
+		Upstream:  opts.Upstream,
+		ForkOrg:   org,
+		ForkDB:    db,
+		LocalDir:  localDir,
+		Backend:   BackendLocal,
+		RigHandle: opts.Handle,
+		HopURI:    hopURI,
+		JoinedAt:  time.Now(),
+	}
+	if !opts.LocalOnly {
+		cfg.ProviderType = s.Remote.Type()
+		cfg.UpstreamURL = s.Remote.DatabaseURL(org, db)
+	}
+
+	progress("Saving config...")
+	if err := s.Config.Save(cfg); err != nil {
+		return nil, fmt.Errorf("saving wasteland config: %w", err)
+	}
+
+	return &CreateResult{Config: cfg}, nil
+}
+
 // cloneWithRetry retries the clone with exponential backoff. A newly forked
 // database may not be immediately available on the dolt remote API.
 func cloneWithRetry(cli DoltCLI, remoteURL, targetDir string, progress func(string)) error {
@@ -362,6 +466,79 @@ func (e *execDoltCLI) Clone(remoteURL, targetDir string) error {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("dolt clone %s: %w (%s)", remoteURL, err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func (e *execDoltCLI) Init(localDir string) error {
+	if err := os.MkdirAll(localDir, 0o755); err != nil {
+		return fmt.Errorf("creating directory: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "dolt", "init")
+	cmd.Dir = localDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dolt init: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func (e *execDoltCLI) SQLExec(localDir, query string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "dolt", "sql", "-q", query)
+	cmd.Dir = localDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("dolt sql: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func (e *execDoltCLI) StageAndCommit(localDir, message string, signed bool) error {
+	ctxAdd, cancelAdd := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelAdd()
+	addCmd := exec.CommandContext(ctxAdd, "dolt", "add", "-A")
+	addCmd.Dir = localDir
+	if output, err := addCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("dolt add: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+
+	commitArgs := []string{"commit"}
+	if signed {
+		commitArgs = append(commitArgs, "-S")
+	}
+	commitArgs = append(commitArgs, "-m", message)
+	ctxCommit, cancelCommit := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelCommit()
+	commitCmd := exec.CommandContext(ctxCommit, "dolt", commitArgs...)
+	commitCmd.Dir = localDir
+	output, err := commitCmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(output))
+		lower := strings.ToLower(msg)
+		if strings.Contains(lower, "nothing to commit") || strings.Contains(lower, "no changes added") {
+			return nil
+		}
+		return fmt.Errorf("dolt commit: %w (%s)", err, msg)
+	}
+	return nil
+}
+
+func (e *execDoltCLI) AddRemote(localDir, name, remoteURL string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "dolt", "remote", "add", name, remoteURL)
+	cmd.Dir = localDir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(output))
+		if strings.Contains(strings.ToLower(msg), "already exists") {
+			return nil
+		}
+		return fmt.Errorf("dolt remote add %s: %w (%s)", name, err, msg)
 	}
 	return nil
 }

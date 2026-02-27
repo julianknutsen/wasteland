@@ -280,6 +280,339 @@ func TestJoin_Direct_SkipsForkAndPR(t *testing.T) {
 	}
 }
 
+func TestCreate_Success(t *testing.T) {
+	t.Parallel()
+	log := NewCallLog()
+	provider := NewFakeProvider()
+	provider.Log = log
+	cli := NewFakeDoltCLI()
+	cli.Log = log
+	cfgStore := NewFakeConfigStore()
+
+	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
+
+	result, err := svc.Create(CreateOptions{
+		Upstream:    "myorg/wl-commons",
+		Handle:      "myrig",
+		DisplayName: "Alice",
+		OwnerEmail:  "alice@example.com",
+		Version:     "dev",
+		SchemaSQL:   "CREATE TABLE test (id INT PRIMARY KEY);",
+	})
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	cfg := result.Config
+	if cfg.Upstream != "myorg/wl-commons" {
+		t.Errorf("Upstream = %q, want %q", cfg.Upstream, "myorg/wl-commons")
+	}
+	if cfg.RigHandle != "myrig" {
+		t.Errorf("RigHandle = %q, want %q", cfg.RigHandle, "myrig")
+	}
+	if cfg.ForkOrg != "myorg" {
+		t.Errorf("ForkOrg = %q, want %q", cfg.ForkOrg, "myorg")
+	}
+	if cfg.ForkDB != "wl-commons" {
+		t.Errorf("ForkDB = %q, want %q", cfg.ForkDB, "wl-commons")
+	}
+	if cfg.Backend != BackendLocal {
+		t.Errorf("Backend = %q, want %q", cfg.Backend, BackendLocal)
+	}
+	if cfg.ProviderType != "fake" {
+		t.Errorf("ProviderType = %q, want %q", cfg.ProviderType, "fake")
+	}
+
+	// Verify call ordering: Init → SQLExec → StageAndCommit → RegisterRig → AddRemote → Push
+	expectedOrder := []string{"Init", "SQLExec", "StageAndCommit", "RegisterRig", "AddRemote", "Push"}
+	if len(log.Calls) != len(expectedOrder) {
+		t.Fatalf("expected %d calls, got %d: %v", len(expectedOrder), len(log.Calls), log.Calls)
+	}
+	for i, want := range expectedOrder {
+		if !strings.HasPrefix(log.Calls[i], want) {
+			t.Errorf("log[%d] = %q, want prefix %q", i, log.Calls[i], want)
+		}
+	}
+
+	// Config was saved.
+	saved, err := cfgStore.Load("myorg/wl-commons")
+	if err != nil {
+		t.Fatalf("config not saved: %v", err)
+	}
+	if saved.Upstream != cfg.Upstream {
+		t.Errorf("saved config doesn't match returned config")
+	}
+}
+
+func TestCreate_LocalOnly(t *testing.T) {
+	t.Parallel()
+	log := NewCallLog()
+	provider := NewFakeProvider()
+	provider.Log = log
+	cli := NewFakeDoltCLI()
+	cli.Log = log
+	cfgStore := NewFakeConfigStore()
+
+	svc := &Service{Remote: provider, CLI: cli, Config: cfgStore}
+
+	result, err := svc.Create(CreateOptions{
+		Upstream:    "myorg/wl-commons",
+		Handle:      "myrig",
+		DisplayName: "Alice",
+		OwnerEmail:  "alice@example.com",
+		Version:     "dev",
+		SchemaSQL:   "CREATE TABLE test (id INT PRIMARY KEY);",
+		LocalOnly:   true,
+	})
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	// No AddRemote or Push calls.
+	expectedOrder := []string{"Init", "SQLExec", "StageAndCommit", "RegisterRig"}
+	if len(log.Calls) != len(expectedOrder) {
+		t.Fatalf("expected %d calls, got %d: %v", len(expectedOrder), len(log.Calls), log.Calls)
+	}
+	for i, want := range expectedOrder {
+		if !strings.HasPrefix(log.Calls[i], want) {
+			t.Errorf("log[%d] = %q, want prefix %q", i, log.Calls[i], want)
+		}
+	}
+
+	// Config still saved.
+	if _, err := cfgStore.Load("myorg/wl-commons"); err != nil {
+		t.Fatalf("config not saved: %v", err)
+	}
+
+	// LocalOnly config should not have provider type or upstream URL.
+	cfg := result.Config
+	if cfg.ProviderType != "" {
+		t.Errorf("ProviderType = %q, want empty for local-only", cfg.ProviderType)
+	}
+	if cfg.UpstreamURL != "" {
+		t.Errorf("UpstreamURL = %q, want empty for local-only", cfg.UpstreamURL)
+	}
+}
+
+func TestCreate_WithName(t *testing.T) {
+	t.Parallel()
+	cli := NewFakeDoltCLI()
+	cfgStore := NewFakeConfigStore()
+
+	svc := &Service{Remote: NewFakeProvider(), CLI: cli, Config: cfgStore}
+
+	_, err := svc.Create(CreateOptions{
+		Upstream:    "myorg/wl-commons",
+		Handle:      "myrig",
+		DisplayName: "Alice",
+		OwnerEmail:  "alice@example.com",
+		Version:     "dev",
+		SchemaSQL:   "CREATE TABLE test (id INT PRIMARY KEY);",
+		Name:        "My Wasteland",
+		LocalOnly:   true,
+	})
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+
+	// SQLExec should contain the INSERT IGNORE INTO _meta statement.
+	if len(cli.SQLExecs) != 1 {
+		t.Fatalf("expected 1 SQL exec, got %d", len(cli.SQLExecs))
+	}
+	if !strings.Contains(cli.SQLExecs[0], "INSERT IGNORE INTO _meta") {
+		t.Errorf("SQL = %q, want to contain INSERT IGNORE INTO _meta", cli.SQLExecs[0])
+	}
+	if !strings.Contains(cli.SQLExecs[0], "My Wasteland") {
+		t.Errorf("SQL = %q, want to contain 'My Wasteland'", cli.SQLExecs[0])
+	}
+}
+
+func TestCreate_AlreadyExists(t *testing.T) {
+	t.Parallel()
+	cli := NewFakeDoltCLI()
+	cfgStore := NewFakeConfigStore()
+	cfgStore.Configs["myorg/wl-commons"] = &Config{
+		Upstream:  "myorg/wl-commons",
+		ForkOrg:   "myorg",
+		ForkDB:    "wl-commons",
+		RigHandle: "myrig",
+	}
+
+	svc := &Service{Remote: NewFakeProvider(), CLI: cli, Config: cfgStore}
+
+	result, err := svc.Create(CreateOptions{
+		Upstream:  "myorg/wl-commons",
+		Handle:    "myrig",
+		SchemaSQL: "CREATE TABLE test (id INT PRIMARY KEY);",
+	})
+	if err != nil {
+		t.Fatalf("Create() should succeed (no-op) when already exists: %v", err)
+	}
+	if result.Config.RigHandle != "myrig" {
+		t.Errorf("RigHandle = %q, want %q", result.Config.RigHandle, "myrig")
+	}
+	// Zero CLI calls.
+	if len(cli.Calls) != 0 {
+		t.Errorf("expected 0 CLI calls for already-exists, got %d: %v", len(cli.Calls), cli.Calls)
+	}
+}
+
+func TestCreate_InvalidUpstream(t *testing.T) {
+	t.Parallel()
+	svc := &Service{Remote: NewFakeProvider(), CLI: NewFakeDoltCLI(), Config: NewFakeConfigStore()}
+
+	_, err := svc.Create(CreateOptions{
+		Upstream:  "invalid",
+		Handle:    "rig",
+		SchemaSQL: "CREATE TABLE test (id INT PRIMARY KEY);",
+	})
+	if err == nil {
+		t.Fatal("Create() expected error for invalid upstream")
+	}
+}
+
+func TestCreate_InitFails(t *testing.T) {
+	t.Parallel()
+	cli := NewFakeDoltCLI()
+	cli.InitErr = fmt.Errorf("disk full")
+	cfgStore := NewFakeConfigStore()
+
+	svc := &Service{Remote: NewFakeProvider(), CLI: cli, Config: cfgStore}
+
+	_, err := svc.Create(CreateOptions{
+		Upstream:  "myorg/wl-commons",
+		Handle:    "myrig",
+		SchemaSQL: "CREATE TABLE test (id INT PRIMARY KEY);",
+		LocalOnly: true,
+	})
+	if err == nil {
+		t.Fatal("Create() expected error when Init fails")
+	}
+	// No SQLExec, Commit, Register, Push after Init failure.
+	for _, call := range cli.Calls {
+		if strings.HasPrefix(call, "SQLExec") || strings.HasPrefix(call, "StageAndCommit") ||
+			strings.HasPrefix(call, "RegisterRig") || strings.HasPrefix(call, "Push") {
+			t.Errorf("unexpected call after Init failure: %s", call)
+		}
+	}
+}
+
+func TestCreate_SQLExecFails(t *testing.T) {
+	t.Parallel()
+	cli := NewFakeDoltCLI()
+	cli.SQLExecErr = fmt.Errorf("syntax error")
+	cfgStore := NewFakeConfigStore()
+
+	svc := &Service{Remote: NewFakeProvider(), CLI: cli, Config: cfgStore}
+
+	_, err := svc.Create(CreateOptions{
+		Upstream:  "myorg/wl-commons",
+		Handle:    "myrig",
+		SchemaSQL: "BAD SQL",
+		LocalOnly: true,
+	})
+	if err == nil {
+		t.Fatal("Create() expected error when SQLExec fails")
+	}
+	// Init should have been called, but not Commit, Register, or Push.
+	for _, call := range cli.Calls {
+		if strings.HasPrefix(call, "StageAndCommit") || strings.HasPrefix(call, "RegisterRig") || strings.HasPrefix(call, "Push") {
+			t.Errorf("unexpected call after SQLExec failure: %s", call)
+		}
+	}
+}
+
+func TestCreate_CommitFails(t *testing.T) {
+	t.Parallel()
+	cli := NewFakeDoltCLI()
+	cli.CommitErr = fmt.Errorf("GPG signing failed")
+	cfgStore := NewFakeConfigStore()
+
+	svc := &Service{Remote: NewFakeProvider(), CLI: cli, Config: cfgStore}
+
+	_, err := svc.Create(CreateOptions{
+		Upstream:  "myorg/wl-commons",
+		Handle:    "myrig",
+		SchemaSQL: "CREATE TABLE test (id INT PRIMARY KEY);",
+		LocalOnly: true,
+	})
+	if err == nil {
+		t.Fatal("Create() expected error when StageAndCommit fails")
+	}
+	for _, call := range cli.Calls {
+		if strings.HasPrefix(call, "RegisterRig") || strings.HasPrefix(call, "Push") {
+			t.Errorf("unexpected call after Commit failure: %s", call)
+		}
+	}
+}
+
+func TestCreate_RegisterFails(t *testing.T) {
+	t.Parallel()
+	cli := NewFakeDoltCLI()
+	cli.RegisterErr = fmt.Errorf("rig registration failed")
+	cfgStore := NewFakeConfigStore()
+
+	svc := &Service{Remote: NewFakeProvider(), CLI: cli, Config: cfgStore}
+
+	_, err := svc.Create(CreateOptions{
+		Upstream:  "myorg/wl-commons",
+		Handle:    "myrig",
+		SchemaSQL: "CREATE TABLE test (id INT PRIMARY KEY);",
+	})
+	if err == nil {
+		t.Fatal("Create() expected error when RegisterRig fails")
+	}
+	for _, call := range cli.Calls {
+		if strings.HasPrefix(call, "Push") || strings.HasPrefix(call, "AddRemote") {
+			t.Errorf("unexpected call after Register failure: %s", call)
+		}
+	}
+}
+
+func TestCreate_PushFails(t *testing.T) {
+	t.Parallel()
+	cli := NewFakeDoltCLI()
+	cli.PushErr = fmt.Errorf("push rejected")
+	cfgStore := NewFakeConfigStore()
+
+	svc := &Service{Remote: NewFakeProvider(), CLI: cli, Config: cfgStore}
+
+	_, err := svc.Create(CreateOptions{
+		Upstream:  "myorg/wl-commons",
+		Handle:    "myrig",
+		SchemaSQL: "CREATE TABLE test (id INT PRIMARY KEY);",
+	})
+	if err == nil {
+		t.Fatal("Create() expected error when Push fails")
+	}
+	// Config should NOT be saved when push fails.
+	if _, loadErr := cfgStore.Load("myorg/wl-commons"); loadErr == nil {
+		t.Error("config should not be saved when push fails")
+	}
+}
+
+func TestCreate_ConfigSaveFails(t *testing.T) {
+	t.Parallel()
+	cli := NewFakeDoltCLI()
+	cfgStore := NewFakeConfigStore()
+	cfgStore.SaveErr = fmt.Errorf("permission denied")
+
+	svc := &Service{Remote: NewFakeProvider(), CLI: cli, Config: cfgStore}
+
+	_, err := svc.Create(CreateOptions{
+		Upstream:  "myorg/wl-commons",
+		Handle:    "myrig",
+		SchemaSQL: "CREATE TABLE test (id INT PRIMARY KEY);",
+		LocalOnly: true,
+	})
+	if err == nil {
+		t.Fatal("Create() expected error when config save fails")
+	}
+	if !strings.Contains(err.Error(), "saving wasteland config") {
+		t.Errorf("error = %q, want to contain 'saving wasteland config'", err.Error())
+	}
+}
+
 func TestResolveConfig_NoWastelands(t *testing.T) {
 	t.Parallel()
 	store := NewFakeConfigStore()

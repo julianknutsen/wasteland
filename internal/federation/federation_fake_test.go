@@ -82,6 +82,9 @@ func (f *FakeProvider) Type() string { return "fake" }
 type FakeDoltCLI struct {
 	mu         sync.Mutex
 	Cloned     map[string]bool // "remoteURL -> targetDir"
+	Inited     map[string]bool // localDir → true
+	SQLExecs   []string        // recorded SQL queries
+	Committed  map[string]bool // "localDir:message" → true
 	Registered map[string]bool // "handle"
 	Pushed     map[string]bool // "localDir"
 	Branches   map[string]bool // "localDir -> branch"
@@ -92,6 +95,9 @@ type FakeDoltCLI struct {
 	CloneErr      error
 	CloneErrCount int // if > 0, CloneErr clears after this many calls
 	cloneAttempts int
+	InitErr       error
+	SQLExecErr    error
+	CommitErr     error
 	RegisterErr   error
 	PushErr       error
 	RemoteErr     error
@@ -100,6 +106,8 @@ type FakeDoltCLI struct {
 func NewFakeDoltCLI() *FakeDoltCLI {
 	return &FakeDoltCLI{
 		Cloned:     make(map[string]bool),
+		Inited:     make(map[string]bool),
+		Committed:  make(map[string]bool),
 		Registered: make(map[string]bool),
 		Pushed:     make(map[string]bool),
 		Branches:   make(map[string]bool),
@@ -124,6 +132,66 @@ func (f *FakeDoltCLI) Clone(remoteURL, targetDir string) error {
 		}
 	}
 	f.Cloned[fmt.Sprintf("%s->%s", remoteURL, targetDir)] = true
+	return nil
+}
+
+func (f *FakeDoltCLI) Init(localDir string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	call := fmt.Sprintf("Init(%s)", localDir)
+	f.Calls = append(f.Calls, call)
+	if f.Log != nil {
+		f.Log.Record(call)
+	}
+	if f.InitErr != nil {
+		return f.InitErr
+	}
+	f.Inited[localDir] = true
+	return nil
+}
+
+func (f *FakeDoltCLI) SQLExec(localDir, query string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	call := fmt.Sprintf("SQLExec(%s)", localDir)
+	f.Calls = append(f.Calls, call)
+	if f.Log != nil {
+		f.Log.Record(call)
+	}
+	if f.SQLExecErr != nil {
+		return f.SQLExecErr
+	}
+	f.SQLExecs = append(f.SQLExecs, query)
+	return nil
+}
+
+func (f *FakeDoltCLI) StageAndCommit(localDir, message string, _ bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	call := fmt.Sprintf("StageAndCommit(%s, %s)", localDir, message)
+	f.Calls = append(f.Calls, call)
+	if f.Log != nil {
+		f.Log.Record(call)
+	}
+	if f.CommitErr != nil {
+		return f.CommitErr
+	}
+	f.Committed[fmt.Sprintf("%s:%s", localDir, message)] = true
+	return nil
+}
+
+func (f *FakeDoltCLI) AddRemote(localDir, name, remoteURL string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	call := fmt.Sprintf("AddRemote(%s, %s, %s)", localDir, name, remoteURL)
+	f.Calls = append(f.Calls, call)
+	if f.Log != nil {
+		f.Log.Record(call)
+	}
+	if f.RemoteErr != nil {
+		return f.RemoteErr
+	}
+	f.Remotes[fmt.Sprintf("%s->%s", localDir, remoteURL)] = true
 	return nil
 }
 

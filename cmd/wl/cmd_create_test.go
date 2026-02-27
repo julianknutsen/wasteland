@@ -33,7 +33,8 @@ func TestCreateRequiresArg(t *testing.T) {
 func TestCreateInvalidUpstream(t *testing.T) {
 	t.Parallel()
 	var stdout, stderr bytes.Buffer
-	err := runCreate(&stdout, &stderr, "noslash", "", true, false)
+	err := runCreate(&stdout, &stderr, "noslash", "", "", "", "",
+		"", "", false, "", true, false)
 	if err == nil {
 		t.Fatal("expected error for invalid upstream")
 	}
@@ -50,7 +51,8 @@ func TestCreateAlreadyExists(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	err := runCreate(&stdout, &stderr, "org/db", "", true, false)
+	err := runCreate(&stdout, &stderr, "org/db", "", "", "", "",
+		"", "", false, "", true, false)
 	if err == nil {
 		t.Fatal("expected error when database already exists")
 	}
