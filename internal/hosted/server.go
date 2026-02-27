@@ -11,14 +11,14 @@ import (
 
 // Server provides hosted-mode handler composition.
 type Server struct {
-	resolver      *ClientResolver
+	resolver      *WorkspaceResolver
 	sessions      *SessionStore
 	nango         *NangoClient
 	sessionSecret string
 }
 
 // NewServer creates a hosted Server.
-func NewServer(resolver *ClientResolver, sessions *SessionStore, nango *NangoClient, sessionSecret string) *Server {
+func NewServer(resolver *WorkspaceResolver, sessions *SessionStore, nango *NangoClient, sessionSecret string) *Server {
 	return &Server{
 		resolver:      resolver,
 		sessions:      sessions,
@@ -42,8 +42,10 @@ func (s *Server) Handler(apiServer *api.Server, assets fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
 	mux.HandleFunc("POST /api/auth/connect-session", s.handleConnectSession)
+	mux.HandleFunc("POST /api/auth/join", s.handleJoin)
+	mux.HandleFunc("DELETE /api/auth/wastelands/{upstream...}", s.handleLeaveWasteland)
 
-	// All other routes go through auth middleware → SPA handler.
+	// All other routes go through auth middleware -> SPA handler.
 	mux.Handle("/", s.AuthMiddleware(api.SPAHandler(apiServer, assets)))
 
 	return mux
@@ -79,15 +81,19 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		mode = "wild-west"
 	}
 
-	// Write user config to Nango connection metadata.
-	cfg := &UserConfig{
+	// Write user metadata in new format with single-entry wastelands array.
+	meta := &UserMetadata{
 		RigHandle: req.RigHandle,
-		ForkOrg:   req.ForkOrg,
-		ForkDB:    req.ForkDB,
-		Upstream:  req.Upstream,
-		Mode:      mode,
+		Wastelands: []WastelandConfig{
+			{
+				Upstream: req.Upstream,
+				ForkOrg:  req.ForkOrg,
+				ForkDB:   req.ForkDB,
+				Mode:     mode,
+			},
+		},
 	}
-	if err := s.nango.SetMetadata(req.ConnectionID, cfg); err != nil {
+	if err := s.nango.SetMetadata(req.ConnectionID, meta); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save config: " + err.Error()})
 		return
 	}
@@ -101,9 +107,10 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 // authStatusResponse is the JSON response for GET /api/auth/status.
 type authStatusResponse struct {
-	Authenticated bool        `json:"authenticated"`
-	Connected     bool        `json:"connected"`
-	Config        *UserConfig `json:"config,omitempty"`
+	Authenticated bool              `json:"authenticated"`
+	Connected     bool              `json:"connected"`
+	RigHandle     string            `json:"rig_handle,omitempty"`
+	Wastelands    []WastelandConfig `json:"wastelands,omitempty"`
 }
 
 // handleAuthStatus returns the current session state.
@@ -125,10 +132,15 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch config from Nango.
-	_, cfg, err := s.nango.GetConnection(session.ConnectionID)
+	// Fetch metadata from Nango.
+	_, meta, err := s.nango.GetConnection(session.ConnectionID)
 	if err != nil {
-		// Nango call failed — report as not connected so frontend can re-auth.
+		// Nango call failed -- report as not connected so frontend can re-auth.
+		writeJSON(w, http.StatusOK, authStatusResponse{Authenticated: true, Connected: false})
+		return
+	}
+
+	if meta == nil {
 		writeJSON(w, http.StatusOK, authStatusResponse{Authenticated: true, Connected: false})
 		return
 	}
@@ -136,7 +148,8 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, authStatusResponse{
 		Authenticated: true,
 		Connected:     true,
-		Config:        cfg,
+		RigHandle:     meta.RigHandle,
+		Wastelands:    meta.Wastelands,
 	})
 }
 
@@ -185,6 +198,135 @@ func (s *Server) handleConnectSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// joinRequest is the JSON body for POST /api/auth/join.
+type joinRequest struct {
+	ForkOrg  string `json:"fork_org"`
+	ForkDB   string `json:"fork_db"`
+	Upstream string `json:"upstream"`
+	Mode     string `json:"mode"`
+}
+
+// handleJoin adds a new wasteland to the user's metadata.
+// Requires a valid session cookie (manually validated, not through middleware).
+func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
+	sessionID, ok := ReadSessionCookie(r, s.sessionSecret)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not authenticated"})
+		return
+	}
+
+	session, ok := s.sessions.Get(sessionID)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session expired"})
+		return
+	}
+
+	if session.ConnectionID == "" {
+		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "DoltHub not connected"})
+		return
+	}
+
+	var req joinRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+
+	if req.ForkOrg == "" || req.ForkDB == "" || req.Upstream == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "fork_org, fork_db, and upstream are required"})
+		return
+	}
+
+	mode := req.Mode
+	if mode == "" {
+		mode = "wild-west"
+	}
+
+	// Fetch current metadata, upsert the new wasteland, write back.
+	_, meta, err := s.nango.GetConnection(session.ConnectionID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read metadata: " + err.Error()})
+		return
+	}
+	if meta == nil {
+		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "no existing metadata"})
+		return
+	}
+
+	meta.UpsertWasteland(WastelandConfig{
+		Upstream: req.Upstream,
+		ForkOrg:  req.ForkOrg,
+		ForkDB:   req.ForkDB,
+		Mode:     mode,
+	})
+
+	if err := s.nango.SetMetadata(session.ConnectionID, meta); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save metadata: " + err.Error()})
+		return
+	}
+
+	// Bust the workspace cache so the next request picks up the new wasteland.
+	s.resolver.InvalidateConnection(session.ConnectionID)
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "joined"})
+}
+
+// handleLeaveWasteland removes a wasteland from the user's metadata.
+func (s *Server) handleLeaveWasteland(w http.ResponseWriter, r *http.Request) {
+	sessionID, ok := ReadSessionCookie(r, s.sessionSecret)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not authenticated"})
+		return
+	}
+
+	session, ok := s.sessions.Get(sessionID)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session expired"})
+		return
+	}
+
+	if session.ConnectionID == "" {
+		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "DoltHub not connected"})
+		return
+	}
+
+	upstream := r.PathValue("upstream")
+	if upstream == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "upstream is required"})
+		return
+	}
+
+	// Fetch current metadata, remove the wasteland, write back.
+	_, meta, err := s.nango.GetConnection(session.ConnectionID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read metadata: " + err.Error()})
+		return
+	}
+	if meta == nil {
+		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": "no existing metadata"})
+		return
+	}
+
+	if len(meta.Wastelands) <= 1 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot remove last wasteland"})
+		return
+	}
+
+	if !meta.RemoveWasteland(upstream) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "upstream not found"})
+		return
+	}
+
+	if err := s.nango.SetMetadata(session.ConnectionID, meta); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save metadata: " + err.Error()})
+		return
+	}
+
+	s.resolver.InvalidateConnection(session.ConnectionID)
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "removed"})
+}
+
 // NewClientFunc returns a ClientFunc that reads the client from request context.
 // This bridges the hosted auth middleware with api.Server's ClientFunc pattern.
 func NewClientFunc() api.ClientFunc {
@@ -194,6 +336,17 @@ func NewClientFunc() api.ClientFunc {
 			return nil, errNotAuthenticated
 		}
 		return client, nil
+	}
+}
+
+// NewWorkspaceFunc returns a WorkspaceFunc that reads the workspace from request context.
+func NewWorkspaceFunc() api.WorkspaceFunc {
+	return func(r *http.Request) (*sdk.Workspace, error) {
+		ws, ok := WorkspaceFromContext(r.Context())
+		if !ok {
+			return nil, errNotAuthenticated
+		}
+		return ws, nil
 	}
 }
 

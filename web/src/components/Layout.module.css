@@ -23,6 +23,25 @@
   text-transform: uppercase;
 }
 
+.switcher {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-dark);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  margin-right: var(--space-3);
+  max-width: 200px;
+}
+
+.upstreamLabel {
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  margin-right: var(--space-3);
+}
+
 .navLink {
   padding: 6px 14px;
   border-radius: var(--radius-sm);

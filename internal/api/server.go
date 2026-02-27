@@ -14,11 +14,15 @@ import (
 // this returns a static client; in hosted mode it resolves per-user from session.
 type ClientFunc func(r *http.Request) (*sdk.Client, error)
 
+// WorkspaceFunc resolves an sdk.Workspace from an HTTP request.
+type WorkspaceFunc func(r *http.Request) (*sdk.Workspace, error)
+
 // Server is the HTTP API server wrapping an SDK client.
 type Server struct {
-	clientFunc ClientFunc
-	mux        *http.ServeMux
-	hosted     bool // true when running in multi-tenant hosted mode
+	clientFunc    ClientFunc
+	workspaceFunc WorkspaceFunc
+	mux           *http.ServeMux
+	hosted        bool // true when running in multi-tenant hosted mode
 }
 
 // New creates a Server backed by the given SDK client.
@@ -35,6 +39,18 @@ func NewHosted(fn ClientFunc) *Server {
 		clientFunc: fn,
 		mux:        http.NewServeMux(),
 		hosted:     true,
+	}
+	s.registerRoutes()
+	return s
+}
+
+// NewHostedWorkspace creates a Server for multi-tenant hosted mode with workspace support.
+func NewHostedWorkspace(clientFn ClientFunc, workspaceFn WorkspaceFunc) *Server {
+	s := &Server{
+		clientFunc:    clientFn,
+		workspaceFunc: workspaceFn,
+		mux:           http.NewServeMux(),
+		hosted:        true,
 	}
 	s.registerRoutes()
 	return s

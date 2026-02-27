@@ -10,12 +10,16 @@ import (
 
 func newFakeNangoForResolver(t *testing.T) *httptest.Server {
 	t.Helper()
-	cfg := &UserConfig{
+	meta := &UserMetadata{
 		RigHandle: "alice",
-		ForkOrg:   "alice-org",
-		ForkDB:    "wl-commons",
-		Upstream:  "wasteland/wl-commons",
-		Mode:      "wild-west",
+		Wastelands: []WastelandConfig{
+			{
+				Upstream: "wasteland/wl-commons",
+				ForkOrg:  "alice-org",
+				ForkDB:   "wl-commons",
+				Mode:     "wild-west",
+			},
+		},
 	}
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
@@ -29,7 +33,7 @@ func newFakeNangoForResolver(t *testing.T) *httptest.Server {
 				ConnectionID: "conn-1",
 			}
 			resp.Credentials.APIKey = "test-dolthub-token"
-			b, _ := json.Marshal(cfg)
+			b, _ := json.Marshal(meta)
 			resp.Metadata = json.RawMessage(b)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)
@@ -40,7 +44,7 @@ func newFakeNangoForResolver(t *testing.T) *httptest.Server {
 	}))
 }
 
-func TestClientResolver_Resolve(t *testing.T) {
+func TestWorkspaceResolver_Resolve(t *testing.T) {
 	ts := newFakeNangoForResolver(t)
 	defer ts.Close()
 
@@ -50,7 +54,7 @@ func TestClientResolver_Resolve(t *testing.T) {
 		IntegrationID: "dolthub",
 	})
 	sessions := NewSessionStore()
-	resolver := NewClientResolver(nango, sessions)
+	resolver := NewWorkspaceResolver(nango, sessions)
 
 	session := &UserSession{
 		ID:           "sess-1",
@@ -58,12 +62,30 @@ func TestClientResolver_Resolve(t *testing.T) {
 		CreatedAt:    time.Now(),
 	}
 
-	client, err := resolver.Resolve(session)
+	ws, err := resolver.Resolve(session)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if client == nil {
-		t.Fatal("expected non-nil client")
+	if ws == nil {
+		t.Fatal("expected non-nil workspace")
+	}
+	if ws.RigHandle() != "alice" {
+		t.Errorf("expected alice, got %s", ws.RigHandle())
+	}
+
+	// Should have one upstream.
+	upstreams := ws.Upstreams()
+	if len(upstreams) != 1 {
+		t.Fatalf("expected 1 upstream, got %d", len(upstreams))
+	}
+	if upstreams[0].Upstream != "wasteland/wl-commons" {
+		t.Errorf("expected wasteland/wl-commons, got %s", upstreams[0].Upstream)
+	}
+
+	// Client should be accessible.
+	client, err := ws.Client("wasteland/wl-commons")
+	if err != nil {
+		t.Fatalf("expected client: %v", err)
 	}
 	if client.RigHandle() != "alice" {
 		t.Errorf("expected alice, got %s", client.RigHandle())
@@ -73,7 +95,7 @@ func TestClientResolver_Resolve(t *testing.T) {
 	}
 }
 
-func TestClientResolver_CachesClient(t *testing.T) {
+func TestWorkspaceResolver_CachesWorkspace(t *testing.T) {
 	ts := newFakeNangoForResolver(t)
 	defer ts.Close()
 
@@ -83,7 +105,7 @@ func TestClientResolver_CachesClient(t *testing.T) {
 		IntegrationID: "dolthub",
 	})
 	sessions := NewSessionStore()
-	resolver := NewClientResolver(nango, sessions)
+	resolver := NewWorkspaceResolver(nango, sessions)
 
 	session := &UserSession{
 		ID:           "sess-1",
@@ -91,36 +113,72 @@ func TestClientResolver_CachesClient(t *testing.T) {
 		CreatedAt:    time.Now(),
 	}
 
-	client1, err := resolver.Resolve(session)
+	ws1, err := resolver.Resolve(session)
 	if err != nil {
 		t.Fatalf("first resolve: %v", err)
 	}
 
-	client2, err := resolver.Resolve(session)
+	ws2, err := resolver.Resolve(session)
 	if err != nil {
 		t.Fatalf("second resolve: %v", err)
 	}
 
 	// Should get the same cached instance.
-	if client1 != client2 {
-		t.Error("expected same client instance from cache")
+	if ws1 != ws2 {
+		t.Error("expected same workspace instance from cache")
 	}
 }
 
-func TestClientResolver_NoToken_StillWorks(t *testing.T) {
-	// With proxy mode, missing token is fine — Nango injects the token.
-	// But missing config should still fail.
-	cfg := &UserConfig{
+func TestWorkspaceResolver_InvalidateConnection(t *testing.T) {
+	ts := newFakeNangoForResolver(t)
+	defer ts.Close()
+
+	nango := NewNangoClient(NangoConfig{
+		BaseURL:       ts.URL,
+		SecretKey:     "resolver-secret",
+		IntegrationID: "dolthub",
+	})
+	sessions := NewSessionStore()
+	resolver := NewWorkspaceResolver(nango, sessions)
+
+	session := &UserSession{
+		ID:           "sess-1",
+		ConnectionID: "conn-1",
+		CreatedAt:    time.Now(),
+	}
+
+	ws1, err := resolver.Resolve(session)
+	if err != nil {
+		t.Fatalf("first resolve: %v", err)
+	}
+
+	resolver.InvalidateConnection("conn-1")
+
+	ws2, err := resolver.Resolve(session)
+	if err != nil {
+		t.Fatalf("second resolve: %v", err)
+	}
+
+	if ws1 == ws2 {
+		t.Error("expected different workspace after invalidation")
+	}
+}
+
+func TestWorkspaceResolver_NoToken_StillWorks(t *testing.T) {
+	meta := &UserMetadata{
 		RigHandle: "alice",
-		ForkOrg:   "alice-org",
-		ForkDB:    "wl-commons",
-		Upstream:  "wasteland/wl-commons",
-		Mode:      "wild-west",
+		Wastelands: []WastelandConfig{
+			{
+				Upstream: "wasteland/wl-commons",
+				ForkOrg:  "alice-org",
+				ForkDB:   "wl-commons",
+				Mode:     "wild-west",
+			},
+		},
 	}
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		resp := nangoConnectionResponse{ConnectionID: "conn-1"}
-		// No API key set — this is fine now.
-		b, _ := json.Marshal(cfg)
+		b, _ := json.Marshal(meta)
 		resp.Metadata = json.RawMessage(b)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
@@ -133,7 +191,7 @@ func TestClientResolver_NoToken_StillWorks(t *testing.T) {
 		IntegrationID: "dolthub",
 	})
 	sessions := NewSessionStore()
-	resolver := NewClientResolver(nango, sessions)
+	resolver := NewWorkspaceResolver(nango, sessions)
 
 	session := &UserSession{
 		ID:           "sess-1",
@@ -141,20 +199,19 @@ func TestClientResolver_NoToken_StillWorks(t *testing.T) {
 		CreatedAt:    time.Now(),
 	}
 
-	client, err := resolver.Resolve(session)
+	ws, err := resolver.Resolve(session)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if client == nil {
-		t.Fatal("expected non-nil client")
+	if ws == nil {
+		t.Fatal("expected non-nil workspace")
 	}
 }
 
-func TestClientResolver_NoConfig(t *testing.T) {
+func TestWorkspaceResolver_NoConfig(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		resp := nangoConnectionResponse{ConnectionID: "conn-1"}
 		resp.Credentials.APIKey = "token"
-		// No metadata.
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
@@ -166,7 +223,7 @@ func TestClientResolver_NoConfig(t *testing.T) {
 		IntegrationID: "dolthub",
 	})
 	sessions := NewSessionStore()
-	resolver := NewClientResolver(nango, sessions)
+	resolver := NewWorkspaceResolver(nango, sessions)
 
 	session := &UserSession{
 		ID:           "sess-1",
@@ -177,5 +234,61 @@ func TestClientResolver_NoConfig(t *testing.T) {
 	_, err := resolver.Resolve(session)
 	if err == nil {
 		t.Fatal("expected error for missing config")
+	}
+}
+
+func TestWorkspaceResolver_MultipleWastelands(t *testing.T) {
+	meta := &UserMetadata{
+		RigHandle: "alice",
+		Wastelands: []WastelandConfig{
+			{Upstream: "hop/wl-commons", ForkOrg: "alice-org", ForkDB: "wl-commons", Mode: "wild-west"},
+			{Upstream: "julianknutsen/gascity", ForkOrg: "alice-org", ForkDB: "gascity", Mode: "pr"},
+		},
+	}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		resp := nangoConnectionResponse{ConnectionID: "conn-1"}
+		resp.Credentials.APIKey = "token"
+		b, _ := json.Marshal(meta)
+		resp.Metadata = json.RawMessage(b)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+
+	nango := NewNangoClient(NangoConfig{
+		BaseURL:       ts.URL,
+		SecretKey:     "secret",
+		IntegrationID: "dolthub",
+	})
+	sessions := NewSessionStore()
+	resolver := NewWorkspaceResolver(nango, sessions)
+
+	session := &UserSession{ID: "sess-1", ConnectionID: "conn-1", CreatedAt: time.Now()}
+
+	ws, err := resolver.Resolve(session)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	upstreams := ws.Upstreams()
+	if len(upstreams) != 2 {
+		t.Fatalf("expected 2 upstreams, got %d", len(upstreams))
+	}
+
+	// Both clients should be accessible.
+	c1, err := ws.Client("hop/wl-commons")
+	if err != nil {
+		t.Fatalf("expected client for hop/wl-commons: %v", err)
+	}
+	if c1.Mode() != "wild-west" {
+		t.Errorf("expected wild-west, got %s", c1.Mode())
+	}
+
+	c2, err := ws.Client("julianknutsen/gascity")
+	if err != nil {
+		t.Fatalf("expected client for julianknutsen/gascity: %v", err)
+	}
+	if c2.Mode() != "pr" {
+		t.Errorf("expected pr, got %s", c2.Mode())
 	}
 }

@@ -16,14 +16,96 @@ type NangoConfig struct {
 	IntegrationID string // default "dolthub"
 }
 
-// UserConfig is the persistent wasteland config stored as Nango connection metadata.
+// WastelandConfig describes a single joined wasteland in Nango metadata.
+type WastelandConfig struct {
+	Upstream string `json:"upstream"`
+	ForkOrg  string `json:"fork_org"`
+	ForkDB   string `json:"fork_db"`
+	Mode     string `json:"mode"`    // "wild-west" or "pr"
+	Signing  bool   `json:"signing"` // GPG-signed dolt commits
+}
+
+// UserMetadata is the persistent user config stored as Nango connection metadata.
+type UserMetadata struct {
+	RigHandle  string            `json:"rig_handle"`
+	Wastelands []WastelandConfig `json:"wastelands"`
+}
+
+// FindWasteland returns the config for the given upstream, or nil if not found.
+func (m *UserMetadata) FindWasteland(upstream string) *WastelandConfig {
+	for i := range m.Wastelands {
+		if m.Wastelands[i].Upstream == upstream {
+			return &m.Wastelands[i]
+		}
+	}
+	return nil
+}
+
+// UpsertWasteland adds or updates a wasteland entry.
+func (m *UserMetadata) UpsertWasteland(wl WastelandConfig) {
+	for i := range m.Wastelands {
+		if m.Wastelands[i].Upstream == wl.Upstream {
+			m.Wastelands[i] = wl
+			return
+		}
+	}
+	m.Wastelands = append(m.Wastelands, wl)
+}
+
+// RemoveWasteland removes the wasteland with the given upstream.
+// Returns false if the upstream was not found.
+func (m *UserMetadata) RemoveWasteland(upstream string) bool {
+	for i := range m.Wastelands {
+		if m.Wastelands[i].Upstream == upstream {
+			m.Wastelands = append(m.Wastelands[:i], m.Wastelands[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
+// UserConfig is the legacy flat metadata format. Kept for backward compatibility
+// parsing only — new writes always use UserMetadata.
 type UserConfig struct {
 	RigHandle string `json:"rig_handle"`
 	ForkOrg   string `json:"fork_org"`
 	ForkDB    string `json:"fork_db"`
 	Upstream  string `json:"upstream"`
-	Mode      string `json:"mode"`    // "wild-west" or "pr"
-	Signing   bool   `json:"signing"` // GPG-signed dolt commits
+	Mode      string `json:"mode"`
+	Signing   bool   `json:"signing"`
+}
+
+// parseMetadata reads Nango metadata JSON and returns a UserMetadata.
+// It handles both the new multi-wasteland format and the legacy flat format.
+func parseMetadata(raw json.RawMessage) *UserMetadata {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+
+	// Try new format first (has "wastelands" array).
+	var meta UserMetadata
+	if err := json.Unmarshal(raw, &meta); err == nil && len(meta.Wastelands) > 0 {
+		return &meta
+	}
+
+	// Try legacy flat format (has top-level "upstream" field).
+	var legacy UserConfig
+	if err := json.Unmarshal(raw, &legacy); err == nil && legacy.Upstream != "" {
+		return &UserMetadata{
+			RigHandle: legacy.RigHandle,
+			Wastelands: []WastelandConfig{
+				{
+					Upstream: legacy.Upstream,
+					ForkOrg:  legacy.ForkOrg,
+					ForkDB:   legacy.ForkDB,
+					Mode:     legacy.Mode,
+					Signing:  legacy.Signing,
+				},
+			},
+		}
+	}
+
+	return nil
 }
 
 // NangoClient talks to the Nango REST API.
@@ -71,7 +153,7 @@ type nangoConnectionResponse struct {
 }
 
 // GetConnection fetches the stored token and metadata for a Nango connection.
-func (n *NangoClient) GetConnection(connectionID string) (string, *UserConfig, error) {
+func (n *NangoClient) GetConnection(connectionID string) (string, *UserMetadata, error) {
 	u := fmt.Sprintf("%s/connection/%s?provider_config_key=%s",
 		n.baseURL, url.PathEscape(connectionID), url.QueryEscape(n.integrationID))
 
@@ -98,16 +180,9 @@ func (n *NangoClient) GetConnection(connectionID string) (string, *UserConfig, e
 	}
 
 	apiKey := connResp.Credentials.APIKey
+	meta := parseMetadata(connResp.Metadata)
 
-	var cfg *UserConfig
-	if len(connResp.Metadata) > 0 && string(connResp.Metadata) != "null" {
-		cfg = &UserConfig{}
-		if err := json.Unmarshal(connResp.Metadata, cfg); err != nil {
-			cfg = nil // metadata is not our format, ignore
-		}
-	}
-
-	return apiKey, cfg, nil
+	return apiKey, meta, nil
 }
 
 // connectSessionRequest is the JSON body for POST /connect/sessions.
@@ -165,12 +240,12 @@ func (n *NangoClient) CreateConnectSession(endUserID string) (string, error) {
 	return sessionResp.Data.Token, nil
 }
 
-// SetMetadata writes/updates the persistent user config on the Nango connection.
-func (n *NangoClient) SetMetadata(connectionID string, cfg *UserConfig) error {
+// SetMetadata writes/updates the persistent user metadata on the Nango connection.
+func (n *NangoClient) SetMetadata(connectionID string, meta *UserMetadata) error {
 	u := fmt.Sprintf("%s/connection/%s/metadata",
 		n.baseURL, url.PathEscape(connectionID))
 
-	body, err := json.Marshal(cfg)
+	body, err := json.Marshal(meta)
 	if err != nil {
 		return fmt.Errorf("marshaling metadata: %w", err)
 	}

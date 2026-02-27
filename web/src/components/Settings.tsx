@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { config, saveSettings, sync } from "../api/client";
+import { useWasteland } from "../context/WastelandContext";
 import styles from "./Settings.module.css";
 
 export function Settings() {
+  const navigate = useNavigate();
+  const { wastelands, active } = useWasteland();
   const [mode, setMode] = useState("wild-west");
   const [signing, setSigning] = useState(false);
   const [rigHandle, setRigHandle] = useState("");
@@ -55,6 +59,22 @@ export function Settings() {
     <div className={styles.page}>
       <h2 className={styles.heading}>Settings</h2>
 
+      {active && (
+        <div className={styles.section}>
+          <h3 className={styles.sectionTitle}>Active Wasteland</h3>
+          <div className={styles.field}>
+            <span className={styles.label}>Upstream</span>
+            <span className={styles.configInfo}>{active}</span>
+          </div>
+          {wastelands.length > 0 && (
+            <div className={styles.field}>
+              <span className={styles.label}>Wastelands</span>
+              <span className={styles.configInfo}>{wastelands.length}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className={styles.section}>
         <h3 className={styles.sectionTitle}>Federation</h3>
 
@@ -97,6 +117,9 @@ export function Settings() {
         </button>
         <button type="button" className={styles.syncBtn} onClick={handleSync} disabled={syncing}>
           {syncing ? "Syncing..." : "Sync"}
+        </button>
+        <button type="button" className={styles.syncBtn} onClick={() => navigate("/join")}>
+          Join New Wasteland
         </button>
       </div>
     </div>

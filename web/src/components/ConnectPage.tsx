@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { authStatus, connectSession, notifyConnect } from "../api/client";
+import { authStatus, connectSession, joinWasteland, notifyConnect } from "../api/client";
 import { connectDoltHub, initNango } from "../api/nango";
+import { useWasteland } from "../context/WastelandContext";
 import styles from "./ConnectPage.module.css";
 
 export function ConnectPage() {
   const navigate = useNavigate();
-  const [step, setStep] = useState<"identity" | "connect">("identity");
+  const location = useLocation();
+  const { refresh } = useWasteland();
+  const [step, setStep] = useState<"identity" | "connect" | "join">("identity");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -26,16 +29,21 @@ export function ConnectPage() {
       try {
         const status = await authStatus();
         if (status.authenticated && status.connected) {
-          navigate("/", { replace: true });
-          return;
+          // If arriving at /join, show the simplified join form.
+          if (location.pathname === "/join") {
+            setStep("join");
+          } else {
+            navigate("/", { replace: true });
+            return;
+          }
         }
       } catch {
-        // Server may not be in hosted mode — status 404 is expected.
+        // Server may not be in hosted mode -- status 404 is expected.
       } finally {
         setLoading(false);
       }
     })();
-  }, [navigate]);
+  }, [navigate, location.pathname]);
 
   const handleIdentitySubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,6 +80,7 @@ export function ConnectPage() {
         upstream: upstream.trim(),
       });
 
+      await refresh();
       toast.success("Connected to DoltHub");
       navigate("/", { replace: true });
     } catch (err) {
@@ -81,11 +90,86 @@ export function ConnectPage() {
     }
   };
 
+  const handleJoin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forkOrg.trim() || !forkDB.trim() || !upstream.trim()) {
+      toast.error("Fork org, fork DB, and upstream are required");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await joinWasteland({
+        fork_org: forkOrg.trim(),
+        fork_db: forkDB.trim(),
+        upstream: upstream.trim(),
+      });
+
+      await refresh();
+      toast.success("Joined wasteland");
+      navigate("/", { replace: true });
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : "Join failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (loading) return <p className={styles.loadingText}>Loading...</p>;
 
   return (
     <div className={styles.page}>
-      <h2 className={styles.heading}>Connect to Wasteland</h2>
+      <h2 className={styles.heading}>{step === "join" ? "Join a Wasteland" : "Connect to Wasteland"}</h2>
+
+      {step === "join" && (
+        <form onSubmit={handleJoin}>
+          <div className={styles.section}>
+            <h3 className={styles.sectionTitle}>Wasteland Details</h3>
+
+            <label className={styles.fieldLabel}>
+              Upstream
+              <input
+                className={styles.input}
+                type="text"
+                value={upstream}
+                onChange={(e) => setUpstream(e.target.value)}
+                placeholder="org/wl-commons"
+              />
+            </label>
+
+            <label className={styles.fieldLabel}>
+              Fork Org
+              <input
+                className={styles.input}
+                type="text"
+                value={forkOrg}
+                onChange={(e) => setForkOrg(e.target.value)}
+                placeholder="your-dolthub-org"
+              />
+            </label>
+
+            <label className={styles.fieldLabel}>
+              Fork DB
+              <input
+                className={styles.input}
+                type="text"
+                value={forkDB}
+                onChange={(e) => setForkDB(e.target.value)}
+                placeholder="wl-commons"
+              />
+            </label>
+          </div>
+
+          <div className={styles.actions}>
+            <button type="button" className={styles.secondaryBtn} onClick={() => navigate("/settings")}>
+              Cancel
+            </button>
+            <button type="submit" className={styles.primaryBtn} disabled={submitting}>
+              {submitting ? "Joining..." : "Join"}
+            </button>
+          </div>
+        </form>
+      )}
 
       {step === "identity" && (
         <form onSubmit={handleIdentitySubmit}>

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useWasteland } from "../context/WastelandContext";
 import { CommandsContext, useCommandRegistry } from "../hooks/useCommands";
 import { useGlobalShortcuts } from "../hooks/useGlobalShortcuts";
 import { CommandPalette } from "./CommandPalette";
@@ -10,6 +11,7 @@ export function Layout() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const navigate = useNavigate();
+  const { wastelands, active, switchTo } = useWasteland();
 
   const { register, getCommands, subscribe } = useCommandRegistry();
   const commands = useSyncExternalStore(subscribe, getCommands);
@@ -56,6 +58,22 @@ export function Layout() {
         </a>
         <nav className={styles.nav} aria-label="Main navigation">
           <span className={styles.logo}>wasteland</span>
+          {wastelands.length > 1 ? (
+            <select
+              className={styles.switcher}
+              value={active ?? ""}
+              onChange={(e) => switchTo(e.target.value)}
+              aria-label="Active wasteland"
+            >
+              {wastelands.map((w) => (
+                <option key={w.upstream} value={w.upstream}>
+                  {w.upstream}
+                </option>
+              ))}
+            </select>
+          ) : wastelands.length === 1 ? (
+            <span className={styles.upstreamLabel}>{wastelands[0].upstream}</span>
+          ) : null}
           <NavLink to="/" end className={({ isActive }) => (isActive ? styles.navLinkActive : styles.navLink)}>
             board
           </NavLink>

@@ -96,12 +96,22 @@ type DashboardResponse struct {
 	Completed []WantedSummaryJSON `json:"completed"`
 }
 
+// UpstreamInfoJSON is the JSON representation of an upstream in the config response.
+type UpstreamInfoJSON struct {
+	Upstream string `json:"upstream"`
+	ForkOrg  string `json:"fork_org"`
+	ForkDB   string `json:"fork_db"`
+	Mode     string `json:"mode"`
+}
+
 // ConfigResponse is the JSON response for GET /api/config.
 type ConfigResponse struct {
-	RigHandle string `json:"rig_handle"`
-	Mode      string `json:"mode"`
-	Hosted    bool   `json:"hosted,omitempty"`
-	Connected bool   `json:"connected,omitempty"`
+	RigHandle string             `json:"rig_handle"`
+	Mode      string             `json:"mode"`
+	Hosted    bool               `json:"hosted,omitempty"`
+	Connected bool               `json:"connected,omitempty"`
+	Upstream  string             `json:"upstream,omitempty"`
+	Upstreams []UpstreamInfoJSON `json:"upstreams,omitempty"`
 }
 
 // ErrorResponse is the JSON error envelope.

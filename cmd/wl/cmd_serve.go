@@ -187,12 +187,12 @@ func runServeHosted(cmd *cobra.Command, stdout, stderr io.Writer) error {
 	}
 	nangoClient := hosted.NewNangoClient(nangoCfg)
 
-	// Build session store and client resolver.
+	// Build session store and workspace resolver.
 	sessions := hosted.NewSessionStore()
-	resolver := hosted.NewClientResolver(nangoClient, sessions)
+	resolver := hosted.NewWorkspaceResolver(nangoClient, sessions)
 
-	// Build the API server with hosted client resolution.
-	apiServer := api.NewHosted(hosted.NewClientFunc())
+	// Build the API server with hosted workspace resolution.
+	apiServer := api.NewHostedWorkspace(hosted.NewClientFunc(), hosted.NewWorkspaceFunc())
 
 	// Build the hosted server and compose handlers.
 	hostedServer := hosted.NewServer(resolver, sessions, nangoClient, sessionSecret)

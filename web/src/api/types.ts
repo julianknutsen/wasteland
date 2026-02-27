@@ -79,25 +79,35 @@ export interface DashboardResponse {
   completed: WantedSummary[];
 }
 
+export interface UpstreamInfo {
+  upstream: string;
+  fork_org: string;
+  fork_db: string;
+  mode: string;
+}
+
 export interface ConfigResponse {
   rig_handle: string;
   mode: string;
   hosted?: boolean;
   connected?: boolean;
+  upstream?: string;
+  upstreams?: UpstreamInfo[];
+}
+
+export interface WastelandConfig {
+  upstream: string;
+  fork_org: string;
+  fork_db: string;
+  mode: string;
+  signing: boolean;
 }
 
 export interface AuthStatusResponse {
   authenticated: boolean;
   connected: boolean;
-  config?: UserConfig;
-}
-
-export interface UserConfig {
-  rig_handle: string;
-  fork_org: string;
-  fork_db: string;
-  upstream: string;
-  mode: string;
+  rig_handle?: string;
+  wastelands?: WastelandConfig[];
 }
 
 export interface ConnectSessionResponse {
@@ -108,6 +118,13 @@ export interface ConnectSessionResponse {
 export interface ConnectInput {
   connection_id: string;
   rig_handle: string;
+  fork_org: string;
+  fork_db: string;
+  upstream: string;
+  mode?: string;
+}
+
+export interface JoinInput {
   fork_org: string;
   fork_db: string;
   upstream: string;

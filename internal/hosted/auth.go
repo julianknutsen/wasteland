@@ -10,7 +10,10 @@ import (
 
 type contextKey string
 
-const clientContextKey contextKey = "hosted-client"
+const (
+	clientContextKey    contextKey = "hosted-client"
+	workspaceContextKey contextKey = "hosted-workspace"
+)
 
 // ClientFromContext extracts the sdk.Client injected by auth middleware.
 func ClientFromContext(ctx context.Context) (*sdk.Client, bool) {
@@ -18,9 +21,15 @@ func ClientFromContext(ctx context.Context) (*sdk.Client, bool) {
 	return client, ok
 }
 
+// WorkspaceFromContext extracts the sdk.Workspace injected by auth middleware.
+func WorkspaceFromContext(ctx context.Context) (*sdk.Workspace, bool) {
+	ws, ok := ctx.Value(workspaceContextKey).(*sdk.Workspace)
+	return ws, ok
+}
+
 // AuthMiddleware protects /api/* routes (excluding /api/auth/*).
 // It resolves the session cookie, looks up the Nango connection, and injects
-// the per-user sdk.Client into the request context.
+// the per-user sdk.Workspace and active sdk.Client into the request context.
 func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip auth for /api/auth/* endpoints.
@@ -53,15 +62,37 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Resolve the per-user sdk.Client.
-		client, err := s.resolver.Resolve(session)
+		// Resolve the per-user Workspace.
+		workspace, err := s.resolver.Resolve(session)
 		if err != nil {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "failed to resolve client: " + err.Error()})
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "failed to resolve workspace: " + err.Error()})
 			return
 		}
 
-		// Inject client into context.
-		ctx := context.WithValue(r.Context(), clientContextKey, client)
+		// Determine active upstream from X-Wasteland header.
+		upstream := r.Header.Get("X-Wasteland")
+		upstreams := workspace.Upstreams()
+
+		if upstream == "" && len(upstreams) == 1 {
+			// Single-wasteland fallback for backward compat.
+			upstream = upstreams[0].Upstream
+		}
+
+		if upstream == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Wasteland header required"})
+			return
+		}
+
+		client, err := workspace.Client(upstream)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown upstream: " + upstream})
+			return
+		}
+
+		// Inject both workspace and client into context.
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, workspaceContextKey, workspace)
+		ctx = context.WithValue(ctx, clientContextKey, client)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

@@ -12,16 +12,20 @@ import (
 	"github.com/julianknutsen/wasteland/internal/api"
 )
 
-// TestHostedEndToEnd exercises the full flow: auth middleware → api.Server routes
-// via NewHosted + NewClientFunc. This ensures the context injection actually
-// bridges to real API handlers.
+// TestHostedEndToEnd exercises the full flow: auth middleware -> api.Server routes
+// via NewHostedWorkspace + NewClientFunc + NewWorkspaceFunc. This ensures the
+// context injection actually bridges to real API handlers.
 func TestHostedEndToEnd(t *testing.T) {
-	cfg := &UserConfig{
+	meta := &UserMetadata{
 		RigHandle: "alice",
-		ForkOrg:   "alice-org",
-		ForkDB:    "wl-commons",
-		Upstream:  "wasteland/wl-commons",
-		Mode:      "wild-west",
+		Wastelands: []WastelandConfig{
+			{
+				Upstream: "wasteland/wl-commons",
+				ForkOrg:  "alice-org",
+				ForkDB:   "wl-commons",
+				Mode:     "wild-west",
+			},
+		},
 	}
 
 	nangoTS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +33,7 @@ func TestHostedEndToEnd(t *testing.T) {
 		case r.Method == "GET" && r.URL.Path == "/connection/conn-1":
 			resp := nangoConnectionResponse{ConnectionID: "conn-1"}
 			resp.Credentials.APIKey = "test-token"
-			b, _ := json.Marshal(cfg)
+			b, _ := json.Marshal(meta)
 			resp.Metadata = json.RawMessage(b)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)
@@ -47,11 +51,11 @@ func TestHostedEndToEnd(t *testing.T) {
 		IntegrationID: "dolthub",
 	})
 	sessions := NewSessionStore()
-	resolver := NewClientResolver(nango, sessions)
+	resolver := NewWorkspaceResolver(nango, sessions)
 	hostedServer := NewServer(resolver, sessions, nango, "session-secret")
 
-	// Use the real api.NewHosted with NewClientFunc — this is the production path.
-	apiServer := api.NewHosted(NewClientFunc())
+	// Use the real api.NewHostedWorkspace with NewClientFunc + NewWorkspaceFunc.
+	apiServer := api.NewHostedWorkspace(NewClientFunc(), NewWorkspaceFunc())
 
 	// Use an empty FS since we only test API routes.
 	handler := hostedServer.Handler(apiServer, emptyFS{})
@@ -100,6 +104,7 @@ func TestHostedEndToEnd(t *testing.T) {
 	}
 
 	// 3. Authenticated request to /api/config should succeed and return hosted fields.
+	// Single wasteland: X-Wasteland header is optional.
 	req, _ := http.NewRequest("GET", ts.URL+"/api/config", nil)
 	req.AddCookie(sessionCookie)
 
@@ -129,23 +134,31 @@ func TestHostedEndToEnd(t *testing.T) {
 	if !configResult.Connected {
 		t.Error("expected Connected=true")
 	}
+	// Should include upstreams list.
+	if len(configResult.Upstreams) != 1 {
+		t.Errorf("expected 1 upstream in config, got %d", len(configResult.Upstreams))
+	}
 }
 
 // TestConfigNotHosted verifies that self-sovereign mode does NOT set hosted fields.
 func TestConfigNotHosted(t *testing.T) {
-	cfg := &UserConfig{
+	meta := &UserMetadata{
 		RigHandle: "bob",
-		ForkOrg:   "bob-org",
-		ForkDB:    "wl-commons",
-		Upstream:  "wasteland/wl-commons",
-		Mode:      "pr",
+		Wastelands: []WastelandConfig{
+			{
+				Upstream: "wasteland/wl-commons",
+				ForkOrg:  "bob-org",
+				ForkDB:   "wl-commons",
+				Mode:     "pr",
+			},
+		},
 	}
 
 	nangoTS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" && r.URL.Path == "/connection/conn-1" {
 			resp := nangoConnectionResponse{ConnectionID: "conn-1"}
 			resp.Credentials.APIKey = "test-token"
-			b, _ := json.Marshal(cfg)
+			b, _ := json.Marshal(meta)
 			resp.Metadata = json.RawMessage(b)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)
@@ -161,9 +174,9 @@ func TestConfigNotHosted(t *testing.T) {
 		IntegrationID: "dolthub",
 	})
 	sessions := NewSessionStore()
-	resolver := NewClientResolver(nango, sessions)
+	resolver := NewWorkspaceResolver(nango, sessions)
 
-	// Use NewWithClientFunc (self-sovereign style) — NOT NewHosted.
+	// Use NewWithClientFunc (self-sovereign style) -- NOT NewHosted.
 	apiServer := api.NewWithClientFunc(NewClientFunc())
 
 	hostedServer := NewServer(resolver, sessions, nango, "session-secret")
@@ -200,29 +213,32 @@ func TestConfigNotHosted(t *testing.T) {
 // TestResolverSaveConfigWritesToNango verifies the SaveConfig callback on
 // a resolver-built client actually writes to Nango metadata.
 func TestResolverSaveConfigWritesToNango(t *testing.T) {
-	var savedMetadata *UserConfig
+	var savedBody []byte
+
+	meta := &UserMetadata{
+		RigHandle: "alice",
+		Wastelands: []WastelandConfig{
+			{
+				Upstream: "wasteland/wl-commons",
+				ForkOrg:  "alice-org",
+				ForkDB:   "wl-commons",
+				Mode:     "wild-west",
+			},
+		},
+	}
 
 	nangoTS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && r.URL.Path == "/connection/conn-1":
-			cfg := &UserConfig{
-				RigHandle: "alice",
-				ForkOrg:   "alice-org",
-				ForkDB:    "wl-commons",
-				Upstream:  "wasteland/wl-commons",
-				Mode:      "wild-west",
-			}
 			resp := nangoConnectionResponse{ConnectionID: "conn-1"}
 			resp.Credentials.APIKey = "test-token"
-			b, _ := json.Marshal(cfg)
+			b, _ := json.Marshal(meta)
 			resp.Metadata = json.RawMessage(b)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)
 
 		case r.Method == "PATCH" && strings.HasPrefix(r.URL.Path, "/connection/"):
-			body, _ := io.ReadAll(r.Body)
-			savedMetadata = &UserConfig{}
-			_ = json.Unmarshal(body, savedMetadata)
+			savedBody, _ = io.ReadAll(r.Body)
 			w.WriteHeader(http.StatusOK)
 
 		default:
@@ -237,12 +253,17 @@ func TestResolverSaveConfigWritesToNango(t *testing.T) {
 		IntegrationID: "dolthub",
 	})
 	sessions := NewSessionStore()
-	resolver := NewClientResolver(nango, sessions)
+	resolver := NewWorkspaceResolver(nango, sessions)
 
 	session := &UserSession{ID: "sess-1", ConnectionID: "conn-1"}
-	client, err := resolver.Resolve(session)
+	ws, err := resolver.Resolve(session)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
+	}
+
+	client, err := ws.Client("wasteland/wl-commons")
+	if err != nil {
+		t.Fatalf("get client: %v", err)
 	}
 
 	// Call SaveSettings which triggers the SaveConfig callback.
@@ -250,18 +271,26 @@ func TestResolverSaveConfigWritesToNango(t *testing.T) {
 		t.Fatalf("save settings: %v", err)
 	}
 
-	// Verify the metadata was written to Nango.
-	if savedMetadata == nil {
+	// Verify the metadata was written to Nango in new format.
+	if savedBody == nil {
 		t.Fatal("expected SetMetadata to be called")
 	}
-	if savedMetadata.Mode != "pr" {
-		t.Errorf("expected mode pr, got %s", savedMetadata.Mode)
+	var savedMeta UserMetadata
+	if err := json.Unmarshal(savedBody, &savedMeta); err != nil {
+		t.Fatalf("decoding saved metadata: %v", err)
 	}
-	if !savedMetadata.Signing {
+	if savedMeta.RigHandle != "alice" {
+		t.Errorf("expected alice, got %s", savedMeta.RigHandle)
+	}
+	if len(savedMeta.Wastelands) != 1 {
+		t.Fatalf("expected 1 wasteland, got %d", len(savedMeta.Wastelands))
+	}
+	wl := savedMeta.Wastelands[0]
+	if wl.Mode != "pr" {
+		t.Errorf("expected mode pr, got %s", wl.Mode)
+	}
+	if !wl.Signing {
 		t.Error("expected signing=true")
-	}
-	if savedMetadata.RigHandle != "alice" {
-		t.Errorf("expected alice, got %s", savedMetadata.RigHandle)
 	}
 }
 

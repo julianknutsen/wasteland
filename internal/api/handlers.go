@@ -72,6 +72,29 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		Hosted:    s.hosted,
 		Connected: s.hosted, // in hosted mode, reaching this handler means connected
 	}
+
+	// If workspace is available, include upstream list.
+	if s.workspaceFunc != nil {
+		ws, err := s.workspaceFunc(r)
+		if err == nil && ws != nil {
+			infos := ws.Upstreams()
+			resp.Upstreams = make([]UpstreamInfoJSON, len(infos))
+			for i, info := range infos {
+				resp.Upstreams[i] = UpstreamInfoJSON{
+					Upstream: info.Upstream,
+					ForkOrg:  info.ForkOrg,
+					ForkDB:   info.ForkDB,
+					Mode:     info.Mode,
+				}
+			}
+		}
+	}
+
+	// Include active upstream from header if present.
+	if upstream := r.Header.Get("X-Wasteland"); upstream != "" {
+		resp.Upstream = upstream
+	}
+
 	writeJSON(w, http.StatusOK, resp)
 }
 

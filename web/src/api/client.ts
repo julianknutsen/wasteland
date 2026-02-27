@@ -8,11 +8,26 @@ import type {
   DashboardResponse,
   DetailResponse,
   ErrorResponse,
+  JoinInput,
   MutationResponse,
   PostInput,
   SettingsInput,
   UpdateInput,
 } from "./types";
+
+// --- Active upstream tracking ---
+
+let _activeUpstream: string | null = null;
+
+export function setActiveUpstream(upstream: string | null) {
+  _activeUpstream = upstream;
+}
+
+export function getActiveUpstream(): string | null {
+  return _activeUpstream;
+}
+
+// --- API client ---
 
 class ApiError extends Error {
   constructor(
@@ -25,9 +40,17 @@ class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // Inject X-Wasteland header on non-auth API calls.
+  let fetchInit = init;
+  if (_activeUpstream && !path.startsWith("/api/auth/")) {
+    const headers = new Headers(init?.headers);
+    headers.set("X-Wasteland", _activeUpstream);
+    fetchInit = { ...init, headers };
+  }
+
   let resp: Response;
   try {
-    resp = await fetch(path, init);
+    resp = await fetch(path, fetchInit);
   } catch {
     throw new ApiError(0, "Network error — is the server running?");
   }
@@ -195,6 +218,20 @@ export async function notifyConnect(input: ConnectInput): Promise<void> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
+  });
+}
+
+export async function joinWasteland(input: JoinInput): Promise<void> {
+  await request<Record<string, string>>("/api/auth/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function leaveWasteland(upstream: string): Promise<void> {
+  await request<Record<string, string>>(`/api/auth/wastelands/${upstream}`, {
+    method: "DELETE",
   });
 }
 

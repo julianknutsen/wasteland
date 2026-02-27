@@ -14,12 +14,16 @@ const testSecret = "test-session-secret"
 func setupHostedTestServer(t *testing.T) (*SessionStore, *httptest.Server) {
 	t.Helper()
 
-	cfg := &UserConfig{
+	meta := &UserMetadata{
 		RigHandle: "alice",
-		ForkOrg:   "alice-org",
-		ForkDB:    "wl-commons",
-		Upstream:  "wasteland/wl-commons",
-		Mode:      "wild-west",
+		Wastelands: []WastelandConfig{
+			{
+				Upstream: "wasteland/wl-commons",
+				ForkOrg:  "alice-org",
+				ForkDB:   "wl-commons",
+				Mode:     "wild-west",
+			},
+		},
 	}
 
 	// Fake Nango server.
@@ -28,7 +32,7 @@ func setupHostedTestServer(t *testing.T) (*SessionStore, *httptest.Server) {
 		case r.Method == "GET" && r.URL.Path == "/connection/conn-1":
 			resp := nangoConnectionResponse{ConnectionID: "conn-1"}
 			resp.Credentials.APIKey = "test-token"
-			b, _ := json.Marshal(cfg)
+			b, _ := json.Marshal(meta)
 			resp.Metadata = json.RawMessage(b)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(resp)
@@ -54,20 +58,21 @@ func setupHostedTestServer(t *testing.T) (*SessionStore, *httptest.Server) {
 		IntegrationID: "dolthub",
 	})
 	sessions := NewSessionStore()
-	resolver := NewClientResolver(nango, sessions)
+	resolver := NewWorkspaceResolver(nango, sessions)
 	server := NewServer(resolver, sessions, nango, testSecret)
 
 	// Create a simple test handler for the auth middleware.
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// For API routes, check that client is in context.
 		if strings.HasPrefix(r.URL.Path, "/api/") {
-			_, ok := ClientFromContext(r.Context())
-			if ok {
+			_, clientOK := ClientFromContext(r.Context())
+			_, wsOK := WorkspaceFromContext(r.Context())
+			if clientOK && wsOK {
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(`{"ok":true}`))
 			} else {
 				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write([]byte(`{"error":"no client in context"}`))
+				_, _ = w.Write([]byte(`{"error":"no client or workspace in context"}`))
 			}
 			return
 		}
@@ -80,6 +85,69 @@ func setupHostedTestServer(t *testing.T) (*SessionStore, *httptest.Server) {
 	mux.HandleFunc("GET /api/auth/status", server.handleAuthStatus)
 	mux.HandleFunc("POST /api/auth/logout", server.handleLogout)
 	mux.HandleFunc("POST /api/auth/connect-session", server.handleConnectSession)
+	mux.HandleFunc("POST /api/auth/join", server.handleJoin)
+	mux.HandleFunc("DELETE /api/auth/wastelands/{upstream...}", server.handleLeaveWasteland)
+	mux.Handle("/", server.AuthMiddleware(inner))
+
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	return sessions, ts
+}
+
+// setupMultiWastelandTestServer creates a test server with two wastelands.
+func setupMultiWastelandTestServer(t *testing.T) (*SessionStore, *httptest.Server) {
+	t.Helper()
+
+	meta := &UserMetadata{
+		RigHandle: "alice",
+		Wastelands: []WastelandConfig{
+			{Upstream: "hop/wl-commons", ForkOrg: "alice-org", ForkDB: "wl-commons", Mode: "wild-west"},
+			{Upstream: "julianknutsen/gascity", ForkOrg: "alice-org", ForkDB: "gascity", Mode: "pr"},
+		},
+	}
+
+	nangoTS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/connection/conn-1":
+			resp := nangoConnectionResponse{ConnectionID: "conn-1"}
+			resp.Credentials.APIKey = "test-token"
+			b, _ := json.Marshal(meta)
+			resp.Metadata = json.RawMessage(b)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		case r.Method == "PATCH" && strings.HasPrefix(r.URL.Path, "/connection/"):
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(nangoTS.Close)
+
+	nango := NewNangoClient(NangoConfig{
+		BaseURL:       nangoTS.URL,
+		SecretKey:     "nango-secret",
+		IntegrationID: "dolthub",
+	})
+	sessions := NewSessionStore()
+	resolver := NewWorkspaceResolver(nango, sessions)
+	server := NewServer(resolver, sessions, nango, testSecret)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			_, ok := ClientFromContext(r.Context())
+			if ok {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"ok":true}`))
+			} else {
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux := http.NewServeMux()
 	mux.Handle("/", server.AuthMiddleware(inner))
 
 	ts := httptest.NewServer(mux)
@@ -102,11 +170,12 @@ func TestAuthMiddleware_NoSession(t *testing.T) {
 	}
 }
 
-func TestAuthMiddleware_ValidSession(t *testing.T) {
+func TestAuthMiddleware_ValidSession_SingleWasteland(t *testing.T) {
 	sessions, ts := setupHostedTestServer(t)
 
 	sessionID := sessions.Create("conn-1")
 
+	// Single wasteland: X-Wasteland header is optional (auto-fallback).
 	req, _ := http.NewRequest("GET", ts.URL+"/api/wanted", nil)
 	req.AddCookie(&http.Cookie{
 		Name:  cookieName,
@@ -122,6 +191,100 @@ func TestAuthMiddleware_ValidSession(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		t.Errorf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+}
+
+func TestAuthMiddleware_ValidSession_WithHeader(t *testing.T) {
+	sessions, ts := setupHostedTestServer(t)
+
+	sessionID := sessions.Create("conn-1")
+
+	req, _ := http.NewRequest("GET", ts.URL+"/api/wanted", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  cookieName,
+		Value: SignSessionID(sessionID, testSecret),
+	})
+	req.Header.Set("X-Wasteland", "wasteland/wl-commons")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Errorf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+}
+
+func TestAuthMiddleware_MultiWasteland_NoHeader_Returns400(t *testing.T) {
+	sessions, ts := setupMultiWastelandTestServer(t)
+
+	sessionID := sessions.Create("conn-1")
+
+	req, _ := http.NewRequest("GET", ts.URL+"/api/wanted", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  cookieName,
+		Value: SignSessionID(sessionID, testSecret),
+	})
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Errorf("expected 400 for missing header with multiple wastelands, got %d: %s", resp.StatusCode, string(body))
+	}
+}
+
+func TestAuthMiddleware_MultiWasteland_WithHeader(t *testing.T) {
+	sessions, ts := setupMultiWastelandTestServer(t)
+
+	sessionID := sessions.Create("conn-1")
+
+	req, _ := http.NewRequest("GET", ts.URL+"/api/wanted", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  cookieName,
+		Value: SignSessionID(sessionID, testSecret),
+	})
+	req.Header.Set("X-Wasteland", "hop/wl-commons")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Errorf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+}
+
+func TestAuthMiddleware_UnknownUpstream(t *testing.T) {
+	sessions, ts := setupHostedTestServer(t)
+
+	sessionID := sessions.Create("conn-1")
+
+	req, _ := http.NewRequest("GET", ts.URL+"/api/wanted", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  cookieName,
+		Value: SignSessionID(sessionID, testSecret),
+	})
+	req.Header.Set("X-Wasteland", "nonexistent/repo")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400 for unknown upstream, got %d", resp.StatusCode)
 	}
 }
 
@@ -291,8 +454,14 @@ func TestHandleAuthStatus_Authenticated(t *testing.T) {
 	if !status.Connected {
 		t.Error("expected connected")
 	}
-	if status.Config == nil {
-		t.Error("expected config")
+	if status.RigHandle != "alice" {
+		t.Errorf("expected alice, got %s", status.RigHandle)
+	}
+	if len(status.Wastelands) != 1 {
+		t.Fatalf("expected 1 wasteland, got %d", len(status.Wastelands))
+	}
+	if status.Wastelands[0].Upstream != "wasteland/wl-commons" {
+		t.Errorf("expected wasteland/wl-commons, got %s", status.Wastelands[0].Upstream)
 	}
 }
 
@@ -361,5 +530,164 @@ func TestHandleConnectSession_MissingEndUserID(t *testing.T) {
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleJoinWasteland(t *testing.T) {
+	sessions, ts := setupHostedTestServer(t)
+
+	sessionID := sessions.Create("conn-1")
+
+	body := `{
+		"fork_org": "alice-org",
+		"fork_db": "gascity",
+		"upstream": "julianknutsen/gascity"
+	}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/auth/join", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{
+		Name:  cookieName,
+		Value: SignSessionID(sessionID, testSecret),
+	})
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result map[string]string
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	if result["status"] != "joined" {
+		t.Errorf("expected status=joined, got %s", result["status"])
+	}
+}
+
+func TestHandleJoinWasteland_MissingFields(t *testing.T) {
+	sessions, ts := setupHostedTestServer(t)
+
+	sessionID := sessions.Create("conn-1")
+
+	body := `{"fork_org": "alice-org"}`
+	req, _ := http.NewRequest("POST", ts.URL+"/api/auth/join", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{
+		Name:  cookieName,
+		Value: SignSessionID(sessionID, testSecret),
+	})
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleJoinWasteland_NotAuthenticated(t *testing.T) {
+	_, ts := setupHostedTestServer(t)
+
+	body := `{"fork_org":"a","fork_db":"b","upstream":"c/d"}`
+	resp, err := http.Post(ts.URL+"/api/auth/join", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", resp.StatusCode)
+	}
+}
+
+func TestHandleLeaveWasteland(t *testing.T) {
+	// Use a multi-wasteland Nango server.
+	meta := &UserMetadata{
+		RigHandle: "alice",
+		Wastelands: []WastelandConfig{
+			{Upstream: "hop/wl-commons", ForkOrg: "alice-org", ForkDB: "wl-commons", Mode: "wild-west"},
+			{Upstream: "julianknutsen/gascity", ForkOrg: "alice-org", ForkDB: "gascity", Mode: "pr"},
+		},
+	}
+
+	nangoTS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/connection/conn-1":
+			resp := nangoConnectionResponse{ConnectionID: "conn-1"}
+			resp.Credentials.APIKey = "test-token"
+			b, _ := json.Marshal(meta)
+			resp.Metadata = json.RawMessage(b)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		case r.Method == "PATCH" && strings.HasPrefix(r.URL.Path, "/connection/"):
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(nangoTS.Close)
+
+	nango := NewNangoClient(NangoConfig{
+		BaseURL:       nangoTS.URL,
+		SecretKey:     "nango-secret",
+		IntegrationID: "dolthub",
+	})
+	sessions := NewSessionStore()
+	resolver := NewWorkspaceResolver(nango, sessions)
+	server := NewServer(resolver, sessions, nango, testSecret)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /api/auth/wastelands/{upstream...}", server.handleLeaveWasteland)
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	sessionID := sessions.Create("conn-1")
+
+	req, _ := http.NewRequest("DELETE", ts.URL+"/api/auth/wastelands/hop/wl-commons", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  cookieName,
+		Value: SignSessionID(sessionID, testSecret),
+	})
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+}
+
+func TestHandleLeaveWasteland_CannotRemoveLast(t *testing.T) {
+	sessions, ts := setupHostedTestServer(t)
+
+	sessionID := sessions.Create("conn-1")
+
+	// Single wasteland — should fail.
+	req, _ := http.NewRequest("DELETE", ts.URL+"/api/auth/wastelands/wasteland/wl-commons", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  cookieName,
+		Value: SignSessionID(sessionID, testSecret),
+	})
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Errorf("expected 400 for last wasteland, got %d: %s", resp.StatusCode, string(body))
 	}
 }
