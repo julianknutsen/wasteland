@@ -13,6 +13,18 @@ import (
 	"github.com/julianknutsen/wasteland/internal/remote"
 )
 
+// tempDir creates a temp directory with best-effort cleanup. Unlike tempDir(t),
+// this does not fail the test if removal races with dolt background processes.
+func tempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", strings.ReplaceAll(t.Name(), "/", "_"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
+}
+
 // providerFactory creates a Provider rooted at a test-specific base directory,
 // with an upstream source already populated so Fork has something to copy.
 type providerFactory struct {
@@ -36,7 +48,7 @@ func TestMain(m *testing.M) {
 // doltHome creates a temp HOME with dolt config so dolt commands work.
 func doltHome(t *testing.T) string {
 	t.Helper()
-	home := filepath.Join(t.TempDir(), "home")
+	home := filepath.Join(tempDir(t), "home")
 	doltCfg := filepath.Join(home, ".dolt")
 	if err := os.MkdirAll(doltCfg, 0o755); err != nil {
 		t.Fatalf("creating dolt config: %v", err)
@@ -65,7 +77,7 @@ func createDoltSource(t *testing.T, baseDir, org, db string) []string {
 	env := doltEnv(home)
 
 	// Init a workspace.
-	workDir := filepath.Join(t.TempDir(), "src")
+	workDir := filepath.Join(tempDir(t), "src")
 	run(t, env, workDir, true, "dolt", "init")
 	run(t, env, workDir, false, "dolt", "sql", "-q",
 		"CREATE TABLE conformance_test (id INT PRIMARY KEY, val VARCHAR(255));"+
@@ -92,7 +104,7 @@ func createGitSource(t *testing.T, baseDir, org, db string) []string {
 	env := doltEnv(home)
 
 	// Init a workspace.
-	workDir := filepath.Join(t.TempDir(), "src")
+	workDir := filepath.Join(tempDir(t), "src")
 	run(t, env, workDir, true, "dolt", "init")
 	run(t, env, workDir, false, "dolt", "sql", "-q",
 		"CREATE TABLE conformance_test (id INT PRIMARY KEY, val VARCHAR(255));"+
@@ -105,7 +117,7 @@ func createGitSource(t *testing.T, baseDir, org, db string) []string {
 		t.Fatalf("creating git dir: %v", err)
 	}
 	run(t, env, "", false, "git", "init", "--bare", gitDir)
-	seedDir := filepath.Join(t.TempDir(), "git-seed")
+	seedDir := filepath.Join(tempDir(t), "git-seed")
 	run(t, env, seedDir, true, "git", "init", "-b", "main")
 	run(t, env, seedDir, false, "git",
 		"-c", "user.name=init", "-c", "user.email=init@init",
@@ -197,7 +209,7 @@ func providers() []providerFactory {
 func TestConformance_TypeNotEmpty(t *testing.T) {
 	for _, pf := range providers() {
 		t.Run(pf.name, func(t *testing.T) {
-			baseDir := filepath.Join(t.TempDir(), "remotes")
+			baseDir := filepath.Join(tempDir(t), "remotes")
 			p := pf.setup(t, baseDir)
 			if p.Type() == "" {
 				t.Error("Type() must return a non-empty string")
@@ -209,7 +221,7 @@ func TestConformance_TypeNotEmpty(t *testing.T) {
 func TestConformance_DatabaseURL(t *testing.T) {
 	for _, pf := range providers() {
 		t.Run(pf.name, func(t *testing.T) {
-			baseDir := filepath.Join(t.TempDir(), "remotes")
+			baseDir := filepath.Join(tempDir(t), "remotes")
 			p := pf.setup(t, baseDir)
 
 			url := p.DatabaseURL("myorg", "mydb")
@@ -234,7 +246,7 @@ func TestConformance_DatabaseURL(t *testing.T) {
 func TestConformance_DatabaseURL_Deterministic(t *testing.T) {
 	for _, pf := range providers() {
 		t.Run(pf.name, func(t *testing.T) {
-			baseDir := filepath.Join(t.TempDir(), "remotes")
+			baseDir := filepath.Join(tempDir(t), "remotes")
 			p := pf.setup(t, baseDir)
 
 			url1 := p.DatabaseURL("org", "db")
@@ -249,7 +261,7 @@ func TestConformance_DatabaseURL_Deterministic(t *testing.T) {
 func TestConformance_DatabaseURL_DifferentForDifferentInputs(t *testing.T) {
 	for _, pf := range providers() {
 		t.Run(pf.name, func(t *testing.T) {
-			baseDir := filepath.Join(t.TempDir(), "remotes")
+			baseDir := filepath.Join(tempDir(t), "remotes")
 			p := pf.setup(t, baseDir)
 
 			url1 := p.DatabaseURL("org-a", "db")
@@ -270,7 +282,7 @@ func TestConformance_DatabaseURL_DifferentForDifferentInputs(t *testing.T) {
 func TestConformance_Fork_CreatesCloneableDatabase(t *testing.T) {
 	for _, pf := range providers() {
 		t.Run(pf.name, func(t *testing.T) {
-			baseDir := filepath.Join(t.TempDir(), "remotes")
+			baseDir := filepath.Join(tempDir(t), "remotes")
 			p := pf.setup(t, baseDir)
 
 			// Fork from the source we set up.
@@ -281,7 +293,7 @@ func TestConformance_Fork_CreatesCloneableDatabase(t *testing.T) {
 
 			// The fork's URL should be cloneable by dolt.
 			forkURL := p.DatabaseURL("fork-org", "testdb")
-			cloneDir := filepath.Join(t.TempDir(), "clone")
+			cloneDir := filepath.Join(tempDir(t), "clone")
 			home := doltHome(t)
 			env := doltEnv(home)
 
@@ -299,7 +311,7 @@ func TestConformance_Fork_CreatesCloneableDatabase(t *testing.T) {
 func TestConformance_Fork_Idempotent(t *testing.T) {
 	for _, pf := range providers() {
 		t.Run(pf.name, func(t *testing.T) {
-			baseDir := filepath.Join(t.TempDir(), "remotes")
+			baseDir := filepath.Join(tempDir(t), "remotes")
 			p := pf.setup(t, baseDir)
 
 			// First fork.
@@ -314,7 +326,7 @@ func TestConformance_Fork_Idempotent(t *testing.T) {
 
 			// Still cloneable after double fork.
 			forkURL := p.DatabaseURL("fork-org", "testdb")
-			cloneDir := filepath.Join(t.TempDir(), "clone")
+			cloneDir := filepath.Join(tempDir(t), "clone")
 			home := doltHome(t)
 			env := doltEnv(home)
 			run(t, env, "", false, "dolt", "clone", forkURL, cloneDir)
@@ -325,7 +337,7 @@ func TestConformance_Fork_Idempotent(t *testing.T) {
 func TestConformance_Fork_MissingSource(t *testing.T) {
 	for _, pf := range providers() {
 		t.Run(pf.name, func(t *testing.T) {
-			baseDir := filepath.Join(t.TempDir(), "remotes")
+			baseDir := filepath.Join(tempDir(t), "remotes")
 			p := pf.setup(t, baseDir)
 
 			// Fork from a non-existent source should error.
@@ -340,7 +352,7 @@ func TestConformance_Fork_MissingSource(t *testing.T) {
 func TestConformance_Fork_PreservesData(t *testing.T) {
 	for _, pf := range providers() {
 		t.Run(pf.name, func(t *testing.T) {
-			baseDir := filepath.Join(t.TempDir(), "remotes")
+			baseDir := filepath.Join(tempDir(t), "remotes")
 			p := pf.setup(t, baseDir)
 
 			// Add data to the source before forking.
@@ -349,7 +361,7 @@ func TestConformance_Fork_PreservesData(t *testing.T) {
 
 			// Clone source, insert data, push back.
 			srcURL := p.DatabaseURL("src-org", "testdb")
-			workDir := filepath.Join(t.TempDir(), "src-work")
+			workDir := filepath.Join(tempDir(t), "src-work")
 			run(t, env, "", false, "dolt", "clone", srcURL, workDir)
 			run(t, env, workDir, false, "dolt", "sql", "-q",
 				"INSERT INTO conformance_test VALUES (1, 'hello'), (2, 'world');"+
@@ -364,7 +376,7 @@ func TestConformance_Fork_PreservesData(t *testing.T) {
 
 			// Clone fork and verify data.
 			forkURL := p.DatabaseURL("data-fork", "testdb")
-			cloneDir := filepath.Join(t.TempDir(), "fork-clone")
+			cloneDir := filepath.Join(tempDir(t), "fork-clone")
 			run(t, env, "", false, "dolt", "clone", forkURL, cloneDir)
 
 			out := run(t, env, cloneDir, false, "dolt", "sql", "-r", "csv", "-q",
@@ -379,7 +391,7 @@ func TestConformance_Fork_PreservesData(t *testing.T) {
 func TestConformance_ForkThenUpstreamRemote(t *testing.T) {
 	for _, pf := range providers() {
 		t.Run(pf.name, func(t *testing.T) {
-			baseDir := filepath.Join(t.TempDir(), "remotes")
+			baseDir := filepath.Join(tempDir(t), "remotes")
 			p := pf.setup(t, baseDir)
 
 			// Fork.
@@ -391,7 +403,7 @@ func TestConformance_ForkThenUpstreamRemote(t *testing.T) {
 			home := doltHome(t)
 			env := doltEnv(home)
 			forkURL := p.DatabaseURL("fork-org", "testdb")
-			cloneDir := filepath.Join(t.TempDir(), "clone")
+			cloneDir := filepath.Join(tempDir(t), "clone")
 			run(t, env, "", false, "dolt", "clone", forkURL, cloneDir)
 
 			// Add the source as an upstream remote — simulates wl join's AddUpstreamRemote.
