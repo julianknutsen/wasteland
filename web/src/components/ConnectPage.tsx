@@ -18,7 +18,7 @@ export function ConnectPage() {
   const [rigHandle, setRigHandle] = useState("");
   const [forkOrg, setForkOrg] = useState("");
   const [forkDB, setForkDB] = useState("wl-commons");
-  const [upstream, setUpstream] = useState("");
+  const [upstream, setUpstream] = useState("hop/wl-commons");
 
   // DoltHub token step.
   const [apiToken, setApiToken] = useState("");
@@ -68,12 +68,12 @@ export function ConnectPage() {
       // Create a connect session token and store the token in Nango.
       const session = await connectSession(endUserId);
       const nango = initNango(session.token);
-      await connectDoltHub(nango, session.integration_id, apiToken.trim());
+      const authResult = await connectDoltHub(nango, session.integration_id, apiToken.trim());
 
       // Notify the backend to create the session and store config.
-      // Nango derives connectionId from the connect session's end_user.id.
+      // Use the actual connectionId assigned by Nango during auth.
       await notifyConnect({
-        connection_id: endUserId,
+        connection_id: authResult.connectionId,
         rig_handle: rigHandle.trim(),
         fork_org: forkOrg.trim(),
         fork_db: forkDB.trim(),
