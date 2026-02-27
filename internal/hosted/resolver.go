@@ -13,7 +13,7 @@ import (
 	"github.com/julianknutsen/wasteland/internal/sdk"
 )
 
-const cacheTTL = 5 * time.Minute
+const cacheTTL = 1 * time.Minute
 
 type cachedWorkspace struct {
 	workspace *sdk.Workspace

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { createItem, updateItem } from "../api/client";
 import type { DetailResponse, MutationResponse, WantedItem } from "../api/types";
@@ -26,18 +26,23 @@ export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
   const [effortLevel, setEffortLevel] = useState(item?.effort_level ?? "medium");
   const [tags, setTags] = useState(item?.tags?.join(", ") ?? "");
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleSubmit();
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        handleSubmit();
+      }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   });
 
   const handleSubmit = async () => {
-    if (!title.trim() || saving) return;
+    if (!title.trim() || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
 
     const parsedTags = tags
@@ -81,6 +86,7 @@ export function WantedForm({ item, onClose, onSaved }: WantedFormProps) {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to save");
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };

@@ -85,6 +85,8 @@ func (c *Client) mutatePR(wantedID, commitMsg string, stmts ...string) (*Mutatio
 		if url, err := c.CreatePR(result.Branch); err == nil {
 			result.Detail.PRURL = url
 			result.Detail.BranchActions = c.computeBranchActions(result.Detail)
+		} else {
+			result.Hint = fmt.Sprintf("PR creation failed: %v", err)
 		}
 	}
 

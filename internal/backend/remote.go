@@ -85,13 +85,22 @@ func (r *RemoteDB) Exec(branch, _ string, _ bool, stmts ...string) error {
 		branch = "main"
 	}
 
+	// Determine the from-branch for the write API.
+	// If the target branch already exists on the fork, write from that branch
+	// to preserve prior mutations (e.g. claim → done). Otherwise write from main.
+	fromBranch := "main"
+	if branch != "main" && r.forkBranchExists(branch) {
+		fromBranch = branch
+	}
+
 	// Note: the DoltHub write API auto-commits with the SQL text as the
 	// commit message. Custom commit messages aren't supported — the API
 	// accepts only a single statement and has no session persistence for SET.
 	joined := strings.Join(stmts, ";\n") + ";"
 
-	apiURL := fmt.Sprintf("%s/%s/%s/write/main/%s?q=%s",
-		DoltHubAPIBase, r.writeOwner, r.writeDB, url.PathEscape(branch),
+	apiURL := fmt.Sprintf("%s/%s/%s/write/%s/%s?q=%s",
+		DoltHubAPIBase, r.writeOwner, r.writeDB,
+		url.PathEscape(fromBranch), url.PathEscape(branch),
 		url.QueryEscape(joined))
 
 	body, err := r.doPost(apiURL, nil)
@@ -155,10 +164,13 @@ func (r *RemoteDB) Branches(prefix string) ([]string, error) {
 	return branches, nil
 }
 
-// DeleteBranch is a no-op for remote — the DoltHub REST API does not support
-// branch deletion. Branches are cleaned up implicitly when PRs are closed.
-func (r *RemoteDB) DeleteBranch(_ string) error {
-	return nil
+// DeleteBranch deletes a branch on the fork via DOLT_BRANCH('-D', ...).
+func (r *RemoteDB) DeleteBranch(branch string) error {
+	if branch == "" || branch == "main" {
+		return nil
+	}
+	escaped := strings.ReplaceAll(branch, "'", "''")
+	return r.execOnMain(fmt.Sprintf("CALL DOLT_BRANCH('-D', '%s')", escaped))
 }
 
 // PushBranch is a no-op for remote — the write API auto-pushes.
@@ -370,6 +382,18 @@ func formatDiffRow(buf *strings.Builder, header, fields []string) {
 			fmt.Fprintf(buf, "  %s: %s\n", field, toVal)
 		}
 	}
+}
+
+// forkBranchExists checks whether a branch exists on the fork database.
+func (r *RemoteDB) forkBranchExists(branch string) bool {
+	escaped := strings.ReplaceAll(branch, "'", "''")
+	sql := fmt.Sprintf("SELECT COUNT(*) AS cnt FROM dolt_branches WHERE name='%s'", escaped)
+	csv, err := r.queryForkBranch(sql, "main")
+	if err != nil {
+		return false
+	}
+	lines := strings.Split(strings.TrimSpace(csv), "\n")
+	return len(lines) >= 2 && strings.TrimSpace(lines[1]) != "0"
 }
 
 // --- HTTP helpers ---

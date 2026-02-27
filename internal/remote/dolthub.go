@@ -424,7 +424,7 @@ func (d *DoltHubProvider) dolthubGet(url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("authorization", d.token)
+	req.Header.Set("authorization", "token "+d.token)
 
 	resp, err := d.getClient(30 * time.Second).Do(req)
 	if err != nil {
@@ -458,7 +458,7 @@ func (d *DoltHubProvider) UpdatePR(upstreamOrg, db, prID, title, description str
 		return fmt.Errorf("creating PR update request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("authorization", d.token)
+	req.Header.Set("authorization", "token "+d.token)
 
 	resp, err := d.getClient(30 * time.Second).Do(req)
 	if err != nil {
@@ -488,7 +488,7 @@ func (d *DoltHubProvider) ClosePR(upstreamOrg, db, prID string) error {
 		return fmt.Errorf("creating PR close request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("authorization", d.token)
+	req.Header.Set("authorization", "token "+d.token)
 
 	resp, err := d.getClient(30 * time.Second).Do(req)
 	if err != nil {

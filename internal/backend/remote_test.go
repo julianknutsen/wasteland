@@ -93,11 +93,23 @@ func TestRemoteDB_Query_Branch(t *testing.T) {
 }
 
 func TestRemoteDB_Exec(t *testing.T) {
-	callCount := 0
 	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		callCount++
+		if r.Method == "GET" {
+			// Branch existence check — branch does not exist yet.
+			resp := map[string]any{
+				"query_execution_status": "Success",
+				"schema_fragment": []map[string]string{
+					{"columnName": "cnt", "columnType": "int"},
+				},
+				"rows": []map[string]string{
+					{"cnt": "0"},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
 		if r.Method == "POST" {
-			// Verify write path includes path-escaped branch (slashes encoded as %2F).
+			// First write: branch doesn't exist, so write from main.
 			if !strings.Contains(r.URL.RawPath, "/fork-org/wl-commons/write/main/wl%2Falice%2Fw-001") {
 				t.Errorf("unexpected write path: %s (raw: %s)", r.URL.Path, r.URL.RawPath)
 			}
@@ -118,6 +130,47 @@ func TestRemoteDB_Exec(t *testing.T) {
 		"UPDATE wanted SET status='claimed' WHERE id='w-001'")
 	if err != nil {
 		t.Fatalf("Exec error: %v", err)
+	}
+}
+
+func TestRemoteDB_Exec_SequentialMutation(t *testing.T) {
+	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			// Branch existence check — branch already exists.
+			resp := map[string]any{
+				"query_execution_status": "Success",
+				"schema_fragment": []map[string]string{
+					{"columnName": "cnt", "columnType": "int"},
+				},
+				"rows": []map[string]string{
+					{"cnt": "1"},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		if r.Method == "POST" {
+			// Second write: branch exists, so write from branch (not main).
+			if !strings.Contains(r.URL.RawPath, "/write/wl%2Falice%2Fw-001/wl%2Falice%2Fw-001") {
+				t.Errorf("expected write from branch, got: %s (raw: %s)", r.URL.Path, r.URL.RawPath)
+			}
+			resp := map[string]string{
+				"query_execution_status": "Success",
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		t.Errorf("unexpected method: %s", r.Method)
+	})
+	defer cleanup()
+
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
+	db.client = srv.Client()
+
+	err := db.Exec("wl/alice/w-001", "wl done: w-001", false,
+		"UPDATE wanted SET status='in_review' WHERE id='w-001'")
+	if err != nil {
+		t.Fatalf("Exec sequential error: %v", err)
 	}
 }
 
@@ -203,17 +256,32 @@ func TestRemoteDB_Exec_Poll(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(resp)
 			return
 		}
-		// GET = poll
-		pollCount++
-		if pollCount < 2 {
+		// GET: distinguish branch-existence check from poll
+		if strings.Contains(r.URL.Path, "/write") {
+			// Poll
+			pollCount++
+			if pollCount < 2 {
+				resp := map[string]string{
+					"query_execution_status": "Running",
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+				return
+			}
 			resp := map[string]string{
-				"query_execution_status": "Running",
+				"query_execution_status": "Success",
 			}
 			_ = json.NewEncoder(w).Encode(resp)
 			return
 		}
-		resp := map[string]string{
+		// Branch existence check — branch doesn't exist
+		resp := map[string]any{
 			"query_execution_status": "Success",
+			"schema_fragment": []map[string]string{
+				{"columnName": "cnt", "columnType": "int"},
+			},
+			"rows": []map[string]string{
+				{"cnt": "0"},
+			},
 		}
 		_ = json.NewEncoder(w).Encode(resp)
 	})
@@ -222,7 +290,7 @@ func TestRemoteDB_Exec_Poll(t *testing.T) {
 	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
 	db.client = srv.Client()
 
-	err := db.Exec("main", "test", false, "UPDATE wanted SET status='open'")
+	err := db.Exec("some-branch", "test", false, "UPDATE wanted SET status='open'")
 	if err != nil {
 		t.Fatalf("Exec with poll error: %v", err)
 	}
@@ -241,28 +309,43 @@ func TestRemoteDB_Exec_Poll_DoneResDetails(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(resp)
 			return
 		}
-		// GET = poll — return the current DoltHub response format with done + res_details.
-		pollCount++
-		if pollCount < 2 {
+		// GET: distinguish branch-existence check from poll
+		if strings.Contains(r.URL.Path, "/write") {
+			// Poll — return the current DoltHub response format with done + res_details.
+			pollCount++
+			if pollCount < 2 {
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"done": false,
+				})
+				return
+			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"done": false,
+				"done": true,
+				"res_details": map[string]string{
+					"query_execution_status":  "Success",
+					"query_execution_message": "Query OK, 1 row affected.",
+				},
 			})
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"done": true,
-			"res_details": map[string]string{
-				"query_execution_status":  "Success",
-				"query_execution_message": "Query OK, 1 row affected.",
+		// Branch existence check — branch doesn't exist
+		resp := map[string]any{
+			"query_execution_status": "Success",
+			"schema_fragment": []map[string]string{
+				{"columnName": "cnt", "columnType": "int"},
 			},
-		})
+			"rows": []map[string]string{
+				{"cnt": "0"},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 	defer cleanup()
 
 	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
 	db.client = srv.Client()
 
-	err := db.Exec("main", "test", false, "INSERT INTO wanted VALUES (...)")
+	err := db.Exec("some-branch", "test", false, "INSERT INTO wanted VALUES (...)")
 	if err != nil {
 		t.Fatalf("Exec with done+res_details poll error: %v", err)
 	}
@@ -330,12 +413,41 @@ func TestRemoteDB_MergeBranch(t *testing.T) {
 	}
 }
 
-func TestRemoteDB_DeleteRemoteBranch(t *testing.T) {
-	// DeleteBranch is a no-op for remote — DoltHub has no branch deletion API.
-	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
+func TestRemoteDB_DeleteBranch(t *testing.T) {
+	var writtenSQL string
+	srv, cleanup := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			writtenSQL = r.URL.Query().Get("q")
+			resp := map[string]string{"query_execution_status": "Success"}
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		t.Errorf("unexpected method: %s", r.Method)
+	})
+	defer cleanup()
 
-	if err := db.DeleteRemoteBranch("wl/alice/w-001"); err != nil {
-		t.Fatalf("DeleteRemoteBranch error: %v", err)
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
+	db.client = srv.Client()
+
+	if err := db.DeleteBranch("wl/alice/w-001"); err != nil {
+		t.Fatalf("DeleteBranch error: %v", err)
+	}
+	if !strings.Contains(writtenSQL, "DOLT_BRANCH") {
+		t.Errorf("expected DOLT_BRANCH in SQL, got: %s", writtenSQL)
+	}
+	if !strings.Contains(writtenSQL, "wl/alice/w-001") {
+		t.Errorf("expected branch name in SQL, got: %s", writtenSQL)
+	}
+}
+
+func TestRemoteDB_DeleteBranch_MainNoOp(t *testing.T) {
+	// Deleting main or empty branch should be a no-op.
+	db := NewRemoteDB("test-token", "upstream-org", "wl-commons", "fork-org", "wl-commons", "pr")
+	if err := db.DeleteBranch("main"); err != nil {
+		t.Fatalf("DeleteBranch(main) error: %v", err)
+	}
+	if err := db.DeleteBranch(""); err != nil {
+		t.Fatalf("DeleteBranch('') error: %v", err)
 	}
 }
 

@@ -78,7 +78,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 	mode := req.Mode
 	if mode == "" {
-		mode = "wild-west"
+		mode = "pr"
 	}
 
 	// Write user metadata in new format with single-entry wastelands array.
@@ -239,7 +239,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 
 	mode := req.Mode
 	if mode == "" {
-		mode = "wild-west"
+		mode = "pr"
 	}
 
 	// Fetch current metadata, upsert the new wasteland, write back.

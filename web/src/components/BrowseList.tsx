@@ -21,14 +21,16 @@ export function BrowseList() {
   const [showForm, setShowForm] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const searchRef = useRef<HTMLInputElement>(null);
+  const hasLoadedRef = useRef(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     setError("");
     try {
       const resp = await browse(filter);
       setItems(resp.items);
       setSelectedIndex(-1);
+      hasLoadedRef.current = true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to load";
       setError(msg);
@@ -180,7 +182,15 @@ export function BrowseList() {
         </>
       )}
 
-      {showForm && <WantedForm onClose={() => setShowForm(false)} onSaved={load} />}
+      {showForm && (
+        <WantedForm
+          onClose={() => setShowForm(false)}
+          onSaved={() => {
+            setShowForm(false);
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }

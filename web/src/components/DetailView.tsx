@@ -46,6 +46,7 @@ export function DetailView() {
   const [evidenceInput, setEvidenceInput] = useState("");
   const [showDoneForm, setShowDoneForm] = useState(false);
   const [showEditForm, setShowEditForm] = useState(false);
+  const [doneSubmitting, setDoneSubmitting] = useState(false);
   const [rigHandle, setRigHandle] = useState("");
 
   const [optimisticStatus, setOptimisticStatus] = useOptimistic(
@@ -142,7 +143,8 @@ export function DetailView() {
   };
 
   const handleDone = async () => {
-    if (!id || !evidenceInput.trim()) return;
+    if (!id || !evidenceInput.trim() || doneSubmitting) return;
+    setDoneSubmitting(true);
     try {
       const result = await done(id, evidenceInput.trim());
       setShowDoneForm(false);
@@ -155,6 +157,8 @@ export function DetailView() {
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to submit");
+    } finally {
+      setDoneSubmitting(false);
     }
   };
 
@@ -328,12 +332,17 @@ export function DetailView() {
               onChange={(e) => setEvidenceInput(e.target.value)}
               placeholder="https://github.com/..."
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleDone();
+                if (e.key === "Enter" && !doneSubmitting) handleDone();
               }}
             />
             <div className={styles.formActions}>
-              <button type="button" className={styles.submitBtn} onClick={handleDone} disabled={!evidenceInput.trim()}>
-                Submit
+              <button
+                type="button"
+                className={styles.submitBtn}
+                onClick={handleDone}
+                disabled={!evidenceInput.trim() || doneSubmitting}
+              >
+                {doneSubmitting ? "Submitting..." : "Submit"}
               </button>
               <button
                 type="button"

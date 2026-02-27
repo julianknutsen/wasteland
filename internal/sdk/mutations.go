@@ -56,6 +56,10 @@ func (c *Client) Done(wantedID, evidence string) (*MutationResult, error) {
 
 // Accept validates a completion, creates a stamp, and marks the item completed.
 func (c *Client) Accept(wantedID string, input AcceptInput) (*MutationResult, error) {
+	if result := c.prIdempotent(wantedID, "completed"); result != nil {
+		return result, nil
+	}
+
 	// Look up the completion to get its ID.
 	completion, err := commons.QueryCompletion(c.db, wantedID)
 	if err != nil {
