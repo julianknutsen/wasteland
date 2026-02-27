@@ -83,6 +83,14 @@ func (f *fakeDB) seedItem(item fakeItem) {
 	f.items[item.ID] = &item
 }
 
+// csvQuote wraps a value in double-quotes if it contains commas, quotes, or newlines.
+func csvQuote(s string) string {
+	if strings.ContainsAny(s, ",\"\n") {
+		return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
+	}
+	return s
+}
+
 // Query returns CSV-formatted data matching the SQL request.
 func (f *fakeDB) Query(sql, ref string) (string, error) {
 	f.mu.Lock()
@@ -136,7 +144,7 @@ func (f *fakeDB) queryWantedBrowse(sql, ref string) (string, error) { //nolint:u
 			continue
 		}
 		rows = append(rows, fmt.Sprintf("%s,%s,%s,%s,%d,%s,%s,%s,%s",
-			item.ID, item.Title, item.Project, item.Type, item.Priority,
+			item.ID, csvQuote(item.Title), item.Project, item.Type, item.Priority,
 			item.PostedBy, item.ClaimedBy, item.Status, item.EffortLevel))
 	}
 	if len(rows) == 0 {
@@ -165,7 +173,7 @@ func (f *fakeDB) queryCompletion(sql, _ string) (string, error) { //nolint:unpar
 		return "id,wanted_id,completed_by,evidence,stamp_id,validated_by\n", nil
 	}
 	return fmt.Sprintf("id,wanted_id,completed_by,evidence,stamp_id,validated_by\n%s,%s,%s,%s,%s,%s\n",
-		c.ID, c.WantedID, c.CompletedBy, c.Evidence, c.StampID, c.ValidatedBy), nil
+		c.ID, c.WantedID, c.CompletedBy, csvQuote(c.Evidence), c.StampID, c.ValidatedBy), nil
 }
 
 func (f *fakeDB) queryStamp(sql, _ string) (string, error) { //nolint:unparam // error return needed for Query dispatch
@@ -175,7 +183,7 @@ func (f *fakeDB) queryStamp(sql, _ string) (string, error) { //nolint:unparam //
 		return "id,author,subject,valence,severity,context_id,context_type,skill_tags,message\n", nil
 	}
 	return fmt.Sprintf("id,author,subject,valence,severity,context_id,context_type,skill_tags,message\n%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
-		s.ID, s.Author, s.Subject, s.Valence, s.Severity, s.ContextID, s.ContextType, s.SkillTags, s.Message), nil
+		s.ID, s.Author, s.Subject, csvQuote(s.Valence), s.Severity, s.ContextID, s.ContextType, csvQuote(s.SkillTags), csvQuote(s.Message)), nil
 }
 
 // Exec applies DML and tracks calls. Interprets basic mutations.
@@ -197,13 +205,19 @@ func (f *fakeDB) Exec(branch, commitMsg string, _ bool, stmts ...string) error {
 		}
 	}
 
+	anyChanged := false
 	for _, stmt := range stmts {
-		f.applyDML(stmt, branch)
+		if f.applyDML(stmt, branch) {
+			anyChanged = true
+		}
+	}
+	if !anyChanged {
+		return fmt.Errorf("nothing to commit")
 	}
 	return nil
 }
 
-func (f *fakeDB) applyDML(stmt, branch string) {
+func (f *fakeDB) applyDML(stmt, branch string) bool {
 	target := f.items
 	if branch != "" {
 		target = f.branchItems[branch]
@@ -212,49 +226,220 @@ func (f *fakeDB) applyDML(stmt, branch string) {
 	lower := strings.ToLower(stmt)
 	switch {
 	case strings.HasPrefix(lower, "update wanted set"):
-		id := extractEqValue(stmt, "id")
-		item, ok := target[id]
-		if !ok {
-			return
-		}
-		// Extract just the SET clause (between "set" and "where") to avoid
-		// matching status values in the WHERE condition.
-		setClause := lower
-		if wi := strings.Index(lower, " where "); wi > 0 {
-			setClause = lower[:wi]
-		}
-		switch {
-		case strings.Contains(setClause, "status='claimed'"):
-			item.Status = "claimed"
-			if cb := extractSetValue(stmt, "claimed_by"); cb != "" {
-				item.ClaimedBy = cb
-			}
-		case strings.Contains(setClause, "status='open'"):
-			item.Status = "open"
-			item.ClaimedBy = ""
-		case strings.Contains(setClause, "status='in_review'"):
-			item.Status = "in_review"
-		case strings.Contains(setClause, "status='completed'"):
-			item.Status = "completed"
-		case strings.Contains(setClause, "status='withdrawn'"):
-			item.Status = "withdrawn"
-		}
-	case strings.HasPrefix(lower, "insert"):
-		if strings.Contains(lower, "into completions") {
-			wid := extractInsertCompletionWantedID(stmt)
-			if wid != "" {
-				f.completions[wid] = &fakeCompletion{
-					ID:          "c-fake",
-					WantedID:    wid,
-					CompletedBy: "test-rig",
-					Evidence:    "http://example.com",
-				}
-			}
-		}
+		return f.applyUpdateWanted(stmt, target)
+	case strings.HasPrefix(lower, "update completions set"):
+		return f.applyUpdateCompletions(stmt)
+	case strings.HasPrefix(lower, "insert") && strings.Contains(lower, "into wanted"):
+		return f.applyInsertWanted(stmt, target)
+	case strings.HasPrefix(lower, "insert") && strings.Contains(lower, "into completions"):
+		return f.applyInsertCompletion(stmt, target)
+	case strings.HasPrefix(lower, "insert") && strings.Contains(lower, "into stamps"):
+		return f.applyInsertStamp(stmt)
 	case strings.HasPrefix(lower, "delete from completions"):
 		wid := extractEqValue(stmt, "wanted_id")
-		delete(f.completions, wid)
+		if _, ok := f.completions[wid]; ok {
+			delete(f.completions, wid)
+			return true
+		}
+		return false
+	case strings.HasPrefix(lower, "delete from wanted"):
+		id := extractEqValue(stmt, "id")
+		if _, ok := target[id]; ok {
+			delete(target, id)
+			return true
+		}
+		return false
 	}
+	return false
+}
+
+// applyUpdateWanted handles UPDATE wanted SET ... WHERE ... with WHERE validation.
+func (f *fakeDB) applyUpdateWanted(stmt string, target map[string]*fakeItem) bool {
+	where := extractWhereClause(stmt)
+	id := extractEqValue(where, "id")
+	item, ok := target[id]
+	if !ok {
+		return false
+	}
+	if !matchesWhere(item, where) {
+		return false
+	}
+
+	// Extract just the SET clause (between "set" and "where") to avoid
+	// matching status values in the WHERE condition.
+	lower := strings.ToLower(stmt)
+	setClause := lower
+	if wi := strings.Index(lower, " where "); wi > 0 {
+		setClause = lower[:wi]
+	}
+
+	changed := false
+	switch {
+	case strings.Contains(setClause, "status='claimed'"):
+		item.Status = "claimed"
+		if cb := extractSetValue(stmt, "claimed_by"); cb != "" {
+			item.ClaimedBy = cb
+		}
+		changed = true
+	case strings.Contains(setClause, "status='open'"):
+		item.Status = "open"
+		item.ClaimedBy = ""
+		changed = true
+	case strings.Contains(setClause, "status='in_review'"):
+		item.Status = "in_review"
+		changed = true
+	case strings.Contains(setClause, "status='completed'"):
+		item.Status = "completed"
+		changed = true
+	case strings.Contains(setClause, "status='withdrawn'"):
+		item.Status = "withdrawn"
+		changed = true
+	}
+
+	// Handle non-status field updates (title, description, etc. from UpdateWantedDML).
+	if t := extractSetValue(stmt, "title"); t != "" {
+		item.Title = t
+		changed = true
+	}
+	if d := extractSetValue(stmt, "description"); d != "" {
+		item.Description = d
+		changed = true
+	}
+	if p := extractSetValue(stmt, "project"); p != "" {
+		item.Project = p
+		changed = true
+	}
+	if e := extractSetValue(stmt, "effort_level"); e != "" {
+		item.EffortLevel = e
+		changed = true
+	}
+	return changed
+}
+
+// applyUpdateCompletions handles UPDATE completions SET ... WHERE id='...'.
+func (f *fakeDB) applyUpdateCompletions(stmt string) bool {
+	where := extractWhereClause(stmt)
+	cid := extractEqValue(where, "id")
+	for _, c := range f.completions {
+		if c.ID == cid {
+			if vb := extractSetValue(stmt, "validated_by"); vb != "" {
+				c.ValidatedBy = vb
+			}
+			if sid := extractSetValue(stmt, "stamp_id"); sid != "" {
+				c.StampID = sid
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// applyInsertWanted handles INSERT INTO wanted (...) VALUES (...).
+func (f *fakeDB) applyInsertWanted(stmt string, target map[string]*fakeItem) bool {
+	values := extractInsertValues(stmt)
+	if len(values) < 12 {
+		return false
+	}
+	id := values[0]
+	if _, exists := target[id]; exists {
+		return false
+	}
+	priority := 2
+	_, _ = fmt.Sscanf(values[5], "%d", &priority)
+	target[id] = &fakeItem{
+		ID:          id,
+		Title:       values[1],
+		Description: values[2],
+		Project:     values[3],
+		Type:        values[4],
+		Priority:    priority,
+		PostedBy:    values[7],
+		Status:      values[8],
+		EffortLevel: values[9],
+		CreatedAt:   values[10],
+		UpdatedAt:   values[11],
+	}
+	return true
+}
+
+// applyInsertCompletion handles INSERT IGNORE INTO completions (...) SELECT ... FROM wanted WHERE ...
+// Validates the WHERE subquery conditions (item must be in_review, claimed_by must match).
+func (f *fakeDB) applyInsertCompletion(stmt string, target map[string]*fakeItem) bool {
+	lower := strings.ToLower(stmt)
+	idx := strings.Index(lower, "select ")
+	if idx < 0 {
+		return false
+	}
+	fromIdx := strings.Index(lower[idx:], " from ")
+	if fromIdx < 0 {
+		return false
+	}
+	selectClause := stmt[idx+7 : idx+fromIdx]
+	parts := strings.SplitN(selectClause, ",", 6)
+	if len(parts) < 4 {
+		return false
+	}
+	cid := strings.Trim(strings.TrimSpace(parts[0]), "'")
+	wid := strings.Trim(strings.TrimSpace(parts[1]), "'")
+	completedBy := strings.Trim(strings.TrimSpace(parts[2]), "'")
+	evidence := strings.Trim(strings.TrimSpace(parts[3]), "'")
+
+	// Check WHERE conditions from the SELECT subquery.
+	whereIdx := strings.Index(lower[idx:], " where ")
+	if whereIdx >= 0 {
+		where := stmt[idx+whereIdx+7:]
+		item := target[wid]
+		if item == nil {
+			return false
+		}
+		if reqStatus := extractEqValue(where, "status"); reqStatus != "" {
+			if item.Status != reqStatus {
+				return false
+			}
+		}
+		if reqClaimed := extractEqValue(where, "claimed_by"); reqClaimed != "" {
+			if item.ClaimedBy != reqClaimed {
+				return false
+			}
+		}
+	}
+
+	// NOT EXISTS: skip if completion already exists for this wanted ID.
+	if _, exists := f.completions[wid]; exists {
+		return false
+	}
+
+	f.completions[wid] = &fakeCompletion{
+		ID:          cid,
+		WantedID:    wid,
+		CompletedBy: completedBy,
+		Evidence:    evidence,
+	}
+	return true
+}
+
+// applyInsertStamp handles INSERT INTO stamps (...) VALUES (...).
+func (f *fakeDB) applyInsertStamp(stmt string) bool {
+	values := extractInsertValues(stmt)
+	if len(values) < 10 {
+		return false
+	}
+	sid := values[0]
+	if _, exists := f.stamps[sid]; exists {
+		return false
+	}
+	f.stamps[sid] = &fakeStamp{
+		ID:          values[0],
+		Author:      values[1],
+		Subject:     values[2],
+		Valence:     values[3],
+		Severity:    values[5],
+		ContextID:   values[6],
+		ContextType: values[7],
+		SkillTags:   values[8],
+		Message:     values[9],
+	}
+	return true
 }
 
 func (f *fakeDB) Branches(prefix string) ([]string, error) {
@@ -346,7 +531,7 @@ func (f *fakeDB) resolveItems(ref string) map[string]*fakeItem {
 func (f *fakeDB) itemDetailCSV(item *fakeItem) string {
 	header := "id,title,description,project,type,priority,tags,posted_by,claimed_by,status,effort_level,created_at,updated_at"
 	row := fmt.Sprintf("%s,%s,%s,%s,%s,%d,,%s,%s,%s,%s,%s,%s",
-		item.ID, item.Title, item.Description, item.Project, item.Type,
+		item.ID, csvQuote(item.Title), csvQuote(item.Description), item.Project, item.Type,
 		item.Priority, item.PostedBy, item.ClaimedBy, item.Status,
 		item.EffortLevel, item.CreatedAt, item.UpdatedAt)
 	return header + "\n" + row + "\n"
@@ -379,19 +564,124 @@ func extractSetValue(sql, field string) string {
 	return extractEqValue(sql, field)
 }
 
-func extractInsertCompletionWantedID(stmt string) string {
-	// INSERT IGNORE INTO completions (...) SELECT 'cid', 'wid', ...
+// extractWhereClause returns the portion of a SQL statement after " WHERE ".
+func extractWhereClause(stmt string) string {
 	lower := strings.ToLower(stmt)
-	idx := strings.Index(lower, "select ")
+	idx := strings.Index(lower, " where ")
 	if idx < 0 {
 		return ""
 	}
-	rest := stmt[idx+7:]
-	parts := strings.SplitN(rest, ",", 3)
-	if len(parts) < 2 {
-		return ""
+	return stmt[idx+7:]
+}
+
+// matchesWhere checks whether a fakeItem satisfies the WHERE conditions in a clause.
+// Supports id, status, and claimed_by conditions.
+func matchesWhere(item *fakeItem, where string) bool {
+	if id := extractEqValue(where, "id"); id != "" {
+		if item.ID != id {
+			return false
+		}
 	}
-	return strings.Trim(strings.TrimSpace(parts[1]), "'")
+	if status := extractEqValue(where, "status"); status != "" {
+		if item.Status != status {
+			return false
+		}
+	}
+	if claimedBy := extractEqValue(where, "claimed_by"); claimedBy != "" {
+		if item.ClaimedBy != claimedBy {
+			return false
+		}
+	}
+	return true
+}
+
+// extractInsertValues extracts values from a VALUES (...) clause,
+// stripping single quotes and converting NULL to empty string.
+func extractInsertValues(stmt string) []string {
+	lower := strings.ToLower(stmt)
+	idx := strings.Index(lower, "values (")
+	if idx < 0 {
+		idx = strings.Index(lower, "values(")
+		if idx < 0 {
+			return nil
+		}
+		idx += 7
+	} else {
+		idx += 8
+	}
+
+	rest := stmt[idx:]
+	depth := 1
+	end := -1
+	inQuote := false
+	for i := 0; i < len(rest); i++ {
+		ch := rest[i]
+		if ch == '\'' && !inQuote {
+			inQuote = true
+			continue
+		}
+		if ch == '\'' && inQuote {
+			if i+1 < len(rest) && rest[i+1] == '\'' {
+				i++
+				continue
+			}
+			inQuote = false
+			continue
+		}
+		if inQuote {
+			continue
+		}
+		if ch == '(' {
+			depth++
+		}
+		if ch == ')' {
+			depth--
+			if depth == 0 {
+				end = i
+				break
+			}
+		}
+	}
+	if end < 0 {
+		return nil
+	}
+	return splitValues(rest[:end])
+}
+
+// splitValues splits a comma-separated SQL values list, respecting single-quote boundaries.
+func splitValues(s string) []string {
+	var values []string
+	var current strings.Builder
+	inQuote := false
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if ch == '\'' && !inQuote {
+			inQuote = true
+			continue
+		}
+		if ch == '\'' && inQuote {
+			if i+1 < len(s) && s[i+1] == '\'' {
+				current.WriteByte('\'')
+				i++
+				continue
+			}
+			inQuote = false
+			continue
+		}
+		if ch == ',' && !inQuote {
+			values = append(values, strings.TrimSpace(current.String()))
+			current.Reset()
+			continue
+		}
+		current.WriteByte(ch)
+	}
+	values = append(values, strings.TrimSpace(current.String()))
+	for i, v := range values {
+		if strings.EqualFold(v, "NULL") {
+			values[i] = ""
+		}
+	}
+	return values
 }
 
 // compile-time check
