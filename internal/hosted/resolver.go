@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/julianknutsen/wasteland/internal/backend"
+	"github.com/julianknutsen/wasteland/internal/commons"
 	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/julianknutsen/wasteland/internal/remote"
 	"github.com/julianknutsen/wasteland/internal/sdk"
@@ -124,10 +125,24 @@ func (wr *WorkspaceResolver) buildClient(wl *WastelandConfig, rigHandle, connect
 			return db.Diff(branch)
 		},
 		CreatePR: func(branch string) (string, error) {
-			prURL, err := provider.CreatePR(wl.ForkOrg, upOrg, upDB, branch, "", "")
+			// Build PR title from the wanted item.
+			wantedID := extractWantedIDFromBranch(branch)
+			prTitle := fmt.Sprintf("[wl] %s", wantedID)
+			if item, _, _, qerr := commons.QueryFullDetailAsOf(db, wantedID, branch); qerr == nil && item != nil {
+				prTitle = fmt.Sprintf("[wl] %s", item.Title)
+			}
+
+			// Build PR description from the branch diff.
+			var prBody string
+			if diff, derr := db.Diff(branch); derr == nil {
+				prBody = diff
+			}
+
+			prURL, err := provider.CreatePR(wl.ForkOrg, upOrg, upDB, branch, prTitle, prBody)
 			if err != nil && strings.Contains(err.Error(), "already exists") {
 				existingURL, existingID := provider.FindPR(upOrg, upDB, wl.ForkOrg, branch)
 				if existingID != "" {
+					_ = provider.UpdatePR(upOrg, upDB, existingID, prTitle, prBody)
 					return existingURL, nil
 				}
 			}
@@ -168,4 +183,14 @@ func (wr *WorkspaceResolver) buildClient(wl *WastelandConfig, rigHandle, connect
 	})
 
 	return client, nil
+}
+
+// extractWantedIDFromBranch parses a branch name like "wl/{rig}/{wantedID}"
+// and returns the wanted ID, or the raw branch name as fallback.
+func extractWantedIDFromBranch(branch string) string {
+	parts := strings.SplitN(branch, "/", 3)
+	if len(parts) == 3 && parts[0] == "wl" {
+		return parts[2]
+	}
+	return branch
 }

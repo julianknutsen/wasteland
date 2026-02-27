@@ -56,7 +56,66 @@ func (c *Client) mutatePR(wantedID, commitMsg string, stmts ...string) (*Mutatio
 		return nil, err
 	}
 
-	// Read post-mutation state from branch.
+	result := c.mutatePRResult(wantedID, branch, mainStatus)
+
+	// Push the branch.
+	var pushLog bytes.Buffer
+	if err := c.db.PushBranch(branch, &pushLog); err != nil {
+		if msg := strings.TrimSpace(pushLog.String()); msg != "" {
+			return nil, fmt.Errorf("%s", msg)
+		}
+		return nil, fmt.Errorf("push branch: %w", err)
+	}
+
+	// Auto-cleanup: if mutation reverted item to main status, delete the branch.
+	if mainStatus != "" && result.Detail.Item != nil && result.Detail.Item.Status == mainStatus {
+		c.cleanupBranch(branch)
+		result.Detail.Branch = ""
+		result.Detail.BranchURL = ""
+		result.Detail.MainStatus = ""
+		result.Detail.Delta = ""
+		result.Detail.PRURL = ""
+		result.Detail.BranchActions = nil
+		result.Branch = ""
+		result.Hint = "reverted — branch cleaned up"
+	}
+
+	// Auto-submit PR if branch survived cleanup and no PR exists yet.
+	if result.Branch != "" && result.Detail.PRURL == "" && c.CreatePR != nil {
+		if url, err := c.CreatePR(result.Branch); err == nil {
+			result.Detail.PRURL = url
+			result.Detail.BranchActions = c.computeBranchActions(result.Detail)
+		}
+	}
+
+	return result, nil
+}
+
+// prIdempotent checks whether the branch already has the target status.
+// If so, returns the current branch state without creating another commit.
+// This prevents duplicate commits when the DoltHub write API
+// (write/main/{branch}) replays from main on every call.
+// Returns nil when the mutation should proceed normally.
+func (c *Client) prIdempotent(wantedID, targetStatus string) *MutationResult {
+	if c.mode != "pr" {
+		return nil
+	}
+	branch := commons.BranchName(c.rigHandle, wantedID)
+	branchStatus, _, _ := commons.QueryItemStatus(c.db, wantedID, branch)
+	if branchStatus != targetStatus {
+		return nil
+	}
+	mainStatus, _, _ := commons.QueryItemStatus(c.db, wantedID, "main")
+	if branchStatus == mainStatus {
+		// Branch matches main — mutation hasn't been applied yet.
+		return nil
+	}
+	return c.mutatePRResult(wantedID, branch, mainStatus)
+}
+
+// mutatePRResult reads the current branch state and builds a MutationResult.
+// Used after Exec and also for the idempotency early-return path.
+func (c *Client) mutatePRResult(wantedID, branch, mainStatus string) *MutationResult {
 	item, completion, stamp, _ := commons.QueryFullDetailAsOf(c.db, wantedID, branch)
 
 	detail := &DetailResult{
@@ -78,37 +137,5 @@ func (c *Client) mutatePR(wantedID, commitMsg string, stmts ...string) (*Mutatio
 	}
 	detail.BranchActions = c.computeBranchActions(detail)
 
-	// Push the branch.
-	var pushLog bytes.Buffer
-	if err := c.db.PushBranch(branch, &pushLog); err != nil {
-		if msg := strings.TrimSpace(pushLog.String()); msg != "" {
-			return nil, fmt.Errorf("%s", msg)
-		}
-		return nil, fmt.Errorf("push branch: %w", err)
-	}
-
-	result := &MutationResult{Detail: detail, Branch: branch}
-
-	// Auto-cleanup: if mutation reverted item to main status, delete the branch.
-	if mainStatus != "" && item != nil && item.Status == mainStatus {
-		c.cleanupBranch(branch)
-		detail.Branch = ""
-		detail.BranchURL = ""
-		detail.MainStatus = ""
-		detail.Delta = ""
-		detail.PRURL = ""
-		detail.BranchActions = nil
-		result.Branch = ""
-		result.Hint = "reverted — branch cleaned up"
-	}
-
-	// Auto-submit PR if branch survived cleanup and no PR exists yet.
-	if result.Branch != "" && detail.PRURL == "" && c.CreatePR != nil {
-		if url, err := c.CreatePR(result.Branch); err == nil {
-			detail.PRURL = url
-			detail.BranchActions = c.computeBranchActions(detail)
-		}
-	}
-
-	return result, nil
+	return &MutationResult{Detail: detail, Branch: branch}
 }

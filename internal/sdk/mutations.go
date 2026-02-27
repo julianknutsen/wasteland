@@ -28,18 +28,27 @@ type PostInput struct {
 
 // Claim claims a wanted item for the current rig.
 func (c *Client) Claim(wantedID string) (*MutationResult, error) {
+	if result := c.prIdempotent(wantedID, "claimed"); result != nil {
+		return result, nil
+	}
 	stmts := []string{commons.ClaimWantedDML(wantedID, c.rigHandle)}
 	return c.mutate(wantedID, "wl claim: "+wantedID, stmts...)
 }
 
 // Unclaim reverts a claimed wanted item to open.
 func (c *Client) Unclaim(wantedID string) (*MutationResult, error) {
+	if result := c.prIdempotent(wantedID, "open"); result != nil {
+		return result, nil
+	}
 	stmts := []string{commons.UnclaimWantedDML(wantedID)}
 	return c.mutate(wantedID, "wl unclaim: "+wantedID, stmts...)
 }
 
 // Done submits completion evidence for a claimed wanted item.
 func (c *Client) Done(wantedID, evidence string) (*MutationResult, error) {
+	if result := c.prIdempotent(wantedID, "in_review"); result != nil {
+		return result, nil
+	}
 	completionID := commons.GeneratePrefixedID("c", wantedID, c.rigHandle)
 	stmts := commons.SubmitCompletionDML(completionID, wantedID, c.rigHandle, evidence, c.hopURI)
 	return c.mutate(wantedID, "wl done: "+wantedID, stmts...)
@@ -82,6 +91,9 @@ func (c *Client) Reject(wantedID, reason string) (*MutationResult, error) {
 
 // Close marks an in_review item as completed without a stamp.
 func (c *Client) Close(wantedID string) (*MutationResult, error) {
+	if result := c.prIdempotent(wantedID, "completed"); result != nil {
+		return result, nil
+	}
 	stmts := []string{commons.CloseWantedDML(wantedID)}
 	return c.mutate(wantedID, "wl close: "+wantedID, stmts...)
 }

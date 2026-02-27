@@ -16,7 +16,7 @@ import {
   submitPR,
   unclaim,
 } from "../api/client";
-import type { DetailResponse } from "../api/types";
+import type { DetailResponse, MutationResponse } from "../api/types";
 import { ActionButton } from "./ActionButton";
 import { ConfirmDialog } from "./ConfirmDialog";
 import styles from "./DetailView.module.css";
@@ -85,18 +85,19 @@ export function DetailView() {
     }
 
     try {
+      let result: MutationResponse | undefined;
       switch (action) {
         case "claim":
-          await claim(id);
+          result = await claim(id);
           break;
         case "unclaim":
-          await unclaim(id);
+          result = await unclaim(id);
           break;
         case "reject":
-          await reject(id);
+          result = await reject(id);
           break;
         case "close":
-          await close(id);
+          result = await close(id);
           break;
         case "delete":
           await deleteItem(id);
@@ -104,7 +105,7 @@ export function DetailView() {
           navigate("/");
           return;
         case "accept":
-          await accept(id);
+          result = await accept(id);
           break;
         case "submit_pr":
           if (data.branch) {
@@ -127,7 +128,13 @@ export function DetailView() {
           return;
       }
       toast.success(`${action} successful`);
-      await load();
+      // Use the detail from the mutation response to avoid a full refetch
+      // (which would flash a skeleton loader).
+      if (result?.detail) {
+        setData(result.detail);
+      } else {
+        await load();
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : `Failed to ${action}`;
       toast.error(msg);
@@ -137,11 +144,15 @@ export function DetailView() {
   const handleDone = async () => {
     if (!id || !evidenceInput.trim()) return;
     try {
-      await done(id, evidenceInput.trim());
+      const result = await done(id, evidenceInput.trim());
       setShowDoneForm(false);
       setEvidenceInput("");
       toast.success("Submitted for review");
-      await load();
+      if (result?.detail) {
+        setData(result.detail);
+      } else {
+        await load();
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to submit");
     }
@@ -160,7 +171,7 @@ export function DetailView() {
     }
   };
 
-  const onActionClick = (action: string) => {
+  const onActionClick = async (action: string) => {
     if (action === "done") {
       setShowDoneForm(true);
       return;
@@ -168,7 +179,7 @@ export function DetailView() {
     if (destructiveActions.has(action)) {
       setConfirm(action);
     } else {
-      handleAction(action);
+      await handleAction(action);
     }
   };
 
@@ -365,10 +376,10 @@ export function DetailView() {
         <ConfirmDialog
           message={`Are you sure you want to ${confirm} this item?`}
           onCancel={() => setConfirm(null)}
-          onConfirm={() => {
+          onConfirm={async () => {
             const action = confirm;
             setConfirm(null);
-            handleAction(action);
+            await handleAction(action);
           }}
         />
       )}
