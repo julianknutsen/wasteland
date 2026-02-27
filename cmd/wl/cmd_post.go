@@ -53,6 +53,7 @@ Examples:
 	cmd.Flags().BoolVar(&noPush, "no-push", false, "Skip pushing to remotes (offline work)")
 
 	_ = cmd.MarkFlagRequired("title")
+	_ = cmd.RegisterFlagCompletionFunc("project", completeProjectNames)
 	_ = cmd.RegisterFlagCompletionFunc("type", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"feature", "bug", "design", "rfc", "docs"}, cobra.ShellCompDirectiveNoFileComp
 	})
@@ -80,7 +81,7 @@ func runPost(cmd *cobra.Command, stdout, _ io.Writer, title, description, projec
 
 	wlCfg, err := resolveWasteland(cmd)
 	if err != nil {
-		return fmt.Errorf("loading wasteland config: %w", err)
+		return hintWrap(err)
 	}
 
 	item := &commons.WantedItem{

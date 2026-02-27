@@ -57,6 +57,8 @@ func (m *mutationContext) Setup() (cleanup func(), err error) {
 	sp.Stop()
 	if syncErr != nil {
 		fmt.Fprintf(m.stdout, "  warning: upstream sync failed: %v\n", syncErr)
+	} else {
+		updateSyncTimestamp(m.cfg)
 	}
 
 	// Detect item location across remotes (best-effort).

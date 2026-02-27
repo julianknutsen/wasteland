@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestParseUpstream(t *testing.T) {
@@ -177,6 +178,87 @@ func TestFileConfigStore_Delete(t *testing.T) {
 	err = store.Delete("nonexistent/db")
 	if err == nil {
 		t.Error("expected error deleting nonexistent config")
+	}
+}
+
+func TestSaveAtomic(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	store := NewConfigStore()
+	cfg := &Config{
+		Upstream:  "org/db",
+		ForkOrg:   "fork",
+		ForkDB:    "db",
+		RigHandle: "rig1",
+	}
+
+	// First save.
+	if err := store.Save(cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := store.Load("org/db")
+	if err != nil {
+		t.Fatalf("Load after first save: %v", err)
+	}
+	if loaded.RigHandle != "rig1" {
+		t.Errorf("RigHandle = %q, want %q", loaded.RigHandle, "rig1")
+	}
+
+	// Second save with different data replaces atomically.
+	cfg.RigHandle = "rig2"
+	if err := store.Save(cfg); err != nil {
+		t.Fatalf("Save (second): %v", err)
+	}
+
+	loaded, err = store.Load("org/db")
+	if err != nil {
+		t.Fatalf("Load after second save: %v", err)
+	}
+	if loaded.RigHandle != "rig2" {
+		t.Errorf("RigHandle = %q, want %q", loaded.RigHandle, "rig2")
+	}
+
+	// Verify no temp files left behind.
+	dir := filepath.Dir(filepath.Join(tmpDir, "wasteland", "wastelands", "org", "db.json"))
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".tmp" {
+			t.Errorf("stale temp file found: %s", e.Name())
+		}
+	}
+}
+
+func TestSaveAtomicWithLastSyncAt(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	store := NewConfigStore()
+	now := time.Now().Truncate(time.Second)
+	cfg := &Config{
+		Upstream:   "org/db",
+		ForkOrg:    "fork",
+		ForkDB:     "db",
+		LastSyncAt: &now,
+	}
+
+	if err := store.Save(cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := store.Load("org/db")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.LastSyncAt == nil {
+		t.Fatal("LastSyncAt should not be nil after round-trip")
+	}
+	if !loaded.LastSyncAt.Equal(now) {
+		t.Errorf("LastSyncAt = %v, want %v", *loaded.LastSyncAt, now)
 	}
 }
 

@@ -94,7 +94,7 @@ func runConfigGet(cmd *cobra.Command, stdout, _ io.Writer, key string) error {
 
 	cfg, err := resolveWasteland(cmd)
 	if err != nil {
-		return fmt.Errorf("loading wasteland config: %w", err)
+		return hintWrap(err)
 	}
 
 	switch key {
@@ -136,7 +136,7 @@ func runConfigSet(cmd *cobra.Command, stdout, _ io.Writer, key, value string) er
 	store := federation.NewConfigStore()
 	cfg, err := federation.ResolveConfig(store, explicit)
 	if err != nil {
-		return fmt.Errorf("loading wasteland config: %w", err)
+		return hintWrap(err)
 	}
 
 	switch key {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -128,6 +129,21 @@ func TestSyncNoArgs(t *testing.T) {
 		}
 	}
 	t.Fatal("sync command not found")
+}
+
+func TestRunHintedError(t *testing.T) {
+	// Running a command that requires a wasteland config when none exists
+	// should produce a HintedError with a hint on stderr.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"browse"}, &stdout, &stderr)
+	if code != 1 {
+		t.Errorf("run(browse) exit code = %d, want 1; stderr=%s", code, stderr.String())
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "Hint:") {
+		t.Errorf("expected 'Hint:' in stderr, got: %s", out)
+	}
 }
 
 func TestVersionOutput(t *testing.T) {

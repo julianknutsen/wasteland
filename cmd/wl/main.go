@@ -39,6 +39,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := root.Execute(); err != nil {
 		if !errors.Is(err, errExit) {
 			fmt.Fprintf(stderr, "wl: %v\n", err)
+			var hinted *HintedError
+			if errors.As(err, &hinted) {
+				fmt.Fprintf(stderr, "\n  Hint: %s\n", hinted.Hint)
+			}
 		}
 		return 1
 	}
@@ -62,6 +66,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		},
 	}
 	root.PersistentFlags().String("wasteland", "", "Upstream wasteland to use (e.g., org/db); required when multiple are joined")
+	_ = root.RegisterFlagCompletionFunc("wasteland", completeWastelandNames)
 	root.PersistentFlags().String("color", "auto", "Color output: always, auto, never")
 	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
 		colorMode, _ := cmd.Flags().GetString("color")

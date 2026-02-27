@@ -31,7 +31,7 @@ func newTUICmd(stdout, stderr io.Writer) *cobra.Command {
 func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 	cfg, err := resolveWasteland(cmd)
 	if err != nil {
-		return fmt.Errorf("loading wasteland config: %w", err)
+		return hintWrap(err)
 	}
 
 	var db commons.DB

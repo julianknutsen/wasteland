@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/julianknutsen/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/spf13/cobra"
 )
 
@@ -55,8 +56,9 @@ func completeBranchNames(cmd *cobra.Command, args []string, _ string) ([]string,
 }
 
 // listWantedIDsWithTimeout queries wanted IDs with a 2-second timeout.
+// Returns items in cobra completion format: "id\tPn title" for rich shell hints.
 func listWantedIDsWithTimeout(dbDir, statusFilter string) []string {
-	query := "SELECT id FROM wanted"
+	query := "SELECT id, title, priority FROM wanted"
 	if statusFilter != "" {
 		query += " WHERE status = '" + commons.EscapeSQL(statusFilter) + "'"
 	}
@@ -69,14 +71,31 @@ func listWantedIDsWithTimeout(dbDir, statusFilter string) []string {
 	if len(lines) < 2 {
 		return nil
 	}
-	var ids []string
+	var items []string
 	for _, line := range lines[1:] {
-		id := strings.TrimSpace(line)
-		if id != "" {
-			ids = append(ids, id)
+		fields := strings.SplitN(line, ",", 3)
+		if len(fields) < 1 {
+			continue
 		}
+		id := strings.TrimSpace(fields[0])
+		if id == "" {
+			continue
+		}
+		if len(fields) >= 2 {
+			title := strings.TrimSpace(fields[1])
+			if len(title) > 40 {
+				title = title[:40] + "..."
+			}
+			if len(fields) >= 3 {
+				pri := strings.TrimSpace(fields[2])
+				id += "\t" + "P" + pri + " " + title
+			} else {
+				id += "\t" + title
+			}
+		}
+		items = append(items, id)
 	}
-	return ids
+	return items
 }
 
 // listBranchesWithTimeout queries wl/* branches with a 2-second timeout.
@@ -134,6 +153,46 @@ func readCompletionCache(key string) []string {
 		return nil
 	}
 	return items
+}
+
+// completeProjectNames provides completion for --project flags.
+func completeProjectNames(cmd *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	cfg, err := resolveWasteland(cmd)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	cacheKey := "projects"
+	if cached := readCompletionCache(cacheKey); cached != nil {
+		return cached, cobra.ShellCompDirectiveNoFileComp
+	}
+	query := "SELECT DISTINCT project FROM wanted WHERE project != '' ORDER BY project LIMIT 50"
+	out := doltQueryWithTimeout(cfg.LocalDir, query, 2*time.Second)
+	if out == "" {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) < 2 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var projects []string
+	for _, line := range lines[1:] {
+		p := strings.TrimSpace(line)
+		if p != "" {
+			projects = append(projects, p)
+		}
+	}
+	writeCompletionCache(cacheKey, projects)
+	return projects, cobra.ShellCompDirectiveNoFileComp
+}
+
+// completeWastelandNames provides completion for the --wasteland persistent flag.
+func completeWastelandNames(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	store := federation.NewConfigStore()
+	upstreams, err := store.List()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return upstreams, cobra.ShellCompDirectiveNoFileComp
 }
 
 // writeCompletionCache writes completions to the cache.

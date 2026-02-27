@@ -43,7 +43,7 @@ Examples:
 func runDelete(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush bool) error {
 	wlCfg, err := resolveWasteland(cmd)
 	if err != nil {
-		return fmt.Errorf("loading wasteland config: %w", err)
+		return hintWrap(err)
 	}
 
 	wantedID, err = resolveWantedArg(wlCfg, wantedID)
@@ -74,6 +74,8 @@ func runDelete(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush 
 		fmt.Fprintf(stdout, "\n  %s %s\n", style.Warning.Render(style.IconWarn),
 			"Push failed — changes saved locally. Run 'wl sync' to retry.")
 	}
+
+	fmt.Fprintf(stdout, "\n  %s\n", style.Dim.Render("Next: wl browse to see the board"))
 
 	return nil
 }

@@ -72,6 +72,9 @@ type Config struct {
 	// Signing enables GPG-signed Dolt commits when true.
 	Signing bool `json:"signing,omitempty"`
 
+	// LastSyncAt records when the local clone was last synced with upstream.
+	LastSyncAt *time.Time `json:"last_sync_at,omitempty"`
+
 	// GitHubRepo is the upstream GitHub repo for PR shells (e.g., "steveyegge/wl-commons").
 	//
 	// Deprecated: use ProviderType == "github" instead.
@@ -745,7 +748,27 @@ func (f *fileConfigStore) Save(cfg *Config) error {
 		return fmt.Errorf("marshaling wasteland config: %w", err)
 	}
 	data = append(data, '\n')
-	return os.WriteFile(path, data, 0o644)
+
+	// Atomic write: temp file in same dir, then rename.
+	tmp, err := os.CreateTemp(dir, ".wl-*.tmp")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("writing config: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("closing temp file: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("renaming config: %w", err)
+	}
+	return nil
 }
 
 func (f *fileConfigStore) Delete(upstream string) error {

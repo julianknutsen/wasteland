@@ -44,7 +44,7 @@ Examples:
 func runMerge(cmd *cobra.Command, stdout, _ io.Writer, branch string, noPush, keepBranch bool) error {
 	cfg, err := resolveWasteland(cmd)
 	if err != nil {
-		return fmt.Errorf("loading wasteland config: %w", err)
+		return hintWrap(err)
 	}
 
 	exists, err := commons.BranchExists(cfg.LocalDir, branch)

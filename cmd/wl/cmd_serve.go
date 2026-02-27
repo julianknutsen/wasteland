@@ -57,7 +57,7 @@ func runServe(cmd *cobra.Command, stdout, stderr io.Writer) error {
 
 	cfg, err := resolveWasteland(cmd)
 	if err != nil {
-		return fmt.Errorf("loading wasteland config: %w", err)
+		return hintWrap(err)
 	}
 
 	var db commons.DB

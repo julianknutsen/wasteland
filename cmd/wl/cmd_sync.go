@@ -42,7 +42,7 @@ func runSync(cmd *cobra.Command, stdout, stderr io.Writer, dryRun bool) error {
 
 	cfg, err := resolveWasteland(cmd)
 	if err != nil {
-		return fmt.Errorf("loading wasteland config: %w", err)
+		return hintWrap(err)
 	}
 	forkDir := cfg.LocalDir
 
@@ -83,6 +83,7 @@ func runSync(cmd *cobra.Command, stdout, stderr io.Writer, dryRun bool) error {
 	}
 
 	fmt.Fprintf(stdout, "\n%s Synced with upstream\n", style.Bold.Render("✓"))
+	updateSyncTimestamp(cfg)
 
 	// Show summary
 	summaryQuery := `SELECT

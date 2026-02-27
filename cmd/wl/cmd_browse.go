@@ -74,6 +74,7 @@ EXAMPLES:
 	cmd.Flags().StringVar(&postedBy, "posted-by", "", "Filter by poster's rig handle")
 	cmd.Flags().StringVar(&claimedBy, "claimed-by", "", "Filter by claimer's rig handle")
 	cmd.Flags().StringVar(&search, "search", "", "Search in title")
+	_ = cmd.RegisterFlagCompletionFunc("project", completeProjectNames)
 	_ = cmd.RegisterFlagCompletionFunc("status", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"open", "claimed", "in_review", "completed", "withdrawn"}, cobra.ShellCompDirectiveNoFileComp
 	})
@@ -87,7 +88,7 @@ EXAMPLES:
 func runBrowse(cmd *cobra.Command, stdout, _ io.Writer, filter commons.BrowseFilter, jsonOut, ephemeral bool) error {
 	cfg, err := resolveWasteland(cmd)
 	if err != nil {
-		return fmt.Errorf("loading wasteland config: %w", err)
+		return hintWrap(err)
 	}
 
 	if err := requireDolt(); err != nil {
@@ -100,7 +101,11 @@ func runBrowse(cmd *cobra.Command, stdout, _ io.Writer, filter commons.BrowseFil
 		return runBrowseEphemeral(stdout, cfg, query, jsonOut)
 	}
 
-	return runBrowseLocal(stdout, cfg, query, jsonOut)
+	if err := runBrowseLocal(stdout, cfg, query, jsonOut); err != nil {
+		return err
+	}
+	warnIfStale(stdout, cfg)
+	return nil
 }
 
 func runBrowseLocal(stdout io.Writer, cfg *federation.Config, query string, jsonOut bool) error {

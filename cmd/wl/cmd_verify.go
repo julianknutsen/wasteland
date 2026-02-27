@@ -34,7 +34,7 @@ Use --last to control how many commits to inspect (default 5).`,
 func runVerify(cmd *cobra.Command, stdout, stderr io.Writer, last int) error {
 	wlCfg, err := resolveWasteland(cmd)
 	if err != nil {
-		return fmt.Errorf("loading wasteland config: %w", err)
+		return hintWrap(err)
 	}
 
 	args := []string{"log", "--show-signature", "-n", strconv.Itoa(last)}

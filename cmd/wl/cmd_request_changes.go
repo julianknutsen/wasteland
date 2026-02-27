@@ -38,7 +38,7 @@ Examples:
 func runRequestChanges(cmd *cobra.Command, stdout, _ io.Writer, branch, comment string) error {
 	cfg, err := resolveWasteland(cmd)
 	if err != nil {
-		return fmt.Errorf("loading wasteland config: %w", err)
+		return hintWrap(err)
 	}
 
 	if !cfg.IsGitHub() {
