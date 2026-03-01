@@ -114,6 +114,20 @@ type ConfigResponse struct {
 	Upstreams []UpstreamInfoJSON `json:"upstreams,omitempty"`
 }
 
+// LeaderboardEntryJSON is the JSON representation of a leaderboard entry.
+type LeaderboardEntryJSON struct {
+	RigHandle   string   `json:"rig_handle"`
+	Completions int      `json:"completions"`
+	AvgQuality  float64  `json:"avg_quality"`
+	AvgReliab   float64  `json:"avg_reliability"`
+	TopSkills   []string `json:"top_skills,omitempty"`
+}
+
+// LeaderboardResponse is the JSON response for GET /api/leaderboard.
+type LeaderboardResponse struct {
+	Entries []LeaderboardEntryJSON `json:"entries"`
+}
+
 // ErrorResponse is the JSON error envelope.
 type ErrorResponse struct {
 	Error string `json:"error"`
@@ -289,6 +303,20 @@ func toBrowseResponse(r *sdk.BrowseResult) *BrowseResponse {
 		items[i] = toSummaryJSON(s, r.PendingIDs[s.ID])
 	}
 	return &BrowseResponse{Items: items}
+}
+
+func toLeaderboardResponse(entries []commons.LeaderboardEntry) *LeaderboardResponse {
+	items := make([]LeaderboardEntryJSON, len(entries))
+	for i, e := range entries {
+		items[i] = LeaderboardEntryJSON{
+			RigHandle:   e.RigHandle,
+			Completions: e.Completions,
+			AvgQuality:  e.AvgQuality,
+			AvgReliab:   e.AvgReliab,
+			TopSkills:   e.TopSkills,
+		}
+	}
+	return &LeaderboardResponse{Entries: items}
 }
 
 func toDashboardResponse(d *commons.DashboardData) *DashboardResponse {
