@@ -11,11 +11,11 @@ import (
 	"github.com/julianknutsen/wasteland/internal/inference"
 )
 
+// Tests that modify inference.OllamaURL must not use t.Parallel().
+
 // --- executeInferRun tests ---
 
 func TestExecuteInferRun_Success(t *testing.T) {
-	t.Parallel()
-
 	output := "The answer is 2."
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -40,7 +40,7 @@ func TestExecuteInferRun_Success(t *testing.T) {
 		PostedBy:    "bob",
 	})
 
-	completionID, err := executeInferRun(store, "w-infer1", "alice")
+	completionID, err := executeInferRun(store, "w-infer1", "alice", false)
 	if err != nil {
 		t.Fatalf("executeInferRun() error: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestExecuteInferRun_WrongType(t *testing.T) {
 		Type:  "bug",
 	})
 
-	_, err := executeInferRun(store, "w-bug1", "alice")
+	_, err := executeInferRun(store, "w-bug1", "alice", false)
 	if err == nil {
 		t.Fatal("expected error for wrong type")
 	}
@@ -102,7 +102,7 @@ func TestExecuteInferRun_NotOpen(t *testing.T) {
 	})
 	_ = store.ClaimWanted("w-claimed1", "bob")
 
-	_, err := executeInferRun(store, "w-claimed1", "alice")
+	_, err := executeInferRun(store, "w-claimed1", "alice", false)
 	if err == nil {
 		t.Fatal("expected error for non-open item")
 	}
@@ -121,14 +121,13 @@ func TestExecuteInferRun_BadDescription(t *testing.T) {
 		Type:        "inference",
 	})
 
-	_, err := executeInferRun(store, "w-badjson", "alice")
+	_, err := executeInferRun(store, "w-badjson", "alice", false)
 	if err == nil {
 		t.Fatal("expected error for bad description JSON")
 	}
 }
 
 func TestExecuteInferRun_OllamaFailure(t *testing.T) {
-	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("model not found"))
@@ -149,7 +148,7 @@ func TestExecuteInferRun_OllamaFailure(t *testing.T) {
 		Type:        "inference",
 	})
 
-	_, err := executeInferRun(store, "w-fail1", "alice")
+	_, err := executeInferRun(store, "w-fail1", "alice", false)
 	if err == nil {
 		t.Fatal("expected error for ollama failure")
 	}
@@ -161,11 +160,106 @@ func TestExecuteInferRun_OllamaFailure(t *testing.T) {
 	}
 }
 
+// --- executeInferRun --skip-claim tests ---
+
+func TestExecuteInferRun_SkipClaim_Success(t *testing.T) {
+	output := "The answer is 2."
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(struct {
+			Response string `json:"response"`
+		}{Response: output})
+	}))
+	defer srv.Close()
+
+	old := inference.OllamaURL
+	inference.OllamaURL = srv.URL
+	defer func() { inference.OllamaURL = old }()
+
+	store := newFakeWLCommonsStore()
+	job := &inference.Job{Prompt: "what is 1+1", Model: "llama3.2:1b", Seed: 42}
+	desc, _ := inference.EncodeJob(job)
+	_ = store.InsertWanted(&commons.WantedItem{
+		ID:          "w-skip1",
+		Title:       "infer: already claimed",
+		Description: desc,
+		Type:        "inference",
+		PostedBy:    "bob",
+	})
+	_ = store.ClaimWanted("w-skip1", "alice")
+
+	completionID, err := executeInferRun(store, "w-skip1", "alice", true)
+	if err != nil {
+		t.Fatalf("executeInferRun(skipClaim=true) error: %v", err)
+	}
+	if completionID == "" {
+		t.Fatal("expected non-empty completion ID")
+	}
+
+	item, _ := store.QueryWanted("w-skip1")
+	if item.Status != "in_review" {
+		t.Errorf("status = %q, want %q", item.Status, "in_review")
+	}
+}
+
+func TestExecuteInferRun_SkipClaim_NotClaimed(t *testing.T) {
+	t.Parallel()
+	store := newFakeWLCommonsStore()
+	job := &inference.Job{Prompt: "test", Model: "m", Seed: 1}
+	desc, _ := inference.EncodeJob(job)
+	_ = store.InsertWanted(&commons.WantedItem{
+		ID:          "w-skipopen",
+		Title:       "Still open",
+		Description: desc,
+		Type:        "inference",
+	})
+
+	_, err := executeInferRun(store, "w-skipopen", "alice", true)
+	if err == nil {
+		t.Fatal("expected error for non-claimed item with --skip-claim")
+	}
+	if !strings.Contains(err.Error(), "claimed") {
+		t.Errorf("error = %q, want to mention 'claimed'", err.Error())
+	}
+}
+
+func TestExecuteInferRun_SkipClaim_OllamaFailure_NoUnclaim(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("fail"))
+	}))
+	defer srv.Close()
+
+	old := inference.OllamaURL
+	inference.OllamaURL = srv.URL
+	defer func() { inference.OllamaURL = old }()
+
+	store := newFakeWLCommonsStore()
+	job := &inference.Job{Prompt: "test", Model: "bad", Seed: 1}
+	desc, _ := inference.EncodeJob(job)
+	_ = store.InsertWanted(&commons.WantedItem{
+		ID:          "w-skipfail",
+		Title:       "Will fail",
+		Description: desc,
+		Type:        "inference",
+	})
+	_ = store.ClaimWanted("w-skipfail", "alice")
+
+	_, err := executeInferRun(store, "w-skipfail", "alice", true)
+	if err == nil {
+		t.Fatal("expected error for ollama failure")
+	}
+
+	// With --skip-claim, should NOT unclaim on failure (feeder owns the claim).
+	item, _ := store.QueryWanted("w-skipfail")
+	if item.Status != "claimed" {
+		t.Errorf("status = %q, want %q (should stay claimed with --skip-claim)", item.Status, "claimed")
+	}
+}
+
 // --- executeInferVerify tests ---
 
 func TestExecuteInferVerify_Match(t *testing.T) {
-	t.Parallel()
-
 	output := "The answer is 2."
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -209,8 +303,6 @@ func TestExecuteInferVerify_Match(t *testing.T) {
 }
 
 func TestExecuteInferVerify_Mismatch(t *testing.T) {
-	t.Parallel()
-
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(struct {
