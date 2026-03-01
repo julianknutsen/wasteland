@@ -122,4 +122,13 @@ describe("BrowseList", () => {
     await waitFor(() => expect(screen.getAllByText("No PR").length).toBeGreaterThan(0));
     expect(screen.queryByText("pending")).not.toBeInTheDocument();
   });
+
+  it("i key opens inference form", async () => {
+    cleanupFetch = mockFetch(() => makeBrowseResponse([makeSummary()]));
+    renderBrowse();
+    await waitFor(() => expect(screen.getAllByText("Fix the thing").length).toBeGreaterThan(0));
+
+    fireEvent.keyDown(window, { key: "i" });
+    expect(screen.getByText("Post Inference Job")).toBeInTheDocument();
+  });
 });

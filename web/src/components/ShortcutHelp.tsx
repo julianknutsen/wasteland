@@ -19,6 +19,7 @@ const shortcuts = [
     items: [
       { label: "Command Palette", key: "\u2318K" },
       { label: "Create Item", key: "c" },
+      { label: "Post Inference Job", key: "i" },
       { label: "Shortcut Help", key: "?" },
     ],
   },

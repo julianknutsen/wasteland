@@ -19,6 +19,7 @@ export function BrowseList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [showInferForm, setShowInferForm] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const searchRef = useRef<HTMLInputElement>(null);
   const hasLoadedRef = useRef(false);
@@ -67,6 +68,9 @@ export function BrowseList() {
         case "c":
           setShowForm(true);
           break;
+        case "i":
+          setShowInferForm(true);
+          break;
         case "/":
           e.preventDefault();
           searchRef.current?.focus();
@@ -82,9 +86,14 @@ export function BrowseList() {
     <div className={styles.page}>
       <div className={styles.header}>
         <h2 className={styles.heading}>Wanted Board</h2>
-        <button type="button" className={styles.postBtn} onClick={() => setShowForm(true)}>
-          + Post
-        </button>
+        <div className={styles.headerActions}>
+          <button type="button" className={styles.inferBtn} onClick={() => setShowInferForm(true)}>
+            + Infer
+          </button>
+          <button type="button" className={styles.postBtn} onClick={() => setShowForm(true)}>
+            + Post
+          </button>
+        </div>
       </div>
 
       <FilterBar filter={filter} onChange={setFilter} searchRef={searchRef} />
@@ -187,6 +196,17 @@ export function BrowseList() {
           onClose={() => setShowForm(false)}
           onSaved={() => {
             setShowForm(false);
+            load();
+          }}
+        />
+      )}
+
+      {showInferForm && (
+        <WantedForm
+          mode="inference"
+          onClose={() => setShowInferForm(false)}
+          onSaved={() => {
+            setShowInferForm(false);
             load();
           }}
         />

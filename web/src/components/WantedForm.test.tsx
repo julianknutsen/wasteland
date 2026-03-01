@@ -115,3 +115,82 @@ describe("WantedForm", () => {
     });
   });
 });
+
+describe("WantedForm inference mode", () => {
+  it("renders inference-specific fields and hides generic fields", () => {
+    cleanupFetch = mockFetch(() => ({}));
+    renderWithRouter(<WantedForm mode="inference" onClose={onClose} onSaved={onSaved} />);
+    expect(screen.getByText("Post Inference Job")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("What should the model generate?")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("llama3.2:1b")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("What needs to be done?")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("tag1, tag2, ...")).not.toBeInTheDocument();
+  });
+
+  it("submit disabled when prompt or model empty", () => {
+    cleanupFetch = mockFetch(() => ({}));
+    renderWithRouter(<WantedForm mode="inference" onClose={onClose} onSaved={onSaved} />);
+    expect(screen.getByText("Post Job")).toBeDisabled();
+  });
+
+  it("submit disabled when only prompt filled", async () => {
+    cleanupFetch = mockFetch(() => ({}));
+    renderWithRouter(<WantedForm mode="inference" onClose={onClose} onSaved={onSaved} />);
+    await userEvent.type(screen.getByPlaceholderText("What should the model generate?"), "test prompt");
+    expect(screen.getByText("Post Job")).toBeDisabled();
+  });
+
+  it("sends correctly shaped PostInput", async () => {
+    const fetchFn = vi.fn<FetchFn>(() => ({ detail: null }));
+    cleanupFetch = mockFetch(fetchFn);
+    renderWithRouter(<WantedForm mode="inference" onClose={onClose} onSaved={onSaved} />);
+
+    await userEvent.type(screen.getByPlaceholderText("What should the model generate?"), "Summarize this");
+    await userEvent.type(screen.getByPlaceholderText("llama3.2:1b"), "llama3.2:1b");
+    await userEvent.click(screen.getByText("Post Job"));
+
+    await waitFor(() => {
+      const postCalls = fetchFn.mock.calls.filter(([, init]) => init?.method === "POST");
+      expect(postCalls.length).toBeGreaterThan(0);
+      const body = JSON.parse(postCalls[0][1]?.body as string);
+      expect(body.title).toBe("infer: Summarize this");
+      expect(body.type).toBe("inference");
+      expect(body.priority).toBe(2);
+      expect(body.effort_level).toBe("small");
+      const desc = JSON.parse(body.description);
+      expect(desc.prompt).toBe("Summarize this");
+      expect(desc.model).toBe("llama3.2:1b");
+      expect(desc.seed).toBe(42);
+      expect(desc.max_tokens).toBe(0);
+    });
+  });
+
+  it("advanced toggle shows seed and max tokens", async () => {
+    cleanupFetch = mockFetch(() => ({}));
+    renderWithRouter(<WantedForm mode="inference" onClose={onClose} onSaved={onSaved} />);
+
+    expect(screen.queryByText("Seed")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByText("+ Advanced"));
+    expect(screen.getByText("Seed")).toBeInTheDocument();
+    expect(screen.getByText("Max Tokens")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("42")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("0")).toBeInTheDocument();
+  });
+
+  it("truncates long prompts in title to 60 chars", async () => {
+    const fetchFn = vi.fn<FetchFn>(() => ({ detail: null }));
+    cleanupFetch = mockFetch(fetchFn);
+    renderWithRouter(<WantedForm mode="inference" onClose={onClose} onSaved={onSaved} />);
+
+    const longPrompt = "a".repeat(80);
+    await userEvent.type(screen.getByPlaceholderText("What should the model generate?"), longPrompt);
+    await userEvent.type(screen.getByPlaceholderText("llama3.2:1b"), "llama3.2:1b");
+    await userEvent.click(screen.getByText("Post Job"));
+
+    await waitFor(() => {
+      const postCalls = fetchFn.mock.calls.filter(([, init]) => init?.method === "POST");
+      const body = JSON.parse(postCalls[0][1]?.body as string);
+      expect(body.title).toBe(`infer: ${"a".repeat(60)}...`);
+    });
+  });
+});

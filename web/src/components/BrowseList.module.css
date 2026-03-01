@@ -100,12 +100,33 @@
   font-variant-numeric: tabular-nums;
 }
 
+.headerActions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
 .postBtn {
   padding: 6px 18px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--green);
   background: transparent;
   color: var(--green);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  min-height: 44px;
+}
+
+.inferBtn {
+  padding: 6px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--purple);
+  background: transparent;
+  color: var(--purple);
   cursor: pointer;
   font-family: var(--font-heading);
   font-size: var(--text-sm);

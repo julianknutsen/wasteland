@@ -155,6 +155,99 @@
   text-align: right;
 }
 
+/* Inference mode styles */
+
+.overlayInfer {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(62, 27, 60, 0.6);
+  z-index: 100;
+  animation: fadeIn var(--transition-normal) ease;
+}
+
+.dialogInfer {
+  background: var(--surface);
+  border: 2px solid var(--purple);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  max-width: 560px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(106, 27, 154, 0.25);
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideUp var(--transition-slow) ease;
+}
+
+.titleInfer {
+  color: var(--purple);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  margin: 0 0 var(--space-4);
+}
+
+.textareaMono {
+  width: 100%;
+  padding: var(--space-2) 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  font-size: var(--text-base);
+  font-family: var(--font-mono);
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.inputMono {
+  width: 100%;
+  padding: var(--space-2) 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  font-size: var(--text-base);
+  font-family: var(--font-mono);
+  box-sizing: border-box;
+}
+
+.advancedToggle {
+  background: none;
+  border: none;
+  color: var(--dim);
+  font-size: var(--text-sm);
+  font-family: var(--font-heading);
+  cursor: pointer;
+  padding: var(--space-1) 0;
+  margin-bottom: var(--space-2);
+}
+
+.advancedToggle:hover {
+  color: var(--purple);
+}
+
+.submitBtnInfer {
+  padding: 6px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--purple);
+  background: transparent;
+  color: var(--purple);
+  cursor: pointer;
+  font-family: var(--font-heading);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.submitBtnInfer:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 768px) {
   .overlay {
     align-items: flex-end;
@@ -178,6 +271,7 @@
   }
 
   .submitBtn,
+  .submitBtnInfer,
   .cancelBtn {
     min-height: 44px;
     flex: 1;
@@ -185,5 +279,21 @@
 
   .actions {
     flex-direction: column-reverse;
+  }
+
+  .overlayInfer {
+    align-items: flex-end;
+  }
+
+  .dialogInfer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-width: 100%;
+    width: 100%;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    max-height: 90vh;
+    overflow-y: auto;
   }
 }
