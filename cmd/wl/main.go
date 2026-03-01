@@ -105,6 +105,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		newTUICmd(stdout, stderr),
 		newServeCmd(stdout, stderr),
 		newDoctorCmd(stdout, stderr),
+		newInferCmd(stdout, stderr),
 		newVersionCmd(stdout),
 	)
 	return root

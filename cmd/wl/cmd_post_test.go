@@ -91,7 +91,7 @@ func TestPostWanted_InsertFails(t *testing.T) {
 
 func TestValidatePostInputs_ValidType(t *testing.T) {
 	t.Parallel()
-	for _, typ := range []string{"feature", "bug", "design", "rfc", "docs", ""} {
+	for _, typ := range []string{"feature", "bug", "design", "rfc", "docs", "inference", ""} {
 		if err := validatePostInputs(typ, "medium", 2); err != nil {
 			t.Errorf("validatePostInputs(type=%q) unexpected error: %v", typ, err)
 		}

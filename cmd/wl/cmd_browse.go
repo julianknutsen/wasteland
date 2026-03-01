@@ -66,7 +66,7 @@ EXAMPLES:
 
 	cmd.Flags().StringVar(&project, "project", "", "Filter by project (e.g., gastown, beads, hop)")
 	cmd.Flags().StringVar(&status, "status", "open", "Filter by status (open, claimed, in_review, completed, withdrawn)")
-	cmd.Flags().StringVar(&itemType, "type", "", "Filter by type (feature, bug, design, rfc, docs)")
+	cmd.Flags().StringVar(&itemType, "type", "", "Filter by type (feature, bug, design, rfc, docs, inference)")
 	cmd.Flags().IntVar(&priority, "priority", -1, "Filter by priority (0=critical, 2=medium, 4=backlog)")
 	cmd.Flags().IntVar(&limit, "limit", 50, "Maximum items to display")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output as JSON")
@@ -79,7 +79,7 @@ EXAMPLES:
 		return []string{"open", "claimed", "in_review", "completed", "withdrawn"}, cobra.ShellCompDirectiveNoFileComp
 	})
 	_ = cmd.RegisterFlagCompletionFunc("type", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-		return []string{"feature", "bug", "design", "rfc", "docs"}, cobra.ShellCompDirectiveNoFileComp
+		return []string{"feature", "bug", "design", "rfc", "docs", "inference"}, cobra.ShellCompDirectiveNoFileComp
 	})
 
 	return cmd

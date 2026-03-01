@@ -308,7 +308,7 @@ func ValidStatuses() []string {
 
 // ValidTypes returns the browse filter type cycle.
 func ValidTypes() []string {
-	return []string{"", "feature", "bug", "design", "rfc", "docs"}
+	return []string{"", "feature", "bug", "design", "rfc", "docs", "inference"}
 }
 
 // StatusLabel returns a human-readable label for a status filter value.
