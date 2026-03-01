@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+// maxLeaderboardLimit is the hard ceiling for leaderboard queries to prevent
+// unbounded data aggregation and excessive memory usage.
+const maxLeaderboardLimit = 100
+
 // LeaderboardEntry holds aggregated stats for one rig on the leaderboard.
 type LeaderboardEntry struct {
 	RigHandle   string
@@ -21,6 +25,9 @@ func QueryLeaderboard(db DB, limit int) ([]LeaderboardEntry, error) {
 	if limit <= 0 {
 		limit = 20
 	}
+	if limit > maxLeaderboardLimit {
+		limit = maxLeaderboardLimit
+	}
 
 	// Join completions with stamps to get per-rig aggregates.
 	// Only count completions that have been validated (stamp_id IS NOT NULL).
@@ -32,7 +39,7 @@ func QueryLeaderboard(db DB, limit int) ([]LeaderboardEntry, error) {
 FROM completions c
 JOIN stamps s ON c.stamp_id = s.id
 GROUP BY c.completed_by
-ORDER BY completions DESC, avg_quality DESC
+ORDER BY completions DESC, avg_quality DESC, c.completed_by ASC
 LIMIT %d`, limit)
 
 	output, err := db.Query(query, "")
@@ -47,9 +54,18 @@ LIMIT %d`, limit)
 
 	entries := make([]LeaderboardEntry, 0, len(rows))
 	for _, row := range rows {
-		completions, _ := strconv.Atoi(row["completions"])
-		avgQ, _ := strconv.ParseFloat(row["avg_quality"], 64)
-		avgR, _ := strconv.ParseFloat(row["avg_reliability"], 64)
+		completions, err := strconv.Atoi(row["completions"])
+		if err != nil {
+			return nil, fmt.Errorf("parsing completions for %q: %w", row["completed_by"], err)
+		}
+		avgQ, err := strconv.ParseFloat(row["avg_quality"], 64)
+		if err != nil {
+			return nil, fmt.Errorf("parsing avg_quality for %q: %w", row["completed_by"], err)
+		}
+		avgR, err := strconv.ParseFloat(row["avg_reliability"], 64)
+		if err != nil {
+			return nil, fmt.Errorf("parsing avg_reliability for %q: %w", row["completed_by"], err)
+		}
 
 		entries = append(entries, LeaderboardEntry{
 			RigHandle:   row["completed_by"],
@@ -59,48 +75,69 @@ LIMIT %d`, limit)
 		})
 	}
 
-	// Fetch top skills per rig.
-	for i := range entries {
-		entries[i].TopSkills = queryTopSkills(db, entries[i].RigHandle)
+	// Fetch top skills for all rigs in a single query to avoid N+1.
+	if err := populateTopSkills(db, entries); err != nil {
+		return nil, fmt.Errorf("querying top skills: %w", err)
 	}
 
 	return entries, nil
 }
 
-// queryTopSkills returns the most frequent skill tags from stamps earned by a rig.
-func queryTopSkills(db DB, rigHandle string) []string {
-	// Stamps reference completions via context_id (context_type='completion').
-	// We need skill_tags from stamps where the subject completed the work.
-	query := fmt.Sprintf(`SELECT s.skill_tags
-FROM stamps s
-JOIN completions c ON s.context_id = c.id
-WHERE c.completed_by = '%s' AND s.context_type = 'completion' AND s.skill_tags IS NOT NULL AND s.skill_tags != ''`,
-		EscapeSQL(rigHandle))
+// populateTopSkills fetches skill tags for all rigs in a single query and
+// assigns the top 5 most frequent tags to each entry.
+func populateTopSkills(db DB, entries []LeaderboardEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	// Build IN clause from rig handles.
+	handles := make([]string, len(entries))
+	for i, e := range entries {
+		handles[i] = fmt.Sprintf("'%s'", EscapeSQL(e.RigHandle))
+	}
+
+	// Use the same join path as the main query (completions.stamp_id → stamps.id)
+	// to ensure consistency between which stamps count for ranking vs skills.
+	// No global LIMIT — the IN clause is bounded by the main query's limit (≤100 rigs).
+	query := fmt.Sprintf(`SELECT c.completed_by, s.skill_tags
+FROM completions c
+JOIN stamps s ON c.stamp_id = s.id
+WHERE c.completed_by IN (%s) AND s.skill_tags IS NOT NULL AND s.skill_tags != ''
+ORDER BY c.completed_by`,
+		strings.Join(handles, ","))
 
 	output, err := db.Query(query, "")
 	if err != nil {
-		return nil
+		return err
 	}
 
 	rows := parseSimpleCSV(output)
-	if len(rows) == 0 {
-		return nil
-	}
 
-	// Count tag frequency across all stamps.
-	freq := make(map[string]int)
+	// Count tag frequency per rig. Use parseTagsJSON which skips malformed
+	// entries — a single bad row should not break the entire leaderboard.
+	perRig := make(map[string]map[string]int)
 	for _, row := range rows {
+		rig := row["completed_by"]
 		tags := parseTagsJSON(row["skill_tags"])
+		if len(tags) == 0 {
+			continue
+		}
+		if perRig[rig] == nil {
+			perRig[rig] = make(map[string]int)
+		}
 		for _, tag := range tags {
-			freq[strings.ToLower(tag)]++
+			perRig[rig][strings.ToLower(tag)]++
 		}
 	}
 
-	// Return top 5 by frequency.
-	return topNKeys(freq, 5)
+	for i := range entries {
+		entries[i].TopSkills = topNKeys(perRig[entries[i].RigHandle], 5)
+	}
+	return nil
 }
 
-// topNKeys returns the top n keys from a frequency map, sorted by count descending.
+// topNKeys returns the top n keys from a frequency map, sorted by count
+// descending then key ascending for deterministic output.
 func topNKeys(freq map[string]int, n int) []string {
 	if len(freq) == 0 {
 		return nil
@@ -115,15 +152,16 @@ func topNKeys(freq map[string]int, n int) []string {
 		sorted = append(sorted, kv{k, v})
 	}
 
-	// Simple selection sort — n is small.
+	// Simple selection sort — n is small. Break ties alphabetically.
 	for i := 0; i < len(sorted) && i < n; i++ {
-		max := i
+		best := i
 		for j := i + 1; j < len(sorted); j++ {
-			if sorted[j].count > sorted[max].count {
-				max = j
+			if sorted[j].count > sorted[best].count ||
+				(sorted[j].count == sorted[best].count && sorted[j].key < sorted[best].key) {
+				best = j
 			}
 		}
-		sorted[i], sorted[max] = sorted[max], sorted[i]
+		sorted[i], sorted[best] = sorted[best], sorted[i]
 	}
 
 	result := make([]string, 0, n)

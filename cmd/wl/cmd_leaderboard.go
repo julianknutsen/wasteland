@@ -45,14 +45,14 @@ func runLeaderboard(cmd *cobra.Command, stdout, _ io.Writer, limit int) error {
 		return err
 	}
 
+	db := backend.NewLocalDB(cfg.LocalDir, cfg.ResolveMode())
+
 	sp := style.StartSpinner(stdout, "Syncing with upstream...")
-	syncErr := commons.PullUpstream(cfg.LocalDir)
+	syncErr := db.Sync()
 	sp.Stop()
 	if syncErr != nil {
-		return fmt.Errorf("pulling upstream: %w", syncErr)
+		return fmt.Errorf("syncing with upstream: %w", syncErr)
 	}
-
-	db := backend.NewLocalDB(cfg.LocalDir, "")
 	entries, err := commons.QueryLeaderboard(db, limit)
 	if err != nil {
 		return fmt.Errorf("querying leaderboard: %w", err)
