@@ -48,6 +48,7 @@ found in your local ollama.
 
 ```bash
 wl infer run w-abc123
+wl infer run w-abc123 --skip-claim
 ```
 
 Claims the item, decodes the job from the description, runs it via
@@ -55,7 +56,13 @@ ollama, and submits a completion with the result and SHA-256 hash as
 evidence. If ollama fails, the claim is automatically released so
 another worker can retry.
 
+Use `--skip-claim` when the item was already claimed externally (e.g.,
+by the wasteland-feeder automation). In this mode the item must have
+`status=claimed` instead of `status=open`, and the claim is NOT released
+on failure — the external claimer owns the claim lifecycle.
+
 Flags:
+- `--skip-claim` — skip claiming (item already claimed externally)
 - `--no-push` — skip pushing to remotes
 
 ### `wl infer verify <wanted-id>` — re-run and compare
