@@ -147,3 +147,8 @@ func (c *Client) computeBranchActions(r *DetailResult) []string {
 func (c *Client) Dashboard() (*commons.DashboardData, error) {
 	return commons.QueryMyDashboardBranchAware(c.db, c.mode, c.rigHandle)
 }
+
+// Leaderboard returns ranked rig stats aggregated from completions and stamps.
+func (c *Client) Leaderboard(limit int) ([]commons.LeaderboardEntry, error) {
+	return commons.QueryLeaderboard(c.db, limit)
+}

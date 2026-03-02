@@ -61,6 +61,20 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toDashboardResponse(data))
 }
 
+func (s *Server) handleLeaderboard(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
+	limit := parseIntParam(r, "limit", 20)
+	entries, err := client.Leaderboard(limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, toLeaderboardResponse(entries))
+}
+
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	client, ok := s.resolveClient(w, r)
 	if !ok {
