@@ -51,14 +51,20 @@ func runDelete(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush 
 		return err
 	}
 
-	mc := newMutationContext(wlCfg, wantedID, noPush, stdout)
+	mc, err := newMutationContext(wlCfg, wantedID, noPush, stdout)
+	if err != nil {
+		return err
+	}
 	cleanup, err := mc.Setup()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
-	store := openStore(wlCfg.LocalDir, wlCfg.Signing, wlCfg.HopURI)
+	store, err := openStoreFromConfig(wlCfg)
+	if err != nil {
+		return err
+	}
 
 	if err := deleteWanted(store, wantedID); err != nil {
 		return err

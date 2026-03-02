@@ -5,6 +5,7 @@ import (
 	"io"
 	"os/exec"
 
+	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/julianknutsen/wasteland/internal/style"
 	"github.com/spf13/cobra"
 )
@@ -35,15 +36,22 @@ EXAMPLES:
 }
 
 func runSync(cmd *cobra.Command, stdout, stderr io.Writer, dryRun bool) error {
+	cfg, err := resolveWasteland(cmd)
+	if err != nil {
+		return hintWrap(err)
+	}
+
+	// Remote mode: reads are always fresh from the DoltHub API.
+	if cfg.ResolveBackend() != federation.BackendLocal {
+		fmt.Fprintf(stdout, "Remote mode: reads are always fresh from the DoltHub API.\n")
+		return nil
+	}
+
 	doltPath, err := exec.LookPath("dolt")
 	if err != nil {
 		return fmt.Errorf("dolt not found in PATH — install from https://docs.dolthub.com/introduction/installation")
 	}
 
-	cfg, err := resolveWasteland(cmd)
-	if err != nil {
-		return hintWrap(err)
-	}
 	forkDir := cfg.LocalDir
 
 	if forkDir == "" {

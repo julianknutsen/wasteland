@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/julianknutsen/wasteland/internal/backend"
 	"github.com/julianknutsen/wasteland/internal/commons"
 	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/julianknutsen/wasteland/internal/style"
@@ -24,8 +23,11 @@ type mutationContext struct {
 }
 
 // newMutationContext creates a mutation context for the given config and wanted ID.
-func newMutationContext(cfg *federation.Config, wantedID string, noPush bool, stdout io.Writer) *mutationContext {
-	db := backend.NewLocalDB(cfg.LocalDir, cfg.ResolveMode())
+func newMutationContext(cfg *federation.Config, wantedID string, noPush bool, stdout io.Writer) (*mutationContext, error) {
+	db, err := openDBFromConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
 	mc := &mutationContext{
 		cfg:      cfg,
 		db:       db,
@@ -36,7 +38,7 @@ func newMutationContext(cfg *federation.Config, wantedID string, noPush bool, st
 	if cfg.ResolveMode() == federation.ModePR {
 		mc.branch = commons.BranchName(cfg.RigHandle, wantedID)
 	}
-	return mc
+	return mc, nil
 }
 
 // BranchName returns the branch name, or "" in wild-west mode.
@@ -47,8 +49,16 @@ func (m *mutationContext) BranchName() string {
 // Setup prepares the mutation context: checks dolt, syncs upstream, detects
 // item location, and (in PR mode) checks out the item branch.
 // The returned cleanup function must be deferred to return to main.
+// In remote mode, no local dolt operations are needed — the API handles everything.
 func (m *mutationContext) Setup() (cleanup func(), err error) {
 	noop := func() {}
+
+	// Remote mode: no dolt, no sync, no checkout.
+	// RemoteDB handles branching internally in Exec().
+	if m.cfg.ResolveBackend() != federation.BackendLocal {
+		return noop, nil
+	}
+
 	if err := requireDolt(); err != nil {
 		return noop, err
 	}

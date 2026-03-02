@@ -6,7 +6,9 @@ import (
 	"io"
 	"os/exec"
 	"strings"
+	"time"
 
+	"github.com/julianknutsen/wasteland/internal/backend"
 	"github.com/julianknutsen/wasteland/internal/commons"
 	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/julianknutsen/wasteland/internal/remote"
@@ -28,6 +30,7 @@ func newJoinCmd(stdout, stderr io.Writer) *cobra.Command {
 		githubLocal string
 		signed      bool
 		direct      bool
+		localDB     bool
 	)
 
 	cmd := &cobra.Command{
@@ -35,35 +38,40 @@ func newJoinCmd(stdout, stderr io.Writer) *cobra.Command {
 		Short: "Join a wasteland by forking its commons",
 		Long: `Join a wasteland community by forking its shared commons database.
 
+By default, uses remote mode (DoltHub API) — no local dolt installation needed.
+Use --local-db to clone the fork locally (requires dolt installed).
+
 This command:
   1. Forks the upstream commons to your org (or checks that your fork exists)
-  2. Clones the fork locally
-  3. Registers your rig in the rigs table
-  4. Pushes the registration to your fork
-  5. Saves wasteland configuration locally
+  2. Registers your rig in the rigs table via the DoltHub API
+  3. Opens a pull request for registration
+  4. Saves wasteland configuration locally
 
 The upstream argument defaults to 'hop/wl-commons' (the main wasteland).
 You can specify a different org/database path to join other wastelands.
 
 Getting started:
   1. Sign up at https://www.dolthub.com
-  2. Fork the commons: https://www.dolthub.com/repositories/hop/wl-commons
-  3. Create an API token at https://www.dolthub.com/settings/tokens
-  4. Set environment variables:
+  2. Create an API token at https://www.dolthub.com/settings/tokens
+  3. Set environment variables:
        export DOLTHUB_TOKEN=<your-api-token>
        export DOLTHUB_ORG=<your-dolthub-username>
-  5. Run: wl join
+  4. Run: wl join
 
 Examples:
   wl join
-  wl join hop/wl-commons --handle my-rig`,
+  wl join hop/wl-commons --handle my-rig
+  wl join --local-db             # clone locally (requires dolt)`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			upstream := defaultUpstream
 			if len(args) > 0 {
 				upstream = args[0]
 			}
-			return runJoin(stdout, stderr, upstream, handle, displayName, email, forkOrg, remoteBase, gitRemote, github, githubLocal, signed, direct)
+			if localDB || remoteBase != "" || gitRemote != "" || github || githubLocal != "" {
+				return runJoin(stdout, stderr, upstream, handle, displayName, email, forkOrg, remoteBase, gitRemote, github, githubLocal, signed, direct)
+			}
+			return runJoinRemote(stdout, stderr, upstream, handle, displayName, email, forkOrg)
 		},
 	}
 
@@ -77,6 +85,7 @@ Examples:
 	cmd.Flags().StringVar(&githubLocal, "github-local", "", "Local base directory for GitHub-compatible testing mode")
 	cmd.Flags().BoolVar(&signed, "signed", false, "GPG-sign the rig registration commit")
 	cmd.Flags().BoolVar(&direct, "direct", false, "Skip forking — clone and push to upstream directly (for maintainers)")
+	cmd.Flags().BoolVar(&localDB, "local-db", false, "Use local dolt database (clone fork, requires dolt installed)")
 	cmd.MarkFlagsMutuallyExclusive("remote-base", "git-remote", "github", "github-local")
 
 	return cmd
@@ -200,6 +209,138 @@ func runJoin(stdout, stderr io.Writer, upstream, handle, displayName, email, for
 	}
 	fmt.Fprintf(stdout, "\n  %s\n", style.Dim.Render("Next: wl browse  — browse the wanted board"))
 	return nil
+}
+
+// runJoinRemote joins a wasteland in remote mode: fork + register via DoltHub API, no local dolt needed.
+func runJoinRemote(stdout, _ io.Writer, upstream, handle, displayName, email, forkOrg string) error {
+	// Parse upstream path (validate early)
+	upstreamOrg, upstreamDB, err := federation.ParseUpstream(upstream)
+	if err != nil {
+		return err
+	}
+
+	store := federation.NewConfigStore()
+
+	// Fast path: check if already joined to this specific upstream.
+	if existing, loadErr := store.Load(upstream); loadErr == nil {
+		fmt.Fprintf(stdout, "%s Already joined wasteland: %s\n", style.Bold.Render("⚠"), upstream)
+		fmt.Fprintf(stdout, "  Handle: %s\n", existing.RigHandle)
+		fmt.Fprintf(stdout, "  Fork: %s/%s\n", existing.ForkOrg, existing.ForkDB)
+		fmt.Fprintf(stdout, "  Backend: %s\n", existing.ResolveBackend())
+		return nil
+	}
+
+	// Resolve fork org: flag > env var
+	if forkOrg == "" {
+		forkOrg = commons.DoltHubOrg()
+	}
+
+	token := commons.DoltHubToken()
+	if token == "" {
+		return fmt.Errorf("DOLTHUB_TOKEN environment variable is required\n\nGet your token from https://www.dolthub.com/settings/tokens")
+	}
+	if forkOrg == "" {
+		return fmt.Errorf("DOLTHUB_ORG environment variable is required\n\nSet this to your DoltHub organization name")
+	}
+
+	// Determine handle
+	if handle == "" {
+		handle = forkOrg
+	}
+
+	// Determine display name from flag or git config
+	if displayName == "" {
+		displayName = gitConfigValue("user.name")
+	}
+
+	// Determine email from flag or git config
+	if email == "" {
+		email = gitConfigValue("user.email")
+	}
+
+	provider := remote.NewDoltHubProvider(token)
+
+	fmt.Fprintf(stdout, "Joining wasteland %s (fork to %s/%s, remote mode)...\n", upstream, forkOrg, upstreamDB)
+
+	// 1. Fork upstream on DoltHub.
+	fmt.Fprintf(stdout, "  Forking commons...\n")
+	if err := provider.Fork(upstreamOrg, upstreamDB, forkOrg); err != nil {
+		var forkErr *remote.ForkRequiredError
+		if errors.As(err, &forkErr) {
+			printForkInstructions(stdout, forkErr)
+			return errExit
+		}
+		return fmt.Errorf("forking commons: %w", err)
+	}
+
+	// 2. Register rig via RemoteDB.Exec on a registration branch.
+	fmt.Fprintf(stdout, "  Registering rig via API...\n")
+	db := backend.NewRemoteDB(token, upstreamOrg, upstreamDB, forkOrg, upstreamDB, federation.ModePR)
+	branch := fmt.Sprintf("wl/register/%s", handle)
+	regSQL := buildRegistrationSQL(handle, forkOrg, displayName, email, "dev")
+	if err := db.Exec(branch, "", false, regSQL); err != nil {
+		return fmt.Errorf("registering rig: %w", err)
+	}
+
+	// 3. Create PR via DoltHub provider.
+	fmt.Fprintf(stdout, "  Opening pull request...\n")
+	title := fmt.Sprintf("Register rig: %s", handle)
+	body := fmt.Sprintf("Register rig **%s** (%s) in the commons.", handle, displayName)
+	prURL, err := provider.CreatePR(forkOrg, upstreamOrg, upstreamDB, branch, title, body)
+	if err != nil {
+		fmt.Fprintf(stdout, "  warning: could not create PR: %v\n", err)
+		prURL = ""
+	}
+
+	// 4. Save config with Backend: "remote", LocalDir: "".
+	hopURI := fmt.Sprintf("hop://%s/%s/", email, handle)
+	cfg := &federation.Config{
+		Upstream:     upstream,
+		ProviderType: "dolthub",
+		UpstreamURL:  provider.DatabaseURL(upstreamOrg, upstreamDB),
+		ForkOrg:      forkOrg,
+		ForkDB:       upstreamDB,
+		LocalDir:     "",
+		Backend:      federation.BackendRemote,
+		Mode:         federation.ModePR,
+		RigHandle:    handle,
+		HopURI:       hopURI,
+		JoinedAt:     time.Now(),
+	}
+	if err := store.Save(cfg); err != nil {
+		return fmt.Errorf("saving wasteland config: %w", err)
+	}
+
+	fmt.Fprintf(stdout, "\n%s Joined wasteland: %s (remote mode)\n", style.Bold.Render("✓"), upstream)
+	fmt.Fprintf(stdout, "  Handle: %s\n", cfg.RigHandle)
+	fmt.Fprintf(stdout, "  Fork: %s/%s\n", cfg.ForkOrg, cfg.ForkDB)
+	fmt.Fprintf(stdout, "  Backend: remote (DoltHub API)\n")
+	if prURL != "" {
+		fmt.Fprintf(stdout, "  PR: %s\n", style.Bold.Render(prURL))
+	}
+	fmt.Fprintf(stdout, "\n  %s\n", style.Dim.Render("Next: wl browse  — browse the wanted board"))
+	return nil
+}
+
+// buildRegistrationSQL generates the SQL statement to register a rig.
+func buildRegistrationSQL(handle, dolthubOrg, displayName, ownerEmail, version string) string {
+	hopURI := fmt.Sprintf("hop://%s/%s/", ownerEmail, handle)
+	return fmt.Sprintf(
+		`INSERT INTO rigs (handle, display_name, dolthub_org, hop_uri, owner_email, gt_version, trust_level, registered_at, last_seen) `+
+			`VALUES ('%s', '%s', '%s', '%s', '%s', '%s', 1, NOW(), NOW()) `+
+			`ON DUPLICATE KEY UPDATE display_name = '%s', dolthub_org = '%s', hop_uri = '%s', owner_email = '%s', gt_version = '%s', last_seen = NOW()`,
+		commons.EscapeSQL(handle),
+		commons.EscapeSQL(displayName),
+		commons.EscapeSQL(dolthubOrg),
+		commons.EscapeSQL(hopURI),
+		commons.EscapeSQL(ownerEmail),
+		commons.EscapeSQL(version),
+		commons.EscapeSQL(displayName),
+		commons.EscapeSQL(dolthubOrg),
+		commons.EscapeSQL(hopURI),
+		commons.EscapeSQL(ownerEmail),
+		commons.EscapeSQL(version),
+	)
 }
 
 func printForkInstructions(w io.Writer, err *remote.ForkRequiredError) {

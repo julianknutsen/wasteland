@@ -6,6 +6,7 @@ import (
 	"os/exec"
 
 	"github.com/julianknutsen/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/julianknutsen/wasteland/internal/style"
 	"github.com/spf13/cobra"
 )
@@ -45,6 +46,11 @@ func runMerge(cmd *cobra.Command, stdout, _ io.Writer, branch string, noPush, ke
 	cfg, err := resolveWasteland(cmd)
 	if err != nil {
 		return hintWrap(err)
+	}
+
+	// Remote mode: use RemoteDB.MergeBranch via the write API.
+	if cfg.ResolveBackend() != federation.BackendLocal {
+		return runMergeRemote(stdout, cfg, branch, keepBranch)
 	}
 
 	exists, err := commons.BranchExists(cfg.LocalDir, branch)
@@ -95,6 +101,32 @@ func runMerge(cmd *cobra.Command, stdout, _ io.Writer, branch string, noPush, ke
 	if cfg.IsGitHub() {
 		if ghPath, err := exec.LookPath("gh"); err == nil {
 			closeGitHubPR(newGHClient(ghPath), cfg.Upstream, cfg.ForkOrg, cfg.ForkDB, branch, stdout)
+		}
+	}
+
+	return nil
+}
+
+func runMergeRemote(stdout io.Writer, cfg *federation.Config, branch string, keepBranch bool) error {
+	db, err := openDBFromConfig(cfg)
+	if err != nil {
+		return err
+	}
+
+	sp := style.StartSpinner(stdout, "Merging branch via API...")
+	err = db.MergeBranch(branch)
+	sp.Stop()
+	if err != nil {
+		return fmt.Errorf("merging branch: %w", err)
+	}
+
+	fmt.Fprintf(stdout, "%s Merged %s into main\n", style.Bold.Render("✓"), branch)
+
+	if !keepBranch {
+		if err := db.DeleteBranch(branch); err != nil {
+			fmt.Fprintf(stdout, "  warning: failed to delete branch %s: %v\n", branch, err)
+		} else {
+			fmt.Fprintf(stdout, "  Branch %s deleted\n", branch)
 		}
 	}
 

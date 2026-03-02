@@ -51,14 +51,20 @@ func runClaim(cmd *cobra.Command, stdout, _ io.Writer, wantedID string, noPush b
 
 	rigHandle := wlCfg.RigHandle
 
-	mc := newMutationContext(wlCfg, wantedID, noPush, stdout)
+	mc, err := newMutationContext(wlCfg, wantedID, noPush, stdout)
+	if err != nil {
+		return err
+	}
 	cleanup, err := mc.Setup()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
-	store := openStore(wlCfg.LocalDir, wlCfg.Signing, wlCfg.HopURI)
+	store, err := openStoreFromConfig(wlCfg)
+	if err != nil {
+		return err
+	}
 	item, err := claimWanted(store, wantedID, rigHandle)
 	if err != nil {
 		return err

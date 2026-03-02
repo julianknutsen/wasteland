@@ -56,9 +56,11 @@ func runLeave(cmd *cobra.Command, stdout, _ io.Writer, positional string) error 
 	}
 
 	fmt.Fprintf(stdout, "%s Left wasteland: %s\n", style.Bold.Render("✓"), upstream)
-	fmt.Fprintf(stdout, "\n  Data directories (not deleted):\n")
-	fmt.Fprintf(stdout, "    Fork clone: %s\n", cfg.LocalDir)
-	fmt.Fprintf(stdout, "\n  %s\n", style.Dim.Render("Remove these directories manually if no longer needed."))
+	if cfg.LocalDir != "" {
+		fmt.Fprintf(stdout, "\n  Data directories (not deleted):\n")
+		fmt.Fprintf(stdout, "    Fork clone: %s\n", cfg.LocalDir)
+		fmt.Fprintf(stdout, "\n  %s\n", style.Dim.Render("Remove these directories manually if no longer needed."))
+	}
 
 	return nil
 }

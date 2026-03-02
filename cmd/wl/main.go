@@ -67,6 +67,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	}
 	root.PersistentFlags().String("wasteland", "", "Upstream wasteland to use (e.g., org/db); required when multiple are joined")
 	_ = root.RegisterFlagCompletionFunc("wasteland", completeWastelandNames)
+	root.PersistentFlags().Bool("local-db", false, "Use local dolt database instead of DoltHub API")
 	root.PersistentFlags().String("color", "auto", "Color output: always, auto, never")
 	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
 		colorMode, _ := cmd.Flags().GetString("color")
@@ -113,8 +114,16 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 }
 
 // resolveWasteland resolves the active wasteland config from --wasteland flag or auto-selection.
+// If --local-db is set, the backend is forced to local regardless of config.
 func resolveWasteland(cmd *cobra.Command) (*federation.Config, error) {
 	explicit, _ := cmd.Flags().GetString("wasteland")
 	store := federation.NewConfigStore()
-	return federation.ResolveConfig(store, explicit)
+	cfg, err := federation.ResolveConfig(store, explicit)
+	if err != nil {
+		return nil, err
+	}
+	if localDB, _ := cmd.Flags().GetBool("local-db"); localDB {
+		cfg.Backend = federation.BackendLocal
+	}
+	return cfg, nil
 }

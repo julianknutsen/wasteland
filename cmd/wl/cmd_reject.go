@@ -55,14 +55,20 @@ func runReject(cmd *cobra.Command, stdout, _ io.Writer, wantedID, reason string,
 
 	rigHandle := wlCfg.RigHandle
 
-	mc := newMutationContext(wlCfg, wantedID, noPush, stdout)
+	mc, err := newMutationContext(wlCfg, wantedID, noPush, stdout)
+	if err != nil {
+		return err
+	}
 	cleanup, err := mc.Setup()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
-	store := openStore(wlCfg.LocalDir, wlCfg.Signing, wlCfg.HopURI)
+	store, err := openStoreFromConfig(wlCfg)
+	if err != nil {
+		return err
+	}
 
 	if err := rejectCompletion(store, wantedID, rigHandle, reason); err != nil {
 		return err

@@ -53,7 +53,10 @@ func runList(stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "  %s\n", style.Bold.Render(cfg.Upstream))
 		fmt.Fprintf(stdout, "    Handle:  %s\n", cfg.RigHandle)
 		fmt.Fprintf(stdout, "    Fork:    %s/%s\n", cfg.ForkOrg, cfg.ForkDB)
-		fmt.Fprintf(stdout, "    Local:   %s\n", cfg.LocalDir)
+		fmt.Fprintf(stdout, "    Backend: %s\n", cfg.ResolveBackend())
+		if cfg.LocalDir != "" {
+			fmt.Fprintf(stdout, "    Local:   %s\n", cfg.LocalDir)
+		}
 		if !cfg.JoinedAt.IsZero() {
 			fmt.Fprintf(stdout, "    Joined:  %s\n", cfg.JoinedAt.Format("2006-01-02"))
 		}

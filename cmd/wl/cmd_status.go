@@ -41,7 +41,10 @@ func runStatus(cmd *cobra.Command, stdout, _ io.Writer, wantedID string) error {
 		return err
 	}
 
-	store := openStore(wlCfg.LocalDir, wlCfg.Signing, wlCfg.HopURI)
+	store, err := openStoreFromConfig(wlCfg)
+	if err != nil {
+		return err
+	}
 
 	result, err := getStatus(store, wantedID)
 	if err != nil {

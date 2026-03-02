@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -11,17 +12,39 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// withFakeStore overrides the openStore factory and resolveWantedArg for the
-// duration of the test and returns the fake store for setup/assertions.
+// noopDB is a minimal commons.DB implementation for tests.
+type noopDB struct{}
+
+func (noopDB) Query(string, string) (string, error)       { return "", nil }
+func (noopDB) Exec(string, string, bool, ...string) error { return nil }
+func (noopDB) Branches(string) ([]string, error)          { return nil, nil }
+func (noopDB) DeleteBranch(string) error                  { return nil }
+func (noopDB) PushBranch(string, io.Writer) error         { return nil }
+func (noopDB) PushMain(io.Writer) error                   { return nil }
+func (noopDB) Sync() error                                { return nil }
+func (noopDB) MergeBranch(string) error                   { return nil }
+func (noopDB) DeleteRemoteBranch(string) error            { return nil }
+func (noopDB) PushWithSync(io.Writer) error               { return nil }
+func (noopDB) CanWildWest() error                         { return nil }
+
+// withFakeStore overrides the openStore/openStoreFromConfig factories and
+// resolveWantedArg for the duration of the test and returns the fake store
+// for setup/assertions.
 func withFakeStore(t *testing.T) *fakeWLCommonsStore {
 	t.Helper()
 	fake := newFakeWLCommonsStore()
 	oldStore := openStore
 	openStore = func(string, bool, string) commons.WLCommonsStore { return fake }
+	oldStoreFromConfig := openStoreFromConfig
+	openStoreFromConfig = func(*federation.Config) (commons.WLCommonsStore, error) { return fake, nil }
+	oldDBFromConfig := openDBFromConfig
+	openDBFromConfig = func(*federation.Config) (commons.DB, error) { return noopDB{}, nil }
 	oldResolve := resolveWantedArg
 	resolveWantedArg = func(_ *federation.Config, id string) (string, error) { return id, nil }
 	t.Cleanup(func() {
 		openStore = oldStore
+		openStoreFromConfig = oldStoreFromConfig
+		openDBFromConfig = oldDBFromConfig
 		resolveWantedArg = oldResolve
 	})
 	return fake

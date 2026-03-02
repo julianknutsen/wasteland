@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,6 +32,12 @@ func completeWantedIDs(statusFilter string) func(*cobra.Command, []string, strin
 		if cached := readCompletionCache(cacheKey); cached != nil {
 			return cached, cobra.ShellCompDirectiveNoFileComp
 		}
+		// Remote mode: use API for completion.
+		if cfg.ResolveBackend() != federation.BackendLocal {
+			ids := listWantedIDsRemote(cfg, statusFilter)
+			writeCompletionCache(cacheKey, ids)
+			return ids, cobra.ShellCompDirectiveNoFileComp
+		}
 		ids := listWantedIDsWithTimeout(cfg.LocalDir, statusFilter)
 		writeCompletionCache(cacheKey, ids)
 		return ids, cobra.ShellCompDirectiveNoFileComp
@@ -50,9 +57,68 @@ func completeBranchNames(cmd *cobra.Command, args []string, _ string) ([]string,
 	if cached := readCompletionCache(cacheKey); cached != nil {
 		return cached, cobra.ShellCompDirectiveNoFileComp
 	}
+	// Remote mode: use API for branch completion.
+	if cfg.ResolveBackend() != federation.BackendLocal {
+		db, err := openDBFromConfig(cfg)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		branches, err := db.Branches("wl/")
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		writeCompletionCache(cacheKey, branches)
+		return branches, cobra.ShellCompDirectiveNoFileComp
+	}
 	branches := listBranchesWithTimeout(cfg.LocalDir)
 	writeCompletionCache(cacheKey, branches)
 	return branches, cobra.ShellCompDirectiveNoFileComp
+}
+
+// listWantedIDsRemote queries wanted IDs via the remote API for tab completion.
+func listWantedIDsRemote(cfg *federation.Config, statusFilter string) []string {
+	db, err := openDBFromConfig(cfg)
+	if err != nil {
+		return nil
+	}
+	query := "SELECT id, title, priority FROM wanted"
+	if statusFilter != "" {
+		query += fmt.Sprintf(" WHERE status = '%s'", commons.EscapeSQL(statusFilter))
+	}
+	query += " ORDER BY created_at DESC LIMIT 50"
+	csv, err := db.Query(query, "")
+	if err != nil {
+		return nil
+	}
+	lines := strings.Split(strings.TrimSpace(csv), "\n")
+	if len(lines) < 2 {
+		return nil
+	}
+	var items []string
+	for _, line := range lines[1:] {
+		fields := strings.SplitN(line, ",", 3)
+		if len(fields) < 1 {
+			continue
+		}
+		id := strings.TrimSpace(fields[0])
+		if id == "" {
+			continue
+		}
+		if len(fields) >= 2 {
+			title := strings.TrimSpace(fields[1])
+			if len(title) > 40 {
+				title = title[:40] + "..."
+			}
+			if len(fields) >= 3 {
+				pri := strings.TrimSpace(fields[2])
+				id += "\t" + "P" + pri + " " + title
+			} else {
+				id += "\t" + title
+			}
+		}
+		items = append(items, id)
+	}
+	return items
 }
 
 // listWantedIDsWithTimeout queries wanted IDs with a 2-second timeout.
@@ -164,6 +230,30 @@ func completeProjectNames(cmd *cobra.Command, _ []string, _ string) ([]string, c
 	cacheKey := "projects"
 	if cached := readCompletionCache(cacheKey); cached != nil {
 		return cached, cobra.ShellCompDirectiveNoFileComp
+	}
+	// Remote mode: use API.
+	if cfg.ResolveBackend() != federation.BackendLocal {
+		db, err := openDBFromConfig(cfg)
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		csv, err := db.Query("SELECT DISTINCT project FROM wanted WHERE project != '' ORDER BY project LIMIT 50", "")
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		lines := strings.Split(strings.TrimSpace(csv), "\n")
+		if len(lines) < 2 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		var projects []string
+		for _, line := range lines[1:] {
+			p := strings.TrimSpace(line)
+			if p != "" {
+				projects = append(projects, p)
+			}
+		}
+		writeCompletionCache(cacheKey, projects)
+		return projects, cobra.ShellCompDirectiveNoFileComp
 	}
 	query := "SELECT DISTINCT project FROM wanted WHERE project != '' ORDER BY project LIMIT 50"
 	out := doltQueryWithTimeout(cfg.LocalDir, query, 2*time.Second)

@@ -15,7 +15,10 @@ func TestMutationContext_WildWest(t *testing.T) {
 		Mode:      "", // defaults to wild-west
 	}
 
-	mc := newMutationContext(cfg, "w-abc123", true, &bytes.Buffer{})
+	mc, err := newMutationContext(cfg, "w-abc123", true, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("newMutationContext() error = %v", err)
+	}
 
 	if mc.BranchName() != "" {
 		t.Errorf("BranchName() = %q, want empty in wild-west mode", mc.BranchName())
@@ -37,7 +40,10 @@ func TestMutationContext_WildWestExplicit(t *testing.T) {
 		Mode:      federation.ModeWildWest,
 	}
 
-	mc := newMutationContext(cfg, "w-abc123", true, &bytes.Buffer{})
+	mc, err := newMutationContext(cfg, "w-abc123", true, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("newMutationContext() error = %v", err)
+	}
 
 	if mc.BranchName() != "" {
 		t.Errorf("BranchName() = %q, want empty in wild-west mode", mc.BranchName())
@@ -52,7 +58,10 @@ func TestMutationContext_PRMode_BranchName(t *testing.T) {
 		Mode:      federation.ModePR,
 	}
 
-	mc := newMutationContext(cfg, "w-abc123", true, &bytes.Buffer{})
+	mc, err := newMutationContext(cfg, "w-abc123", true, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("newMutationContext() error = %v", err)
+	}
 
 	want := "wl/test-rig/w-abc123"
 	if mc.BranchName() != want {

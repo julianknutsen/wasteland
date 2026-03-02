@@ -217,6 +217,25 @@ func checkWastelands(stdout io.Writer, deps *doctorDeps) []diagnostic {
 		}
 		fmt.Fprintf(stdout, "\n  %s:\n", upstream)
 
+		// Backend
+		fmt.Fprintf(stdout, "    %s Backend: %s\n", style.Success.Render(style.IconPass), cfg.ResolveBackend())
+
+		if cfg.ResolveBackend() != federation.BackendLocal {
+			// Remote mode checks.
+			token := deps.getenv("DOLTHUB_TOKEN")
+			if token == "" {
+				fmt.Fprintf(stdout, "    %s DOLTHUB_TOKEN: not set (required for remote mode)\n", style.Error.Render(style.IconFail))
+				results = append(results, diagnostic{name: upstream + "/token", status: "fail", message: "DOLTHUB_TOKEN not set"})
+			} else {
+				fmt.Fprintf(stdout, "    %s DOLTHUB_TOKEN: set\n", style.Success.Render(style.IconPass))
+				results = append(results, diagnostic{name: upstream + "/token", status: "pass"})
+			}
+
+			// Mode
+			fmt.Fprintf(stdout, "    %s Mode: %s\n", style.Success.Render(style.IconPass), cfg.ResolveMode())
+			continue
+		}
+
 		// Local clone exists
 		if _, err := os.Stat(cfg.LocalDir); err != nil {
 			d := diagnostic{

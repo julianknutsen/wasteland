@@ -43,7 +43,10 @@ func runInferVerify(cmd *cobra.Command, stdout, _ io.Writer, wantedID string) er
 		return err
 	}
 
-	store := openStore(wlCfg.LocalDir, wlCfg.Signing, wlCfg.HopURI)
+	store, err := openStoreFromConfig(wlCfg)
+	if err != nil {
+		return err
+	}
 
 	vr, err := executeInferVerify(store, wantedID)
 	if err != nil {

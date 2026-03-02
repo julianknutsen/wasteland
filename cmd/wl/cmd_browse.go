@@ -106,20 +106,25 @@ func runBrowse(cmd *cobra.Command, stdout, stderr io.Writer, filter commons.Brow
 		return hintWrap(err)
 	}
 
-	if err := requireDolt(); err != nil {
-		return err
+	if cfg.ResolveBackend() == federation.BackendLocal {
+		if err := requireDolt(); err != nil {
+			return err
+		}
+
+		if ephemeral {
+			query := commons.BuildBrowseQuery(filter)
+			return runBrowseEphemeral(stdout, cfg, query, jsonOut)
+		}
+
+		if err := runBrowseLocal(stdout, stderr, cfg, filter, jsonOut); err != nil {
+			return err
+		}
+		warnIfStale(stdout, cfg)
+		return nil
 	}
 
-	if ephemeral {
-		query := commons.BuildBrowseQuery(filter)
-		return runBrowseEphemeral(stdout, cfg, query, jsonOut)
-	}
-
-	if err := runBrowseLocal(stdout, stderr, cfg, filter, jsonOut); err != nil {
-		return err
-	}
-	warnIfStale(stdout, cfg)
-	return nil
+	// Remote mode: query API directly, no sync needed.
+	return runBrowseRemote(stdout, stderr, cfg, filter, jsonOut)
 }
 
 func runBrowseLocal(stdout, stderr io.Writer, cfg *federation.Config, filter commons.BrowseFilter, jsonOut bool) error {
@@ -143,6 +148,28 @@ func runBrowseLocal(stdout, stderr io.Writer, cfg *federation.Config, filter com
 	sp.Stop()
 
 	db := openDB(cfg.LocalDir)
+	client := sdk.New(sdk.ClientConfig{
+		DB:        db,
+		RigHandle: cfg.RigHandle,
+		Mode:      cfg.ResolveMode(),
+	})
+
+	result, err := client.Browse(filter)
+	if err != nil {
+		return fmt.Errorf("querying wanted board: %w", err)
+	}
+
+	if jsonOut {
+		return renderBrowseJSON(stdout, result)
+	}
+	return renderBrowseSummaries(stdout, result)
+}
+
+func runBrowseRemote(stdout, _ io.Writer, cfg *federation.Config, filter commons.BrowseFilter, jsonOut bool) error {
+	db, err := openDBFromConfig(cfg)
+	if err != nil {
+		return err
+	}
 	client := sdk.New(sdk.ClientConfig{
 		DB:        db,
 		RigHandle: cfg.RigHandle,

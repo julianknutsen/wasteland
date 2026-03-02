@@ -21,6 +21,7 @@ Use 'wl config set <key> <value>' to change a setting.
 Supported keys:
   mode            Workflow mode: wild-west (default) or pr
   signing         Enable GPG-signed Dolt commits: true or false
+  backend         Database backend: remote (DoltHub API) or local (dolt CLI)
   provider-type   Upstream provider type (read-only, set during 'wl join')
   github-repo     (deprecated) Upstream GitHub repo for PR shells`,
 		Args: cobra.NoArgs,
@@ -83,6 +84,7 @@ func newConfigSetCmd(stdout, stderr io.Writer) *cobra.Command {
 var validConfigKeys = map[string]bool{
 	"mode":          true,
 	"signing":       true,
+	"backend":       true,
 	"github-repo":   true,
 	"provider-type": true,
 }
@@ -102,6 +104,8 @@ func runConfigGet(cmd *cobra.Command, stdout, _ io.Writer, key string) error {
 		fmt.Fprintln(stdout, cfg.ResolveMode())
 	case "signing":
 		fmt.Fprintln(stdout, cfg.Signing)
+	case "backend":
+		fmt.Fprintln(stdout, cfg.ResolveBackend())
 	case "provider-type":
 		fmt.Fprintln(stdout, cfg.ResolveProviderType())
 	case "github-repo":

@@ -5,8 +5,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/julianknutsen/wasteland/internal/backend"
 	"github.com/julianknutsen/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/julianknutsen/wasteland/internal/style"
 	"github.com/spf13/cobra"
 )
@@ -41,17 +41,21 @@ func runLeaderboard(cmd *cobra.Command, stdout, _ io.Writer, limit int) error {
 		return hintWrap(err)
 	}
 
-	if err := requireDolt(); err != nil {
+	db, err := openDBFromConfig(cfg)
+	if err != nil {
 		return err
 	}
 
-	db := backend.NewLocalDB(cfg.LocalDir, cfg.ResolveMode())
-
-	sp := style.StartSpinner(stdout, "Syncing with upstream...")
-	syncErr := db.Sync()
-	sp.Stop()
-	if syncErr != nil {
-		return fmt.Errorf("syncing with upstream: %w", syncErr)
+	if cfg.ResolveBackend() == federation.BackendLocal {
+		if err := requireDolt(); err != nil {
+			return err
+		}
+		sp := style.StartSpinner(stdout, "Syncing with upstream...")
+		syncErr := db.Sync()
+		sp.Stop()
+		if syncErr != nil {
+			return fmt.Errorf("syncing with upstream: %w", syncErr)
+		}
 	}
 	entries, err := commons.QueryLeaderboard(db, limit)
 	if err != nil {

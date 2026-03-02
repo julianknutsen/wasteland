@@ -94,6 +94,39 @@ func runReview(cmd *cobra.Command, stdout, _ io.Writer, branch string, jsonOut, 
 		return hintWrap(err)
 	}
 
+	// Remote mode: use API for branch listing and PR creation.
+	if cfg.ResolveBackend() != federation.BackendLocal {
+		if branch == "" {
+			return listReviewBranchesRemote(stdout, cfg)
+		}
+		if createPR {
+			db, err := openDBFromConfig(cfg)
+			if err != nil {
+				return err
+			}
+			prURL, err := createPRForBranchRemote(cfg, db, branch)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(stdout, "\n%s %s\n", style.Bold.Render("PR:"), prURL)
+			return nil
+		}
+		// Show diff via API.
+		db, err := openDBFromConfig(cfg)
+		if err != nil {
+			return err
+		}
+		if rdb, ok := db.(*backend.RemoteDB); ok {
+			diff, err := rdb.Diff(branch)
+			if err != nil {
+				return fmt.Errorf("diff: %w", err)
+			}
+			fmt.Fprint(stdout, diff)
+			return nil
+		}
+		return fmt.Errorf("diff not supported for this backend")
+	}
+
 	if branch == "" {
 		return listReviewBranches(stdout, cfg.LocalDir)
 	}
@@ -143,6 +176,26 @@ func diffBase(dbDir, doltPath string) string {
 		}
 	}
 	return "main"
+}
+
+func listReviewBranchesRemote(stdout io.Writer, cfg *federation.Config) error {
+	db, err := openDBFromConfig(cfg)
+	if err != nil {
+		return err
+	}
+	branches, err := db.Branches("wl/")
+	if err != nil {
+		return fmt.Errorf("listing branches: %w", err)
+	}
+	if len(branches) == 0 {
+		fmt.Fprintln(stdout, "No review branches found.")
+		return nil
+	}
+	fmt.Fprintf(stdout, "%s\n", style.Bold.Render("Review branches:"))
+	for _, b := range branches {
+		fmt.Fprintf(stdout, "  %s\n", b)
+	}
+	return nil
 }
 
 func listReviewBranches(stdout io.Writer, dbDir string) error {

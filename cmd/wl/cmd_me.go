@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/julianknutsen/wasteland/internal/commons"
+	"github.com/julianknutsen/wasteland/internal/federation"
 	"github.com/julianknutsen/wasteland/internal/style"
 	"github.com/spf13/cobra"
 )
@@ -35,6 +36,11 @@ func runMe(cmd *cobra.Command, stdout, _ io.Writer) error {
 	cfg, err := resolveWasteland(cmd)
 	if err != nil {
 		return hintWrap(err)
+	}
+
+	// Remote mode: query API directly.
+	if cfg.ResolveBackend() != federation.BackendLocal {
+		return runMeRemote(stdout, cfg)
 	}
 
 	if err := requireDolt(); err != nil {
@@ -167,6 +173,77 @@ func runMe(cmd *cobra.Command, stdout, _ io.Writer) error {
 					continue
 				}
 				fmt.Fprintf(stdout, "  %-12s %s\n", row[0], row[1])
+			}
+			printed = true
+		}
+	}
+
+	if !printed {
+		fmt.Fprintf(stdout, "\nNothing here — browse the board: wl browse\n")
+	}
+
+	return nil
+}
+
+// runMeRemote queries the remote API for the user's dashboard.
+func runMeRemote(stdout io.Writer, cfg *federation.Config) error {
+	db, err := openDBFromConfig(cfg)
+	if err != nil {
+		return err
+	}
+
+	handle := cfg.RigHandle
+	printed := false
+
+	// Query claimed/in_review items from upstream main.
+	csv, err := db.Query(fmt.Sprintf(
+		"SELECT id, title, status, priority, effort_level FROM wanted WHERE claimed_by = '%s' AND status IN ('claimed','in_review') ORDER BY priority ASC",
+		commons.EscapeSQL(handle),
+	), "")
+	if err == nil {
+		rows := wlParseCSV(csv)
+		if len(rows) > 1 {
+			fmt.Fprintf(stdout, "\n%s\n", style.Bold.Render("Claimed items:"))
+			for _, row := range rows[1:] {
+				if len(row) >= 5 {
+					fmt.Fprintf(stdout, "  %-12s %-30s %-12s %-4s %s\n", row[0], row[1], row[2], wlFormatPriority(row[3]), row[4])
+				}
+			}
+			printed = true
+		}
+	}
+
+	// Awaiting my review.
+	reviewCSV, err := db.Query(fmt.Sprintf(
+		"SELECT id, title, claimed_by FROM wanted WHERE posted_by = '%s' AND status = 'in_review' ORDER BY priority ASC",
+		commons.EscapeSQL(handle),
+	), "")
+	if err == nil {
+		reviewRows := wlParseCSV(reviewCSV)
+		if len(reviewRows) > 1 {
+			fmt.Fprintf(stdout, "\n%s\n", style.Bold.Render("Awaiting my review:"))
+			for _, row := range reviewRows[1:] {
+				if len(row) >= 3 {
+					fmt.Fprintf(stdout, "  %-12s %-30s claimed by %s\n", row[0], row[1], row[2])
+				}
+			}
+			printed = true
+		}
+	}
+
+	// Recent completions.
+	completedCSV, err := db.Query(fmt.Sprintf(
+		"SELECT id, title FROM wanted WHERE claimed_by = '%s' AND status = 'completed' ORDER BY updated_at DESC LIMIT 5",
+		commons.EscapeSQL(handle),
+	), "")
+	if err == nil {
+		completedRows := wlParseCSV(completedCSV)
+		if len(completedRows) > 1 {
+			fmt.Fprintf(stdout, "\n%s\n", style.Bold.Render("Recent completions:"))
+			for _, row := range completedRows[1:] {
+				if len(row) >= 2 {
+					fmt.Fprintf(stdout, "  %-12s %s\n", row[0], row[1])
+				}
 			}
 			printed = true
 		}

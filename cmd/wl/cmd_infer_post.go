@@ -85,14 +85,20 @@ func runInferPost(cmd *cobra.Command, stdout, _ io.Writer, prompt, model string,
 		EffortLevel: "small",
 	}
 
-	mc := newMutationContext(wlCfg, item.ID, noPush, stdout)
+	mc, err := newMutationContext(wlCfg, item.ID, noPush, stdout)
+	if err != nil {
+		return err
+	}
 	cleanup, err := mc.Setup()
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 
-	store := openStore(wlCfg.LocalDir, wlCfg.Signing, wlCfg.HopURI)
+	store, err := openStoreFromConfig(wlCfg)
+	if err != nil {
+		return err
+	}
 
 	if err := postWanted(store, item); err != nil {
 		return err
