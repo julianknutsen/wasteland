@@ -85,7 +85,7 @@ EXAMPLES:
 	return cmd
 }
 
-func runBrowse(cmd *cobra.Command, stdout, _ io.Writer, filter commons.BrowseFilter, jsonOut, ephemeral bool) error {
+func runBrowse(cmd *cobra.Command, stdout, stderr io.Writer, filter commons.BrowseFilter, jsonOut, ephemeral bool) error {
 	cfg, err := resolveWasteland(cmd)
 	if err != nil {
 		return hintWrap(err)
@@ -101,15 +101,19 @@ func runBrowse(cmd *cobra.Command, stdout, _ io.Writer, filter commons.BrowseFil
 		return runBrowseEphemeral(stdout, cfg, query, jsonOut)
 	}
 
-	if err := runBrowseLocal(stdout, cfg, query, jsonOut); err != nil {
+	if err := runBrowseLocal(stdout, stderr, cfg, query, jsonOut); err != nil {
 		return err
 	}
 	warnIfStale(stdout, cfg)
 	return nil
 }
 
-func runBrowseLocal(stdout io.Writer, cfg *federation.Config, query string, jsonOut bool) error {
-	sp := style.StartSpinner(stdout, "Syncing with upstream...")
+func runBrowseLocal(stdout, stderr io.Writer, cfg *federation.Config, query string, jsonOut bool) error {
+	spinnerOut := stdout
+	if jsonOut {
+		spinnerOut = stderr
+	}
+	sp := style.StartSpinner(spinnerOut, "Syncing with upstream...")
 	err := commons.PullUpstream(cfg.LocalDir)
 	sp.Stop()
 	if err != nil {
