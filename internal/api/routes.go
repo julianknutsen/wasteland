@@ -7,6 +7,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/wanted/{id}", s.handleDetail)
 	s.mux.HandleFunc("GET /api/dashboard", s.handleDashboard)
 	s.mux.HandleFunc("GET /api/config", s.handleConfig)
+	s.mux.HandleFunc("GET /api/leaderboard", s.handleLeaderboard)
 
 	// Mutation endpoints.
 	s.mux.HandleFunc("POST /api/wanted", s.handlePost)

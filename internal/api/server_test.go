@@ -22,11 +22,13 @@ type fakeItem struct {
 }
 
 type fakeDB struct {
-	mu          sync.Mutex
-	items       map[string]*fakeItem
-	completions map[string]string // wanted_id -> completion_id
-	branches    map[string]bool
-	branchItems map[string]map[string]*fakeItem
+	mu              sync.Mutex
+	items           map[string]*fakeItem
+	completions     map[string]string // wanted_id -> completion_id
+	branches        map[string]bool
+	branchItems     map[string]map[string]*fakeItem
+	leaderboardCSV  string // CSV response for leaderboard aggregation query
+	leaderSkillsCSV string // CSV response for leaderboard skills query
 }
 
 func newFakeDB() *fakeDB {
@@ -47,6 +49,16 @@ func (f *fakeDB) Query(sql, ref string) (string, error) {
 		return f.queryByID(sql, ref)
 	case strings.Contains(sql, "FROM wanted"):
 		return f.queryBrowse(sql, ref)
+	case strings.Contains(sql, "FROM completions") && strings.Contains(sql, "GROUP BY"):
+		if f.leaderboardCSV != "" {
+			return f.leaderboardCSV, nil
+		}
+		return "completed_by,completions,avg_quality,avg_reliability\n", nil
+	case strings.Contains(sql, "FROM completions") && strings.Contains(sql, "skill_tags"):
+		if f.leaderSkillsCSV != "" {
+			return f.leaderSkillsCSV, nil
+		}
+		return "completed_by,skill_tags\n", nil
 	case strings.Contains(sql, "FROM completions"):
 		return f.queryCompletion(sql)
 	case strings.Contains(sql, "FROM stamps"):
@@ -571,5 +583,63 @@ func TestCORSMiddleware(t *testing.T) {
 	}
 	if resp.Header.Get("Access-Control-Allow-Origin") != "*" {
 		t.Error("expected CORS Allow-Origin header")
+	}
+}
+
+func TestLeaderboard(t *testing.T) {
+	db := newFakeDB()
+	db.leaderboardCSV = "completed_by,completions,avg_quality,avg_reliability\nalice,5,4.2,3.8\nbob,3,4.0,4.5\n"
+	db.leaderSkillsCSV = "completed_by,skill_tags\nalice,\"[\"\"go\"\",\"\"sql\"\"]\"\nbob,\"[\"\"testing\"\"]\"\n"
+
+	ts := newTestServer(db, "wild-west")
+	defer ts.Close()
+
+	var resp LeaderboardResponse
+	r := getJSON(t, ts, "/api/leaderboard", &resp)
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", r.StatusCode)
+	}
+	if len(resp.Entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(resp.Entries))
+	}
+	if resp.Entries[0].RigHandle != "alice" {
+		t.Errorf("first entry = %q, want alice", resp.Entries[0].RigHandle)
+	}
+	if resp.Entries[0].Completions != 5 {
+		t.Errorf("alice completions = %d, want 5", resp.Entries[0].Completions)
+	}
+	if len(resp.Entries[0].TopSkills) != 2 {
+		t.Errorf("alice top_skills count = %d, want 2", len(resp.Entries[0].TopSkills))
+	}
+	if len(resp.Entries[1].TopSkills) != 1 {
+		t.Errorf("bob top_skills count = %d, want 1", len(resp.Entries[1].TopSkills))
+	}
+}
+
+func TestLeaderboard_Empty(t *testing.T) {
+	db := newFakeDB()
+	ts := newTestServer(db, "wild-west")
+	defer ts.Close()
+
+	var resp LeaderboardResponse
+	r := getJSON(t, ts, "/api/leaderboard", &resp)
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", r.StatusCode)
+	}
+	if len(resp.Entries) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(resp.Entries))
+	}
+}
+
+func TestLeaderboard_InvalidLimit(t *testing.T) {
+	db := newFakeDB()
+	ts := newTestServer(db, "wild-west")
+	defer ts.Close()
+
+	// Negative limit is silently coerced to default (20), matching handleBrowse pattern.
+	var resp LeaderboardResponse
+	r := getJSON(t, ts, "/api/leaderboard?limit=-5", &resp)
+	if r.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 for negative limit (coerced to default), got %d", r.StatusCode)
 	}
 }
