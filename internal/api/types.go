@@ -11,6 +11,7 @@ import (
 type WantedSummaryJSON struct {
 	ID           string `json:"id"`
 	Title        string `json:"title"`
+	Description  string `json:"description,omitempty"`
 	Project      string `json:"project,omitempty"`
 	Type         string `json:"type,omitempty"`
 	Priority     int    `json:"priority"`
@@ -286,6 +287,7 @@ func toSummaryJSON(s commons.WantedSummary, pendingCount int) WantedSummaryJSON 
 	return WantedSummaryJSON{
 		ID:           s.ID,
 		Title:        s.Title,
+		Description:  s.Description,
 		Project:      s.Project,
 		Type:         s.Type,
 		Priority:     s.Priority,

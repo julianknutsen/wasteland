@@ -47,12 +47,14 @@ type BrowseFilter struct {
 	MyItems   string    // rig handle for OR filter (posted_by OR claimed_by); empty = disabled
 	Sort      SortOrder // result ordering
 	View      string    // "mine" (default), "all", or "upstream"
+	Long      bool      // include description and other detail fields
 }
 
 // WantedSummary holds the columns returned by BrowseWanted.
 type WantedSummary struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
 	Project     string `json:"project,omitempty"`
 	Type        string `json:"type,omitempty"`
 	Priority    int    `json:"priority"`
@@ -103,7 +105,11 @@ func BuildBrowseQuery(f BrowseFilter) string {
 		conditions = append(conditions, fmt.Sprintf("title LIKE '%%%s%%'", EscapeSQL(f.Search)))
 	}
 
-	query := "SELECT id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level FROM wanted"
+	cols := "id, title, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level"
+	if f.Long {
+		cols = "id, title, COALESCE(description,'') as description, COALESCE(project,'') as project, COALESCE(type,'') as type, priority, COALESCE(posted_by,'') as posted_by, COALESCE(claimed_by,'') as claimed_by, status, COALESCE(effort_level,'medium') as effort_level"
+	}
+	query := "SELECT " + cols + " FROM wanted"
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
@@ -661,6 +667,7 @@ func parseWantedSummaries(csvData string) []WantedSummary {
 		results = append(results, WantedSummary{
 			ID:          row["id"],
 			Title:       row["title"],
+			Description: row["description"],
 			Project:     row["project"],
 			Type:        row["type"],
 			Priority:    pri,

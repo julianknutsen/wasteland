@@ -137,15 +137,25 @@ func (f *fakeDB) queryWantedByID(sql, ref string) (string, error) { //nolint:unp
 func (f *fakeDB) queryWantedBrowse(sql, ref string) (string, error) { //nolint:unparam // error return needed for interface consistency
 	items := f.resolveItems(ref)
 	var rows []string
+	long := strings.Contains(sql, "description")
 	header := "id,title,project,type,priority,posted_by,claimed_by,status,effort_level"
+	if long {
+		header = "id,title,description,project,type,priority,posted_by,claimed_by,status,effort_level"
+	}
 
 	for _, item := range items {
 		if !f.matchesFilter(item, sql) {
 			continue
 		}
-		rows = append(rows, fmt.Sprintf("%s,%s,%s,%s,%d,%s,%s,%s,%s",
-			item.ID, csvQuote(item.Title), item.Project, item.Type, item.Priority,
-			item.PostedBy, item.ClaimedBy, item.Status, item.EffortLevel))
+		if long {
+			rows = append(rows, fmt.Sprintf("%s,%s,%s,%s,%s,%d,%s,%s,%s,%s",
+				item.ID, csvQuote(item.Title), csvQuote(item.Description), item.Project, item.Type, item.Priority,
+				item.PostedBy, item.ClaimedBy, item.Status, item.EffortLevel))
+		} else {
+			rows = append(rows, fmt.Sprintf("%s,%s,%s,%s,%d,%s,%s,%s,%s",
+				item.ID, csvQuote(item.Title), item.Project, item.Type, item.Priority,
+				item.PostedBy, item.ClaimedBy, item.Status, item.EffortLevel))
+		}
 	}
 	if len(rows) == 0 {
 		return header + "\n", nil
@@ -723,6 +733,38 @@ func TestBrowse_WithStatusFilter(t *testing.T) {
 	}
 	if result.Items[0].ID != "w-1" {
 		t.Errorf("expected w-1, got %s", result.Items[0].ID)
+	}
+}
+
+func TestBrowse_Long(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{
+		ID: "w-1", Title: "infer: what is 1+1", Status: "open", Priority: 2,
+		Type: "inference", Description: `{"prompt":"what is 1+1","model":"llama3.2:1b","seed":42}`,
+		EffortLevel: "medium",
+	})
+
+	c := New(ClientConfig{DB: db, RigHandle: "alice", Mode: "wild-west"})
+
+	// Without Long: description should be empty.
+	result, err := c.Browse(commons.BrowseFilter{})
+	if err != nil {
+		t.Fatalf("Browse: %v", err)
+	}
+	if result.Items[0].Description != "" {
+		t.Errorf("expected empty description without Long, got %q", result.Items[0].Description)
+	}
+
+	// With Long: description should be populated.
+	result, err = c.Browse(commons.BrowseFilter{Long: true})
+	if err != nil {
+		t.Fatalf("Browse Long: %v", err)
+	}
+	if result.Items[0].Description == "" {
+		t.Error("expected description with Long, got empty")
+	}
+	if !strings.Contains(result.Items[0].Description, "llama3.2:1b") {
+		t.Errorf("description should contain model, got %q", result.Items[0].Description)
 	}
 }
 

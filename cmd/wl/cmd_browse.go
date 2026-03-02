@@ -25,6 +25,7 @@ func newBrowseCmd(stdout, stderr io.Writer) *cobra.Command {
 		priority  int
 		limit     int
 		jsonOut   bool
+		longOut   bool
 		ephemeral bool
 		postedBy  string
 		claimedBy string
@@ -55,6 +56,7 @@ EXAMPLES:
   wl browse --priority 0             # Critical priority only
   wl browse --limit 5               # Show 5 items
   wl browse --json                   # JSON output
+  wl browse --json --long             # JSON with description included
   wl browse --view all               # Include all rigs' branch mutations
   wl browse --posted-by alice        # Items posted by alice
   wl browse --claimed-by bob         # Items claimed by bob
@@ -71,6 +73,7 @@ EXAMPLES:
 				ClaimedBy: claimedBy,
 				Search:    search,
 				View:      view,
+				Long:      longOut,
 			}, jsonOut, ephemeral)
 		},
 	}
@@ -81,6 +84,7 @@ EXAMPLES:
 	cmd.Flags().IntVar(&priority, "priority", -1, "Filter by priority (0=critical, 2=medium, 4=backlog)")
 	cmd.Flags().IntVar(&limit, "limit", 50, "Maximum items to display")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "Output as JSON")
+	cmd.Flags().BoolVarP(&longOut, "long", "l", false, "Include description in output")
 	cmd.Flags().BoolVar(&ephemeral, "ephemeral", false, "Clone upstream to temp dir instead of querying local (slow)")
 	cmd.Flags().StringVar(&postedBy, "posted-by", "", "Filter by poster's rig handle")
 	cmd.Flags().StringVar(&claimedBy, "claimed-by", "", "Filter by claimer's rig handle")

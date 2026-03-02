@@ -151,6 +151,34 @@ func TestBuildBrowseQuery_DefaultFilters(t *testing.T) {
 			t.Errorf("commons.BuildBrowseQuery(default) missing %q in:\n  %q", substr, got)
 		}
 	}
+	// Default (non-long) should not include description.
+	if strings.Contains(got, "description") {
+		t.Errorf("default query should not include description: %q", got)
+	}
+}
+
+func TestBuildBrowseQuery_Long(t *testing.T) {
+	t.Parallel()
+	f := commons.BrowseFilter{
+		Status:   "open",
+		Priority: -1,
+		Limit:    50,
+		Long:     true,
+	}
+	got := commons.BuildBrowseQuery(f)
+	if !strings.Contains(got, "description") {
+		t.Errorf("long query should include description: %q", got)
+	}
+	// Should still have other columns.
+	for _, substr := range []string{
+		"SELECT id, title,",
+		"FROM wanted",
+		"WHERE status = 'open'",
+	} {
+		if !strings.Contains(got, substr) {
+			t.Errorf("long query missing %q in:\n  %q", substr, got)
+		}
+	}
 }
 
 func TestBuildBrowseQuery_AllFilters(t *testing.T) {

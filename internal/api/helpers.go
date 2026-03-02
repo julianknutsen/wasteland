@@ -65,5 +65,6 @@ func parseQueryFilter(r *http.Request) commons.BrowseFilter {
 		Search:   q.Get("search"),
 		Sort:     sort,
 		View:     view,
+		Long:     q.Get("long") == "true",
 	}
 }

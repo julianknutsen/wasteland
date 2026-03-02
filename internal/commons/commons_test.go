@@ -305,6 +305,24 @@ func TestBuildBrowseQuery_PriorityFilter(t *testing.T) {
 	}
 }
 
+func TestBuildBrowseQuery_Long(t *testing.T) {
+	t.Parallel()
+	f := BrowseFilter{Priority: -1, Long: true}
+	q := BuildBrowseQuery(f)
+	if !strings.Contains(q, "description") {
+		t.Errorf("Long=true should include description column, got:\n%s", q)
+	}
+}
+
+func TestBuildBrowseQuery_NotLong(t *testing.T) {
+	t.Parallel()
+	f := BrowseFilter{Priority: -1, Long: false}
+	q := BuildBrowseQuery(f)
+	if strings.Contains(q, "description") {
+		t.Errorf("Long=false should not include description column, got:\n%s", q)
+	}
+}
+
 func TestValidPriorities(t *testing.T) {
 	t.Parallel()
 	got := ValidPriorities()
