@@ -70,6 +70,30 @@ jobs:
           flags: web
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Go vulnerability check
+        run: govulncheck ./...
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install web deps
+        run: cd web && bun install --frozen-lockfile
+
+      - name: Web dependency audit
+        run: cd web && bun audit
+
   integration-offline:
     name: Integration (offline)
     needs: check

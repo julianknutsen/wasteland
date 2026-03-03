@@ -24,7 +24,7 @@ LDFLAGS := -X main.version=$(VERSION) \
            -X main.date=$(BUILD_TIME) \
            -X main.inferEnabled=$(INFER_ENABLED)
 
-.PHONY: build build-go web check check-all lint fmt-check fmt vet test test-integration test-integration-offline test-cover cover install install-tools setup clean web-check web-test
+.PHONY: build build-go web check check-all lint fmt-check fmt vet test test-integration test-integration-offline test-cover cover install install-tools setup clean web-check web-test audit audit-web
 
 ## web: build web UI (requires bun)
 web:
@@ -112,6 +112,14 @@ web-check:
 ## web-test: run web tests with coverage
 web-test:
 	cd web && bun run test:coverage
+
+## audit: run Go vulnerability check
+audit:
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+## audit-web: run web dependency audit
+audit-web:
+	cd web && bun audit
 
 ## help: show this help
 help:
