@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS _meta (
     value TEXT
 );
 
-INSERT IGNORE INTO _meta (`key`, value) VALUES ('schema_version', '1.0');
+INSERT IGNORE INTO _meta (`key`, value) VALUES ('schema_version', '1.1');
 
 CREATE TABLE IF NOT EXISTS rigs (
     handle VARCHAR(255) PRIMARY KEY,
@@ -77,6 +77,16 @@ CREATE TABLE IF NOT EXISTS badges (
     badge_type VARCHAR(64),
     awarded_at TIMESTAMP,
     evidence TEXT
+);
+
+CREATE TABLE IF NOT EXISTS boot_blocks (
+    handle VARCHAR(255) NOT NULL PRIMARY KEY,
+    source VARCHAR(64) NOT NULL,
+    sheet_json JSON NOT NULL,
+    confidence FLOAT NOT NULL,
+    version VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    CHECK (confidence BETWEEN 0.0 AND 1.0)
 );
 
 CREATE TABLE IF NOT EXISTS chain_meta (
