@@ -8,7 +8,10 @@ import (
 
 func TestSessionStore_CreateAndGet(t *testing.T) {
 	store := NewSessionStore()
-	id := store.Create("conn-123")
+	id, err := store.Create("conn-123")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if id == "" {
 		t.Fatal("expected non-empty session ID")
 	}
@@ -35,7 +38,7 @@ func TestSessionStore_GetMissing(t *testing.T) {
 
 func TestSessionStore_Delete(t *testing.T) {
 	store := NewSessionStore()
-	id := store.Create("conn-123")
+	id, _ := store.Create("conn-123")
 	store.Delete(id)
 
 	_, ok := store.Get(id)
@@ -46,8 +49,8 @@ func TestSessionStore_Delete(t *testing.T) {
 
 func TestSessionStore_UniqueIDs(t *testing.T) {
 	store := NewSessionStore()
-	id1 := store.Create("conn-1")
-	id2 := store.Create("conn-2")
+	id1, _ := store.Create("conn-1")
+	id2, _ := store.Create("conn-2")
 	if id1 == id2 {
 		t.Error("expected unique session IDs")
 	}

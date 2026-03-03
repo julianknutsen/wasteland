@@ -36,7 +36,7 @@ func TestMain(m *testing.M) {
 	doltPath, err = exec.LookPath("dolt")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "dolt not found in PATH — skipping offline integration tests\n")
-		os.Exit(1)
+		os.Exit(0)
 	}
 
 	// Build the wl binary once for all tests.

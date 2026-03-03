@@ -125,7 +125,12 @@ func runBrowse(cmd *cobra.Command, stdout, stderr io.Writer, filter commons.Brow
 		}
 
 		if ephemeral {
-			query := commons.BuildBrowseQuery(filter)
+			// Ephemeral mode uses renderBrowseCSV which has a fixed 9-column
+			// layout (no description). Force Long=false so BuildBrowseQuery
+			// returns matching columns.
+			ephFilter := filter
+			ephFilter.Long = false
+			query := commons.BuildBrowseQuery(ephFilter)
 			return runBrowseEphemeral(stdout, cfg, query, jsonOut)
 		}
 

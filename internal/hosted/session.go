@@ -32,8 +32,11 @@ func NewSessionStore() *SessionStore {
 }
 
 // Create creates a new session with the given Nango connection ID.
-func (s *SessionStore) Create(connectionID string) string {
-	id := generateSessionID()
+func (s *SessionStore) Create(connectionID string) (string, error) {
+	id, err := generateSessionID()
+	if err != nil {
+		return "", err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessions[id] = &UserSession{
@@ -41,15 +44,24 @@ func (s *SessionStore) Create(connectionID string) string {
 		ConnectionID: connectionID,
 		CreatedAt:    time.Now(),
 	}
-	return id
+	return id, nil
 }
 
-// Get retrieves a session by ID.
+const sessionTTL = 24 * time.Hour
+
+// Get retrieves a session by ID. Expired sessions (>24h) are lazily evicted.
 func (s *SessionStore) Get(id string) (*UserSession, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	sess, ok := s.sessions[id]
-	return sess, ok
+	if !ok {
+		return nil, false
+	}
+	if time.Since(sess.CreatedAt) > sessionTTL {
+		delete(s.sessions, id)
+		return nil, false
+	}
+	return sess, true
 }
 
 // Delete removes a session by ID.
@@ -70,12 +82,12 @@ func (s *SessionStore) Restore(sessionID, connectionID string) {
 	}
 }
 
-func generateSessionID() string {
+func generateSessionID() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		panic(fmt.Sprintf("crypto/rand failed: %v", err))
+		return "", fmt.Errorf("crypto/rand failed: %w", err)
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }
 
 const cookieName = "wl_session"

@@ -19,6 +19,7 @@ type Spinner struct {
 	msg   string
 	done  chan struct{}
 	wg    sync.WaitGroup
+	once  sync.Once
 	isTTY bool
 }
 
@@ -68,6 +69,8 @@ func (s *Spinner) Stop() {
 	if !s.isTTY {
 		return
 	}
-	close(s.done)
-	s.wg.Wait()
+	s.once.Do(func() {
+		close(s.done)
+		s.wg.Wait()
+	})
 }

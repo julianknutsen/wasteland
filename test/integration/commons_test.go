@@ -20,7 +20,7 @@ func TestMain(m *testing.M) {
 	doltPath, err := exec.LookPath("dolt")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "dolt not found in PATH — skipping integration tests\n")
-		os.Exit(1)
+		os.Exit(0)
 	}
 
 	tmp, err := os.MkdirTemp("", "wl-integration-*")

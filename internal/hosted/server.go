@@ -99,7 +99,11 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create session.
-	sessionID := s.sessions.Create(req.ConnectionID)
+	sessionID, err := s.sessions.Create(req.ConnectionID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create session: " + err.Error()})
+		return
+	}
 	SetSessionCookie(w, sessionID, req.ConnectionID, s.sessionSecret)
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "connected"})

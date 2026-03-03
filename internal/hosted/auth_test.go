@@ -173,7 +173,7 @@ func TestAuthMiddleware_NoSession(t *testing.T) {
 func TestAuthMiddleware_ValidSession_SingleWasteland(t *testing.T) {
 	sessions, ts := setupHostedTestServer(t)
 
-	sessionID := sessions.Create("conn-1")
+	sessionID, _ := sessions.Create("conn-1")
 
 	// Single wasteland: X-Wasteland header is optional (auto-fallback).
 	req, _ := http.NewRequest("GET", ts.URL+"/api/wanted", nil)
@@ -197,7 +197,7 @@ func TestAuthMiddleware_ValidSession_SingleWasteland(t *testing.T) {
 func TestAuthMiddleware_ValidSession_WithHeader(t *testing.T) {
 	sessions, ts := setupHostedTestServer(t)
 
-	sessionID := sessions.Create("conn-1")
+	sessionID, _ := sessions.Create("conn-1")
 
 	req, _ := http.NewRequest("GET", ts.URL+"/api/wanted", nil)
 	req.AddCookie(&http.Cookie{
@@ -221,7 +221,7 @@ func TestAuthMiddleware_ValidSession_WithHeader(t *testing.T) {
 func TestAuthMiddleware_MultiWasteland_NoHeader_Returns400(t *testing.T) {
 	sessions, ts := setupMultiWastelandTestServer(t)
 
-	sessionID := sessions.Create("conn-1")
+	sessionID, _ := sessions.Create("conn-1")
 
 	req, _ := http.NewRequest("GET", ts.URL+"/api/wanted", nil)
 	req.AddCookie(&http.Cookie{
@@ -244,7 +244,7 @@ func TestAuthMiddleware_MultiWasteland_NoHeader_Returns400(t *testing.T) {
 func TestAuthMiddleware_MultiWasteland_WithHeader(t *testing.T) {
 	sessions, ts := setupMultiWastelandTestServer(t)
 
-	sessionID := sessions.Create("conn-1")
+	sessionID, _ := sessions.Create("conn-1")
 
 	req, _ := http.NewRequest("GET", ts.URL+"/api/wanted", nil)
 	req.AddCookie(&http.Cookie{
@@ -268,7 +268,7 @@ func TestAuthMiddleware_MultiWasteland_WithHeader(t *testing.T) {
 func TestAuthMiddleware_UnknownUpstream(t *testing.T) {
 	sessions, ts := setupHostedTestServer(t)
 
-	sessionID := sessions.Create("conn-1")
+	sessionID, _ := sessions.Create("conn-1")
 
 	req, _ := http.NewRequest("GET", ts.URL+"/api/wanted", nil)
 	req.AddCookie(&http.Cookie{
@@ -313,7 +313,7 @@ func TestAuthMiddleware_NoConnectionID(t *testing.T) {
 	sessions, ts := setupHostedTestServer(t)
 
 	// Create session without connection ID (old format cookie).
-	sessionID := sessions.Create("")
+	sessionID, _ := sessions.Create("")
 
 	req, _ := http.NewRequest("GET", ts.URL+"/api/wanted", nil)
 	req.AddCookie(&http.Cookie{
@@ -432,7 +432,7 @@ func TestHandleAuthStatus_NotAuthenticated(t *testing.T) {
 func TestHandleAuthStatus_Authenticated(t *testing.T) {
 	sessions, ts := setupHostedTestServer(t)
 
-	sessionID := sessions.Create("conn-1")
+	sessionID, _ := sessions.Create("conn-1")
 
 	req, _ := http.NewRequest("GET", ts.URL+"/api/auth/status", nil)
 	req.AddCookie(&http.Cookie{
@@ -468,7 +468,7 @@ func TestHandleAuthStatus_Authenticated(t *testing.T) {
 func TestHandleLogout(t *testing.T) {
 	sessions, ts := setupHostedTestServer(t)
 
-	sessionID := sessions.Create("conn-1")
+	sessionID, _ := sessions.Create("conn-1")
 
 	req, _ := http.NewRequest("POST", ts.URL+"/api/auth/logout", nil)
 	req.AddCookie(&http.Cookie{
@@ -536,7 +536,7 @@ func TestHandleConnectSession_MissingEndUserID(t *testing.T) {
 func TestHandleJoinWasteland(t *testing.T) {
 	sessions, ts := setupHostedTestServer(t)
 
-	sessionID := sessions.Create("conn-1")
+	sessionID, _ := sessions.Create("conn-1")
 
 	body := `{
 		"fork_org": "alice-org",
@@ -571,7 +571,7 @@ func TestHandleJoinWasteland(t *testing.T) {
 func TestHandleJoinWasteland_MissingFields(t *testing.T) {
 	sessions, ts := setupHostedTestServer(t)
 
-	sessionID := sessions.Create("conn-1")
+	sessionID, _ := sessions.Create("conn-1")
 
 	body := `{"fork_org": "alice-org"}`
 	req, _ := http.NewRequest("POST", ts.URL+"/api/auth/join", strings.NewReader(body))
@@ -648,7 +648,7 @@ func TestHandleLeaveWasteland(t *testing.T) {
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 
-	sessionID := sessions.Create("conn-1")
+	sessionID, _ := sessions.Create("conn-1")
 
 	req, _ := http.NewRequest("DELETE", ts.URL+"/api/auth/wastelands/hop/wl-commons", nil)
 	req.AddCookie(&http.Cookie{
@@ -671,7 +671,7 @@ func TestHandleLeaveWasteland(t *testing.T) {
 func TestHandleLeaveWasteland_CannotRemoveLast(t *testing.T) {
 	sessions, ts := setupHostedTestServer(t)
 
-	sessionID := sessions.Create("conn-1")
+	sessionID, _ := sessions.Create("conn-1")
 
 	// Single wasteland — should fail.
 	req, _ := http.NewRequest("DELETE", ts.URL+"/api/auth/wastelands/wasteland/wl-commons", nil)
@@ -696,7 +696,7 @@ func TestAuthMiddleware_RehydrateAfterRestart(t *testing.T) {
 	sessions, ts := setupHostedTestServer(t)
 
 	// Create session, get the cookie, then delete from store (simulating restart).
-	sessionID := sessions.Create("conn-1")
+	sessionID, _ := sessions.Create("conn-1")
 	signed := SignSessionCookie(sessionID, "conn-1", testSecret)
 	sessions.Delete(sessionID)
 

@@ -186,7 +186,7 @@ func TestConfigNotHosted(t *testing.T) {
 	defer ts.Close()
 
 	// Create a session.
-	sessionID := sessions.Create("conn-1")
+	sessionID, _ := sessions.Create("conn-1")
 	req, _ := http.NewRequest("GET", ts.URL+"/api/config", nil)
 	req.AddCookie(&http.Cookie{
 		Name:  cookieName,
