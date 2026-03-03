@@ -29,6 +29,7 @@ LDFLAGS := -X main.version=$(VERSION) \
 ## web: build web UI (requires bun)
 web:
 	cd web && VITE_INFER_ENABLED=$(INFER_ENABLED) bun install --frozen-lockfile && bun run build
+	touch web/dist/.gitkeep
 
 ## build: compile wl binary with embedded web UI
 build: web
