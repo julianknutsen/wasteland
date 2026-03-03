@@ -31,6 +31,15 @@ func WorkspaceFromContext(ctx context.Context) (*sdk.Workspace, bool) {
 // It resolves the session cookie, looks up the Nango connection, and injects
 // the per-user sdk.Workspace and active sdk.Client into the request context.
 func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
+	isValidUpstream := func(s string) bool {
+		org, db, ok := strings.Cut(s, "/")
+		if !ok || org == "" || db == "" {
+			return false
+		}
+		// db must not contain slashes, and neither part should have whitespace.
+		return !strings.ContainsAny(org, " \t\n\r") && !strings.ContainsAny(db, " \t\n\r/")
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip auth for /api/auth/* endpoints.
 		if strings.HasPrefix(r.URL.Path, "/api/auth/") {
@@ -91,6 +100,12 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 
 		if upstream == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "X-Wasteland header required"})
+			return
+		}
+
+		// Validate format: must be "org/db".
+		if !isValidUpstream(upstream) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid X-Wasteland format, expected org/db"})
 			return
 		}
 
