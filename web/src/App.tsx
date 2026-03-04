@@ -8,6 +8,7 @@ import { ProfileSearch } from "./components/ProfileSearch";
 import { ProfileView } from "./components/ProfileView";
 import { Scoreboard } from "./components/Scoreboard";
 import { Settings } from "./components/Settings";
+import { SkillPage } from "./components/SkillPage";
 import { WastelandProvider } from "./context/WastelandContext";
 
 export function App() {
@@ -23,6 +24,7 @@ export function App() {
             <Route path="/profile/:handle" element={<ProfileView />} />
             <Route path="/scoreboard" element={<Scoreboard />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/skill" element={<SkillPage />} />
             <Route path="/connect" element={<ConnectPage />} />
             <Route path="/join" element={<ConnectPage />} />
           </Route>

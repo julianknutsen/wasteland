@@ -104,14 +104,9 @@ export function Layout() {
               sign in
             </NavLink>
           )}
-          <a
-            href="/wasteland-skill.md"
-            className={styles.navLink}
-            download
-            title="Claude Code skill — drop into .claude/skills/"
-          >
-            get skill
-          </a>
+          <NavLink to="/skill" className={({ isActive }) => (isActive ? styles.navLinkActive : styles.navLink)}>
+            skill
+          </NavLink>
         </nav>
         <main id="main-content" className={styles.main}>
           <Outlet />
