@@ -12,11 +12,12 @@ const maxLeaderboardLimit = 100
 
 // LeaderboardEntry holds aggregated stats for one rig on the leaderboard.
 type LeaderboardEntry struct {
-	RigHandle   string
-	Completions int
-	AvgQuality  float64
-	AvgReliab   float64
-	TopSkills   []string // up to 5 most frequent skill tags
+	RigHandle     string
+	Completions   int
+	AvgQuality    float64
+	AvgReliab     float64
+	AvgCreativity float64
+	TopSkills     []string // up to 5 most frequent skill tags
 }
 
 // QueryLeaderboard aggregates completions and stamps into a ranked leaderboard.
@@ -35,7 +36,8 @@ func QueryLeaderboard(db DB, limit int) ([]LeaderboardEntry, error) {
   c.completed_by,
   COUNT(*) AS completions,
   COALESCE(AVG(JSON_EXTRACT(s.valence, '$.quality')), 0) AS avg_quality,
-  COALESCE(AVG(JSON_EXTRACT(s.valence, '$.reliability')), 0) AS avg_reliability
+  COALESCE(AVG(JSON_EXTRACT(s.valence, '$.reliability')), 0) AS avg_reliability,
+  COALESCE(AVG(JSON_EXTRACT(s.valence, '$.creativity')), 0) AS avg_creativity
 FROM completions c
 JOIN stamps s ON c.stamp_id = s.id
 GROUP BY c.completed_by
@@ -66,12 +68,17 @@ LIMIT %d`, limit)
 		if err != nil {
 			return nil, fmt.Errorf("parsing avg_reliability for %q: %w", row["completed_by"], err)
 		}
+		avgC, err := strconv.ParseFloat(row["avg_creativity"], 64)
+		if err != nil {
+			return nil, fmt.Errorf("parsing avg_creativity for %q: %w", row["completed_by"], err)
+		}
 
 		entries = append(entries, LeaderboardEntry{
-			RigHandle:   row["completed_by"],
-			Completions: completions,
-			AvgQuality:  avgQ,
-			AvgReliab:   avgR,
+			RigHandle:     row["completed_by"],
+			Completions:   completions,
+			AvgQuality:    avgQ,
+			AvgReliab:     avgR,
+			AvgCreativity: avgC,
 		})
 	}
 

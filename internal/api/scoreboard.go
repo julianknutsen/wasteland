@@ -27,6 +27,7 @@ type ScoreboardEntryJSON struct {
 	Completions    int      `json:"completions"`
 	AvgQuality     float64  `json:"avg_quality"`
 	AvgReliability float64  `json:"avg_reliability"`
+	AvgCreativity  float64  `json:"avg_creativity"`
 	TopSkills      []string `json:"top_skills,omitempty"`
 }
 
@@ -132,6 +133,7 @@ func toScoreboardResponse(entries []commons.ScoreboardEntry) *ScoreboardResponse
 			Completions:    e.Completions,
 			AvgQuality:     e.AvgQuality,
 			AvgReliability: e.AvgReliab,
+			AvgCreativity:  e.AvgCreativity,
 			TopSkills:      e.TopSkills,
 		}
 	}

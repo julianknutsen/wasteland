@@ -122,6 +122,7 @@ export function Scoreboard() {
             <th className={styles.th}>Completions</th>
             <th className={styles.th}>Quality</th>
             <th className={styles.th}>Reliability</th>
+            <th className={styles.th}>Creativity</th>
             <th className={styles.th}>Skills</th>
           </tr>
         </thead>
@@ -143,6 +144,7 @@ export function Scoreboard() {
               <td className={styles.td}>{entry.completions}</td>
               <td className={styles.td}>{entry.avg_quality.toFixed(1)}</td>
               <td className={styles.td}>{entry.avg_reliability.toFixed(1)}</td>
+              <td className={styles.td}>{entry.avg_creativity.toFixed(1)}</td>
               <td className={styles.td}>
                 <SkillTags skills={entry.top_skills} />
               </td>

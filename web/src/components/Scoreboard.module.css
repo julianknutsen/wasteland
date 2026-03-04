@@ -157,23 +157,23 @@
   background-color: var(--dim);
 }
 
-.trustBadge[data-tier="drifter"] {
+.trustBadge[data-tier="outsider"] {
   background-color: var(--dim);
 }
 
-.trustBadge[data-tier="scavenger"] {
+.trustBadge[data-tier="newcomer"] {
   background-color: var(--green);
 }
 
-.trustBadge[data-tier="settler"] {
+.trustBadge[data-tier="contributor"] {
   background-color: var(--blue);
 }
 
-.trustBadge[data-tier="warrior"] {
+.trustBadge[data-tier="trusted"] {
   background-color: var(--brass);
 }
 
-.trustBadge[data-tier="imperator"] {
+.trustBadge[data-tier="maintainer"] {
   background-color: var(--accent);
 }
 

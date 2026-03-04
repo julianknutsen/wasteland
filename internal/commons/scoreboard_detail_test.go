@@ -10,7 +10,7 @@ func TestQueryScoreboardDetail_Basic(t *testing.T) {
 	t.Parallel()
 	db := &fakeDB{results: map[string]string{
 		// Base scoreboard queries.
-		"GROUP BY s.subject":   "subject,stamp_count,weighted_score,unique_towns,avg_quality,avg_reliability\nalice,4,15,3,4.2,3.8\n",
+		"GROUP BY s.subject":   "subject,stamp_count,weighted_score,unique_towns,avg_quality,avg_reliability,avg_creativity\nalice,4,15,3,4.2,3.8,3.5\n",
 		"stamp_id IS NOT NULL": "completed_by,completions\nalice,2\n",
 		"s.skill_tags":         "subject,skill_tags\n",
 		// Display names (used by base scoreboard).
@@ -42,8 +42,8 @@ func TestQueryScoreboardDetail_Basic(t *testing.T) {
 	if e.WeightedScore != 15 {
 		t.Errorf("weighted_score = %d, want 15", e.WeightedScore)
 	}
-	if e.TrustTier != "settler" {
-		t.Errorf("trust_tier = %q, want settler", e.TrustTier)
+	if e.TrustTier != "contributor" {
+		t.Errorf("trust_tier = %q, want contributor", e.TrustTier)
 	}
 	if e.RegisteredAt != "2024-01-15" {
 		t.Errorf("registered_at = %q, want 2024-01-15", e.RegisteredAt)
@@ -83,7 +83,7 @@ func TestQueryScoreboardDetail_Basic(t *testing.T) {
 func TestQueryScoreboardDetail_Empty(t *testing.T) {
 	t.Parallel()
 	db := &fakeDB{results: map[string]string{
-		"GROUP BY s.subject": "subject,stamp_count,weighted_score,unique_towns,avg_quality,avg_reliability\n",
+		"GROUP BY s.subject": "subject,stamp_count,weighted_score,unique_towns,avg_quality,avg_reliability,avg_creativity\n",
 	}}
 	entries, err := QueryScoreboardDetail(db, 10)
 	if err != nil {
@@ -109,7 +109,7 @@ func TestQueryScoreboardDetail_QueryError(t *testing.T) {
 func TestQueryScoreboardDetail_EmptyNested(t *testing.T) {
 	t.Parallel()
 	db := &fakeDB{results: map[string]string{
-		"GROUP BY s.subject":           "subject,stamp_count,weighted_score,unique_towns,avg_quality,avg_reliability\nalice,1,3,1,3.0,3.0\n",
+		"GROUP BY s.subject":           "subject,stamp_count,weighted_score,unique_towns,avg_quality,avg_reliability,avg_creativity\nalice,1,3,1,3.0,3.0,2.5\n",
 		"stamp_id IS NOT NULL":         "completed_by,completions\n",
 		"s.skill_tags":                 "subject,skill_tags\n",
 		"display_name\nFROM rigs":      "handle,display_name\n",

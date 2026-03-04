@@ -112,13 +112,14 @@ export function makeScoreboardEntry(overrides: Partial<ScoreboardEntry> = {}): S
   return {
     rig_handle: "alice",
     display_name: "Alice Chen",
-    trust_tier: "settler",
+    trust_tier: "contributor",
     stamp_count: 5,
     weighted_score: 12,
     unique_towns: 3,
     completions: 4,
     avg_quality: 4.0,
     avg_reliability: 3.8,
+    avg_creativity: 3.5,
     top_skills: ["go", "sql"],
     ...overrides,
   };

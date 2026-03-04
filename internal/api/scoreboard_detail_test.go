@@ -13,7 +13,7 @@ import (
 func TestScoreboardDetail_Handler(t *testing.T) {
 	db := newFakeDB()
 	db.results = map[string]string{
-		"GROUP BY s.subject":           "subject,stamp_count,weighted_score,unique_towns,avg_quality,avg_reliability\nalice,4,15,3,4.2,3.8\n",
+		"GROUP BY s.subject":           "subject,stamp_count,weighted_score,unique_towns,avg_quality,avg_reliability,avg_creativity\nalice,4,15,3,4.2,3.8,3.5\n",
 		"stamp_id IS NOT NULL":         "completed_by,completions\nalice,2\n",
 		"s.skill_tags":                 "subject,skill_tags\n",
 		"display_name\nFROM rigs":      "handle,display_name\nalice,Alice Chen\n",

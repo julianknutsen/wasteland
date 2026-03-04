@@ -75,13 +75,13 @@ describe("Scoreboard", () => {
     cleanupFetch = mockFetch(() =>
       makeScoreboardResponse({
         entries: [
-          makeScoreboardEntry({ rig_handle: "a", trust_tier: "warrior" }),
-          makeScoreboardEntry({ rig_handle: "b", trust_tier: "settler" }),
+          makeScoreboardEntry({ rig_handle: "a", trust_tier: "trusted" }),
+          makeScoreboardEntry({ rig_handle: "b", trust_tier: "contributor" }),
         ],
       }),
     );
     renderWithRouter(<Scoreboard />);
-    await waitFor(() => expect(screen.getAllByText("warrior").length).toBeGreaterThan(0));
-    expect(screen.getAllByText("settler").length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getAllByText("trusted").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("contributor").length).toBeGreaterThan(0);
   });
 });

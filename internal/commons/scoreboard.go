@@ -19,6 +19,7 @@ type ScoreboardEntry struct {
 	Completions   int
 	AvgQuality    float64
 	AvgReliab     float64
+	AvgCreativity float64
 	TopSkills     []string
 	TrustTier     string
 }
@@ -27,15 +28,15 @@ type ScoreboardEntry struct {
 func DeriveTrustTier(weightedScore int) string {
 	switch {
 	case weightedScore >= 50:
-		return "imperator"
+		return "maintainer"
 	case weightedScore >= 25:
-		return "warrior"
+		return "trusted"
 	case weightedScore >= 10:
-		return "settler"
+		return "contributor"
 	case weightedScore >= 3:
-		return "scavenger"
+		return "newcomer"
 	default:
-		return "drifter"
+		return "outsider"
 	}
 }
 
@@ -56,7 +57,8 @@ func QueryScoreboard(db DB, limit int) ([]ScoreboardEntry, error) {
   SUM(CASE s.severity WHEN 'root' THEN 5 WHEN 'branch' THEN 3 WHEN 'leaf' THEN 1 ELSE 0 END) AS weighted_score,
   COUNT(DISTINCT s.author) AS unique_towns,
   COALESCE(AVG(JSON_EXTRACT(s.valence, '$.quality')), 0) AS avg_quality,
-  COALESCE(AVG(JSON_EXTRACT(s.valence, '$.reliability')), 0) AS avg_reliability
+  COALESCE(AVG(JSON_EXTRACT(s.valence, '$.reliability')), 0) AS avg_reliability,
+  COALESCE(AVG(JSON_EXTRACT(s.valence, '$.creativity')), 0) AS avg_creativity
 FROM stamps s
 GROUP BY s.subject
 ORDER BY weighted_score DESC, stamp_count DESC, s.subject ASC
@@ -94,6 +96,10 @@ LIMIT %d`, limit)
 		if err != nil {
 			return nil, fmt.Errorf("parsing avg_reliability for %q: %w", row["subject"], err)
 		}
+		avgC, err := strconv.ParseFloat(row["avg_creativity"], 64)
+		if err != nil {
+			return nil, fmt.Errorf("parsing avg_creativity for %q: %w", row["subject"], err)
+		}
 
 		entries = append(entries, ScoreboardEntry{
 			RigHandle:     row["subject"],
@@ -102,6 +108,7 @@ LIMIT %d`, limit)
 			UniqueTowns:   uniqueTowns,
 			AvgQuality:    avgQ,
 			AvgReliab:     avgR,
+			AvgCreativity: avgC,
 			TrustTier:     DeriveTrustTier(weightedScore),
 		})
 	}

@@ -61,7 +61,7 @@ func (f *fakeDB) Query(sql, ref string) (string, error) {
 		if f.leaderboardCSV != "" {
 			return f.leaderboardCSV, nil
 		}
-		return "completed_by,completions,avg_quality,avg_reliability\n", nil
+		return "completed_by,completions,avg_quality,avg_reliability,avg_creativity\n", nil
 	case strings.Contains(sql, "FROM completions") && strings.Contains(sql, "skill_tags"):
 		if f.leaderSkillsCSV != "" {
 			return f.leaderSkillsCSV, nil
@@ -607,7 +607,7 @@ func TestCORSMiddleware(t *testing.T) {
 
 func TestLeaderboard(t *testing.T) {
 	db := newFakeDB()
-	db.leaderboardCSV = "completed_by,completions,avg_quality,avg_reliability\nalice,5,4.2,3.8\nbob,3,4.0,4.5\n"
+	db.leaderboardCSV = "completed_by,completions,avg_quality,avg_reliability,avg_creativity\nalice,5,4.2,3.8,3.0\nbob,3,4.0,4.5,2.5\n"
 	db.leaderSkillsCSV = "completed_by,skill_tags\nalice,\"[\"\"go\"\",\"\"sql\"\"]\"\nbob,\"[\"\"testing\"\"]\"\n"
 
 	ts := newTestServer(db, "wild-west")

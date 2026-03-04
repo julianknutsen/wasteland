@@ -41,7 +41,7 @@ func (f *fakeDB) CanWildWest() error                          { return nil }
 func TestQueryLeaderboard_BasicRanking(t *testing.T) {
 	t.Parallel()
 	db := &fakeDB{results: map[string]string{
-		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability\nalice,5,4.2,3.8\nbob,3,4.0,4.5\n",
+		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability,avg_creativity\nalice,5,4.2,3.8,3.0\nbob,3,4.0,4.5,2.5\n",
 		"IN (":     "completed_by,skill_tags\n",
 	}}
 	entries, err := QueryLeaderboard(db, 20)
@@ -65,7 +65,7 @@ func TestQueryLeaderboard_BasicRanking(t *testing.T) {
 func TestQueryLeaderboard_Empty(t *testing.T) {
 	t.Parallel()
 	db := &fakeDB{results: map[string]string{
-		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability\n",
+		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability,avg_creativity\n",
 	}}
 	entries, err := QueryLeaderboard(db, 10)
 	if err != nil {
@@ -79,7 +79,7 @@ func TestQueryLeaderboard_Empty(t *testing.T) {
 func TestQueryLeaderboard_DefaultLimit(t *testing.T) {
 	t.Parallel()
 	db := &fakeDB{results: map[string]string{
-		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability\n",
+		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability,avg_creativity\n",
 	}}
 	_, _ = QueryLeaderboard(db, 0)
 	if len(db.queries) == 0 {
@@ -93,7 +93,7 @@ func TestQueryLeaderboard_DefaultLimit(t *testing.T) {
 func TestQueryLeaderboard_CapsLimit(t *testing.T) {
 	t.Parallel()
 	db := &fakeDB{results: map[string]string{
-		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability\n",
+		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability,avg_creativity\n",
 	}}
 	_, _ = QueryLeaderboard(db, 99999)
 	if len(db.queries) == 0 {
@@ -119,7 +119,7 @@ func TestQueryLeaderboard_QueryError(t *testing.T) {
 func TestQueryLeaderboard_ParseError(t *testing.T) {
 	t.Parallel()
 	db := &fakeDB{results: map[string]string{
-		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability\nalice,not-a-number,4.0,3.0\n",
+		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability,avg_creativity\nalice,not-a-number,4.0,3.0,2.0\n",
 	}}
 	_, err := QueryLeaderboard(db, 10)
 	if err == nil {
@@ -133,7 +133,7 @@ func TestQueryLeaderboard_ParseError(t *testing.T) {
 func TestQueryLeaderboard_WithSkills(t *testing.T) {
 	t.Parallel()
 	db := &fakeDB{results: map[string]string{
-		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability\nalice,3,4.0,3.5\n",
+		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability,avg_creativity\nalice,3,4.0,3.5,3.0\n",
 		"IN (":     "completed_by,skill_tags\nalice,\"[\"\"go\"\",\"\"sql\"\"]\"\nalice,\"[\"\"go\"\",\"\"testing\"\"]\"\n",
 	}}
 	entries, err := QueryLeaderboard(db, 10)
@@ -155,7 +155,7 @@ func TestQueryLeaderboard_WithSkills(t *testing.T) {
 func TestQueryLeaderboard_BulkSkillQuery(t *testing.T) {
 	t.Parallel()
 	db := &fakeDB{results: map[string]string{
-		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability\nalice,3,4.0,3.5\nbob,2,3.0,3.0\n",
+		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability,avg_creativity\nalice,3,4.0,3.5,3.0\nbob,2,3.0,3.0,2.5\n",
 		"IN (":     "completed_by,skill_tags\n",
 	}}
 	_, err := QueryLeaderboard(db, 10)
@@ -171,7 +171,7 @@ func TestQueryLeaderboard_BulkSkillQuery(t *testing.T) {
 func TestQueryLeaderboard_MalformedSkillTags(t *testing.T) {
 	t.Parallel()
 	db := &fakeDB{results: map[string]string{
-		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability\nalice,3,4.0,3.5\n",
+		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability,avg_creativity\nalice,3,4.0,3.5,3.0\n",
 		"IN (":     "completed_by,skill_tags\nalice,not-valid-json\n",
 	}}
 	// Malformed skill_tags should be silently skipped, not cause an error.
@@ -190,7 +190,7 @@ func TestQueryLeaderboard_MalformedSkillTags(t *testing.T) {
 func TestQueryLeaderboard_SkillsUseSameJoinPath(t *testing.T) {
 	t.Parallel()
 	db := &fakeDB{results: map[string]string{
-		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability\nalice,3,4.0,3.5\n",
+		"GROUP BY": "completed_by,completions,avg_quality,avg_reliability,avg_creativity\nalice,3,4.0,3.5,3.0\n",
 		"IN (":     "completed_by,skill_tags\n",
 	}}
 	_, _ = QueryLeaderboard(db, 10)

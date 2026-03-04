@@ -228,6 +228,7 @@ export interface ScoreboardEntry {
   completions: number;
   avg_quality: number;
   avg_reliability: number;
+  avg_creativity: number;
   top_skills?: string[];
 }
 
