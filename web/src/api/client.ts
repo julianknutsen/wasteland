@@ -4,11 +4,13 @@ import type {
   BrowseResponse,
   ConfigResponse,
   ConnectInput,
+  ConnectResponse,
   ConnectSessionResponse,
   DashboardResponse,
   DetailResponse,
   ErrorResponse,
   JoinInput,
+  JoinResponse,
   MutationResponse,
   PostInput,
   ProfileResponse,
@@ -221,16 +223,16 @@ export async function connectSession(endUserId: string): Promise<ConnectSessionR
   });
 }
 
-export async function notifyConnect(input: ConnectInput): Promise<void> {
-  await request<Record<string, string>>("/api/auth/connect", {
+export async function notifyConnect(input: ConnectInput): Promise<ConnectResponse> {
+  return request<ConnectResponse>("/api/auth/connect", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
 }
 
-export async function joinWasteland(input: JoinInput): Promise<void> {
-  await request<Record<string, string>>("/api/auth/join", {
+export async function joinWasteland(input: JoinInput): Promise<JoinResponse> {
+  return request<JoinResponse>("/api/auth/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

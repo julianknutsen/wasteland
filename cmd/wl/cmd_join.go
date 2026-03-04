@@ -277,7 +277,7 @@ func runJoinRemote(stdout, _ io.Writer, upstream, handle, displayName, email, fo
 	fmt.Fprintf(stdout, "  Registering rig via API...\n")
 	db := backend.NewRemoteDB(token, upstreamOrg, upstreamDB, forkOrg, upstreamDB, federation.ModePR)
 	branch := fmt.Sprintf("wl/register/%s", handle)
-	regSQL := buildRegistrationSQL(handle, forkOrg, displayName, email, "dev")
+	regSQL := commons.BuildRegistrationSQL(handle, forkOrg, displayName, email, "dev")
 	if err := db.Exec(branch, "", false, regSQL); err != nil {
 		return fmt.Errorf("registering rig: %w", err)
 	}
@@ -320,27 +320,6 @@ func runJoinRemote(stdout, _ io.Writer, upstream, handle, displayName, email, fo
 	}
 	fmt.Fprintf(stdout, "\n  %s\n", style.Dim.Render("Next: wl browse  — browse the wanted board"))
 	return nil
-}
-
-// buildRegistrationSQL generates the SQL statement to register a rig.
-func buildRegistrationSQL(handle, dolthubOrg, displayName, ownerEmail, version string) string {
-	hopURI := fmt.Sprintf("hop://%s/%s/", ownerEmail, handle)
-	return fmt.Sprintf(
-		`INSERT INTO rigs (handle, display_name, dolthub_org, hop_uri, owner_email, gt_version, trust_level, registered_at, last_seen) `+
-			`VALUES ('%s', '%s', '%s', '%s', '%s', '%s', 1, NOW(), NOW()) `+
-			`ON DUPLICATE KEY UPDATE display_name = '%s', dolthub_org = '%s', hop_uri = '%s', owner_email = '%s', gt_version = '%s', last_seen = NOW()`,
-		commons.EscapeSQL(handle),
-		commons.EscapeSQL(displayName),
-		commons.EscapeSQL(dolthubOrg),
-		commons.EscapeSQL(hopURI),
-		commons.EscapeSQL(ownerEmail),
-		commons.EscapeSQL(version),
-		commons.EscapeSQL(displayName),
-		commons.EscapeSQL(dolthubOrg),
-		commons.EscapeSQL(hopURI),
-		commons.EscapeSQL(ownerEmail),
-		commons.EscapeSQL(version),
-	)
 }
 
 func printForkInstructions(w io.Writer, err *remote.ForkRequiredError) {

@@ -17,6 +17,7 @@ type Server struct {
 	sessions      *SessionStore
 	nango         *NangoClient
 	sessionSecret string
+	forkRegistrar ForkRegistrar
 }
 
 // NewServer creates a hosted Server.
@@ -26,6 +27,7 @@ func NewServer(resolver *WorkspaceResolver, sessions *SessionStore, nango *Nango
 		sessions:      sessions,
 		nango:         nango,
 		sessionSecret: sessionSecret,
+		forkRegistrar: &DoltHubForkRegistrar{},
 	}
 }
 
@@ -69,6 +71,8 @@ type connectRequest struct {
 	ForkDB       string `json:"fork_db"`
 	Upstream     string `json:"upstream"`
 	Mode         string `json:"mode"`
+	DisplayName  string `json:"display_name"`
+	Email        string `json:"email"`
 }
 
 // handleConnect is called after the frontend completes Nango auth.
@@ -97,7 +101,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read-modify-write: preserve existing wastelands, upsert the new one.
-	_, meta, err := s.nango.GetConnection(req.ConnectionID)
+	apiKey, meta, err := s.nango.GetConnection(req.ConnectionID)
 	if err != nil || meta == nil {
 		meta = &UserMetadata{RigHandle: req.RigHandle}
 	}
@@ -114,6 +118,17 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Best-effort: fork the upstream and register the rig on DoltHub.
+	var setupWarning string
+	if s.forkRegistrar != nil {
+		setupWarning = s.forkRegistrar.EnsureForkAndRegister(
+			apiKey, req.Upstream, req.ForkOrg, req.ForkDB, req.RigHandle, req.DisplayName, req.Email,
+		)
+		if setupWarning != "" {
+			slog.Warn("fork registrar warning on connect", "warning", setupWarning, "connection_id", req.ConnectionID)
+		}
+	}
+
 	// Create session.
 	sessionID, err := s.sessions.Create(req.ConnectionID)
 	if err != nil {
@@ -123,7 +138,11 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	SetSessionCookie(w, sessionID, req.ConnectionID, s.sessionSecret)
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "connected"})
+	resp := map[string]string{"status": "connected"}
+	if setupWarning != "" {
+		resp["setup_warning"] = setupWarning
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // authStatusResponse is the JSON response for GET /api/auth/status.
@@ -222,10 +241,12 @@ func (s *Server) handleConnectSession(w http.ResponseWriter, r *http.Request) {
 
 // joinRequest is the JSON body for POST /api/auth/join.
 type joinRequest struct {
-	ForkOrg  string `json:"fork_org"`
-	ForkDB   string `json:"fork_db"`
-	Upstream string `json:"upstream"`
-	Mode     string `json:"mode"`
+	ForkOrg     string `json:"fork_org"`
+	ForkDB      string `json:"fork_db"`
+	Upstream    string `json:"upstream"`
+	Mode        string `json:"mode"`
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
 }
 
 // handleJoin adds a new wasteland to the user's metadata.
@@ -270,7 +291,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch current metadata, upsert the new wasteland, write back.
-	_, meta, err := s.nango.GetConnection(session.ConnectionID)
+	apiKey, meta, err := s.nango.GetConnection(session.ConnectionID)
 	if err != nil {
 		slog.Error("nango: failed to read metadata", "error", err, "connection_id", session.ConnectionID)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read metadata: " + err.Error()})
@@ -294,10 +315,25 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Best-effort: fork the upstream and register the rig on DoltHub.
+	var setupWarning string
+	if s.forkRegistrar != nil {
+		setupWarning = s.forkRegistrar.EnsureForkAndRegister(
+			apiKey, req.Upstream, req.ForkOrg, req.ForkDB, meta.RigHandle, req.DisplayName, req.Email,
+		)
+		if setupWarning != "" {
+			slog.Warn("fork registrar warning on join", "warning", setupWarning, "connection_id", session.ConnectionID)
+		}
+	}
+
 	// Bust the workspace cache so the next request picks up the new wasteland.
 	s.resolver.InvalidateConnection(session.ConnectionID)
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "joined"})
+	resp := map[string]string{"status": "joined"}
+	if setupWarning != "" {
+		resp["setup_warning"] = setupWarning
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handleLeaveWasteland removes a wasteland from the user's metadata.

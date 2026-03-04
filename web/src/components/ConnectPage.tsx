@@ -75,15 +75,19 @@ export function ConnectPage() {
       const nango = initNango(session.token);
       const authResult = await connectDoltHub(nango, session.integration_id, apiToken.trim());
 
-      await notifyConnect({
+      const connectResp = await notifyConnect({
         connection_id: authResult.connectionId,
         rig_handle: effectiveRigHandle,
         fork_org: effectiveForkOrg,
         fork_db: forkDB.trim() || "wl-commons",
         upstream: upstream.trim() || "hop/wl-commons",
+        display_name: username.trim(),
       });
 
       await refresh();
+      if (connectResp.setup_warning) {
+        toast.warning(connectResp.setup_warning);
+      }
       toast.success("Connected to DoltHub");
       navigate(returnTo ?? "/", { replace: true });
     } catch (err) {
@@ -102,13 +106,16 @@ export function ConnectPage() {
 
     setSubmitting(true);
     try {
-      await joinWasteland({
+      const joinResp = await joinWasteland({
         fork_org: joinForkOrg.trim(),
         fork_db: joinForkDB.trim(),
         upstream: joinUpstream.trim(),
       });
 
       await refresh();
+      if (joinResp.setup_warning) {
+        toast.warning(joinResp.setup_warning);
+      }
       toast.success("Joined wasteland");
       navigate(returnTo ?? "/", { replace: true });
     } catch (err) {

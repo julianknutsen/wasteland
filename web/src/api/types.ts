@@ -122,6 +122,13 @@ export interface ConnectInput {
   fork_db: string;
   upstream: string;
   mode?: string;
+  display_name?: string;
+  email?: string;
+}
+
+export interface ConnectResponse {
+  status: string;
+  setup_warning?: string;
 }
 
 export interface JoinInput {
@@ -129,6 +136,13 @@ export interface JoinInput {
   fork_db: string;
   upstream: string;
   mode?: string;
+  display_name?: string;
+  email?: string;
+}
+
+export interface JoinResponse {
+  status: string;
+  setup_warning?: string;
 }
 
 export interface ErrorResponse {
