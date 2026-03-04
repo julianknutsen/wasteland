@@ -17,7 +17,7 @@ func newSyncCmd(stdout, stderr io.Writer) *cobra.Command {
 		Use:   "sync",
 		Short: "Pull upstream changes into local wl-commons fork",
 		Args:  cobra.NoArgs,
-		Long: `Sync your local wl-commons fork with the upstream hop/wl-commons.
+		Long: `Sync your local wl-commons fork with the upstream steveyegge/wl-commons.
 
 If you have a local fork of wl-commons (created by wl join), this pulls
 the latest changes from upstream.

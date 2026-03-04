@@ -102,7 +102,7 @@ func setupMultiWastelandTestServer(t *testing.T) (*SessionStore, *httptest.Serve
 	meta := &UserMetadata{
 		RigHandle: "alice",
 		Wastelands: []WastelandConfig{
-			{Upstream: "hop/wl-commons", ForkOrg: "alice-org", ForkDB: "wl-commons", Mode: "wild-west"},
+			{Upstream: "steveyegge/wl-commons", ForkOrg: "alice-org", ForkDB: "wl-commons", Mode: "wild-west"},
 			{Upstream: "julianknutsen/gascity", ForkOrg: "alice-org", ForkDB: "gascity", Mode: "pr"},
 		},
 	}
@@ -271,7 +271,7 @@ func TestAuthMiddleware_MultiWasteland_WithHeader(t *testing.T) {
 		Name:  cookieName,
 		Value: SignSessionCookie(sessionID, "conn-1", testSecret),
 	})
-	req.Header.Set("X-Wasteland", "hop/wl-commons")
+	req.Header.Set("X-Wasteland", "steveyegge/wl-commons")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -633,7 +633,7 @@ func TestHandleLeaveWasteland(t *testing.T) {
 	meta := &UserMetadata{
 		RigHandle: "alice",
 		Wastelands: []WastelandConfig{
-			{Upstream: "hop/wl-commons", ForkOrg: "alice-org", ForkDB: "wl-commons", Mode: "wild-west"},
+			{Upstream: "steveyegge/wl-commons", ForkOrg: "alice-org", ForkDB: "wl-commons", Mode: "wild-west"},
 			{Upstream: "julianknutsen/gascity", ForkOrg: "alice-org", ForkDB: "gascity", Mode: "pr"},
 		},
 	}
@@ -671,7 +671,7 @@ func TestHandleLeaveWasteland(t *testing.T) {
 
 	sessionID, _ := sessions.Create("conn-1")
 
-	req, _ := http.NewRequest("DELETE", ts.URL+"/api/auth/wastelands/hop/wl-commons", nil)
+	req, _ := http.NewRequest("DELETE", ts.URL+"/api/auth/wastelands/steveyegge/wl-commons", nil)
 	req.AddCookie(&http.Cookie{
 		Name:  cookieName,
 		Value: SignSessionCookie(sessionID, "conn-1", testSecret),

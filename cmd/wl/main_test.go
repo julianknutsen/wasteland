@@ -51,7 +51,7 @@ func TestJoinAcceptsOptionalArg(t *testing.T) {
 	for _, c := range root.Commands() {
 		if c.Name() == "join" {
 			if err := c.Args(c, []string{}); err != nil {
-				t.Errorf("join should accept 0 arguments (defaults to hop/wl-commons): %v", err)
+				t.Errorf("join should accept 0 arguments (defaults to steveyegge/wl-commons): %v", err)
 			}
 			if err := c.Args(c, []string{"org/db"}); err != nil {
 				t.Errorf("join should accept 1 argument: %v", err)

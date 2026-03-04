@@ -227,8 +227,8 @@ func runServeHosted(cmd *cobra.Command, stdout, _ io.Writer) error {
 	// Build the API server with hosted workspace resolution.
 	apiServer := api.NewHostedWorkspace(hosted.NewClientFunc(), hosted.NewWorkspaceFunc())
 
-	// Public read-only RemoteDB against hop/wl-commons (no token needed).
-	publicDB := backend.NewRemoteDB("", "hop", "wl-commons", "hop", "wl-commons", "")
+	// Public read-only RemoteDB against steveyegge/wl-commons (no token needed).
+	publicDB := backend.NewRemoteDB("", "steveyegge", "wl-commons", "steveyegge", "wl-commons", "")
 
 	// Scoreboard cache.
 	scoreboardCache := api.NewScoreboardCache(publicDB, 5*time.Minute)

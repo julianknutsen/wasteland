@@ -241,7 +241,7 @@ func TestWorkspaceResolver_MultipleWastelands(t *testing.T) {
 	meta := &UserMetadata{
 		RigHandle: "alice",
 		Wastelands: []WastelandConfig{
-			{Upstream: "hop/wl-commons", ForkOrg: "alice-org", ForkDB: "wl-commons", Mode: "wild-west"},
+			{Upstream: "steveyegge/wl-commons", ForkOrg: "alice-org", ForkDB: "wl-commons", Mode: "wild-west"},
 			{Upstream: "julianknutsen/gascity", ForkOrg: "alice-org", ForkDB: "gascity", Mode: "pr"},
 		},
 	}
@@ -276,9 +276,9 @@ func TestWorkspaceResolver_MultipleWastelands(t *testing.T) {
 	}
 
 	// Both clients should be accessible.
-	c1, err := ws.Client("hop/wl-commons")
+	c1, err := ws.Client("steveyegge/wl-commons")
 	if err != nil {
-		t.Fatalf("expected client for hop/wl-commons: %v", err)
+		t.Fatalf("expected client for steveyegge/wl-commons: %v", err)
 	}
 	if c1.Mode() != "wild-west" {
 		t.Errorf("expected wild-west, got %s", c1.Mode())
@@ -290,5 +290,106 @@ func TestWorkspaceResolver_MultipleWastelands(t *testing.T) {
 	}
 	if c2.Mode() != "pr" {
 		t.Errorf("expected pr, got %s", c2.Mode())
+	}
+}
+
+func TestMigrateUpstreams(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []WastelandConfig
+		wantUp   []string
+		wantMig  bool
+	}{
+		{
+			name:    "legacy hop/wl-commons migrated",
+			input:   []WastelandConfig{{Upstream: "hop/wl-commons", ForkOrg: "a", ForkDB: "b"}},
+			wantUp:  []string{"steveyegge/wl-commons"},
+			wantMig: true,
+		},
+		{
+			name:    "already correct",
+			input:   []WastelandConfig{{Upstream: "steveyegge/wl-commons", ForkOrg: "a", ForkDB: "b"}},
+			wantUp:  []string{"steveyegge/wl-commons"},
+			wantMig: false,
+		},
+		{
+			name: "mixed legacy and other",
+			input: []WastelandConfig{
+				{Upstream: "hop/wl-commons", ForkOrg: "a", ForkDB: "b"},
+				{Upstream: "other/db", ForkOrg: "c", ForkDB: "d"},
+			},
+			wantUp:  []string{"steveyegge/wl-commons", "other/db"},
+			wantMig: true,
+		},
+		{
+			name:    "unrelated upstream unchanged",
+			input:   []WastelandConfig{{Upstream: "other/db", ForkOrg: "a", ForkDB: "b"}},
+			wantUp:  []string{"other/db"},
+			wantMig: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			meta := &UserMetadata{Wastelands: tt.input}
+			got := migrateUpstreams(meta)
+			if got != tt.wantMig {
+				t.Errorf("migrateUpstreams() = %v, want %v", got, tt.wantMig)
+			}
+			for i, want := range tt.wantUp {
+				if meta.Wastelands[i].Upstream != want {
+					t.Errorf("Wastelands[%d].Upstream = %q, want %q", i, meta.Wastelands[i].Upstream, want)
+				}
+			}
+		})
+	}
+}
+
+func TestWorkspaceResolver_MigratesLegacyUpstream(t *testing.T) {
+	// Simulate a user whose metadata still has hop/wl-commons.
+	var setMetadataCalled bool
+	meta := &UserMetadata{
+		RigHandle: "alice",
+		Wastelands: []WastelandConfig{
+			{Upstream: "hop/wl-commons", ForkOrg: "alice-org", ForkDB: "wl-commons", Mode: "wild-west"},
+		},
+	}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "PATCH" {
+			setMetadataCalled = true
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		resp := nangoConnectionResponse{ConnectionID: "conn-1"}
+		resp.Credentials.APIKey = "token"
+		b, _ := json.Marshal(meta)
+		resp.Metadata = json.RawMessage(b)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+
+	nango := NewNangoClient(NangoConfig{
+		BaseURL:       ts.URL,
+		SecretKey:     "secret",
+		IntegrationID: "dolthub",
+	})
+	sessions := NewSessionStore()
+	resolver := NewWorkspaceResolver(nango, sessions)
+
+	session := &UserSession{ID: "sess-1", ConnectionID: "conn-1", CreatedAt: time.Now()}
+
+	ws, err := resolver.Resolve(session)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// After migration, the workspace should have steveyegge/wl-commons.
+	_, err = ws.Client("steveyegge/wl-commons")
+	if err != nil {
+		t.Fatalf("expected client for steveyegge/wl-commons after migration: %v", err)
+	}
+
+	if !setMetadataCalled {
+		t.Error("expected SetMetadata to be called to persist migration")
 	}
 }

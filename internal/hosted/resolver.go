@@ -65,6 +65,9 @@ func (wr *WorkspaceResolver) Resolve(session *UserSession) (*sdk.Workspace, erro
 		return cached.workspace, nil
 	}
 
+	// Migrate legacy upstream references.
+	migrated := migrateUpstreams(meta)
+
 	// Build a new workspace with a client for each wasteland.
 	ws := sdk.NewWorkspace(meta.RigHandle)
 	for i := range meta.Wastelands {
@@ -79,6 +82,13 @@ func (wr *WorkspaceResolver) Resolve(session *UserSession) (*sdk.Workspace, erro
 			ForkDB:   wl.ForkDB,
 			Mode:     wl.Mode,
 		}, client)
+	}
+
+	// Persist migrated metadata back to Nango (best-effort).
+	if migrated {
+		if err := wr.nango.SetMetadata(session.ConnectionID, meta); err != nil {
+			slog.Warn("failed to persist upstream migration", "error", err, "connection_id", session.ConnectionID)
+		}
 	}
 
 	wr.cache[session.ConnectionID] = &cachedWorkspace{
@@ -187,6 +197,19 @@ func (wr *WorkspaceResolver) buildClient(wl *WastelandConfig, rigHandle, connect
 	})
 
 	return client, nil
+}
+
+// migrateUpstreams rewrites legacy upstream references in user metadata.
+// Returns true if any entries were changed.
+func migrateUpstreams(meta *UserMetadata) bool {
+	changed := false
+	for i := range meta.Wastelands {
+		if meta.Wastelands[i].Upstream == "hop/wl-commons" {
+			meta.Wastelands[i].Upstream = "steveyegge/wl-commons"
+			changed = true
+		}
+	}
+	return changed
 }
 
 // extractWantedIDFromBranch parses a branch name like "wl/{rig}/{wantedID}"

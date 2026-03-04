@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const defaultUpstream = "hop/wl-commons"
+const defaultUpstream = "steveyegge/wl-commons"
 
 func newJoinCmd(stdout, stderr io.Writer) *cobra.Command {
 	var (
@@ -47,7 +47,7 @@ This command:
   3. Opens a pull request for registration
   4. Saves wasteland configuration locally
 
-The upstream argument defaults to 'hop/wl-commons' (the main wasteland).
+The upstream argument defaults to 'steveyegge/wl-commons' (the main wasteland).
 You can specify a different org/database path to join other wastelands.
 
 Getting started:
@@ -60,7 +60,7 @@ Getting started:
 
 Examples:
   wl join
-  wl join hop/wl-commons --handle my-rig
+  wl join steveyegge/wl-commons --handle my-rig
   wl join --local-db             # clone locally (requires dolt)`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
