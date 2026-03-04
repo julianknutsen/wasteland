@@ -27,14 +27,79 @@ type WorkspaceResolver struct {
 	sessions *SessionStore
 	mu       sync.Mutex
 	cache    map[string]*cachedWorkspace // connectionID -> cached workspace
+
+	pendingMu    sync.Mutex
+	pendingCache map[string]*pendingUpstreamCache // upstream ("org/db") -> shared cache
+}
+
+// pendingUpstreamCache is a background-refreshing cache of pending items
+// shared across all users on the same upstream.
+type pendingUpstreamCache struct {
+	mu     sync.RWMutex
+	cached map[string][]sdk.PendingItem
+	stop   chan struct{}
+}
+
+func newPendingUpstreamCache(provider *remote.DoltHubProvider, upOrg, upDB string, interval time.Duration) *pendingUpstreamCache {
+	c := &pendingUpstreamCache{stop: make(chan struct{})}
+
+	refresh := func() {
+		states, err := provider.ListPendingWantedIDs(upOrg, upDB)
+		if err != nil {
+			slog.Warn("pending items refresh failed", "upstream", upOrg+"/"+upDB, "error", err)
+			return
+		}
+		result := make(map[string][]sdk.PendingItem, len(states))
+		for id, pending := range states {
+			items := make([]sdk.PendingItem, len(pending))
+			for i, p := range pending {
+				items[i] = sdk.PendingItem{
+					RigHandle: p.RigHandle,
+					Status:    p.Status,
+					ClaimedBy: p.ClaimedBy,
+					Branch:    p.Branch,
+					BranchURL: p.BranchURL,
+					PRURL:     p.PRURL,
+				}
+			}
+			result[id] = items
+		}
+		c.mu.Lock()
+		c.cached = result
+		c.mu.Unlock()
+	}
+
+	go refresh()
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				refresh()
+			case <-c.stop:
+				return
+			}
+		}
+	}()
+
+	return c
+}
+
+func (c *pendingUpstreamCache) Get() (map[string][]sdk.PendingItem, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.cached, nil
 }
 
 // NewWorkspaceResolver creates a WorkspaceResolver.
 func NewWorkspaceResolver(nango *NangoClient, sessions *SessionStore) *WorkspaceResolver {
 	return &WorkspaceResolver{
-		nango:    nango,
-		sessions: sessions,
-		cache:    make(map[string]*cachedWorkspace),
+		nango:        nango,
+		sessions:     sessions,
+		cache:        make(map[string]*cachedWorkspace),
+		pendingCache: make(map[string]*pendingUpstreamCache),
 	}
 }
 
@@ -93,6 +158,20 @@ func (wr *WorkspaceResolver) InvalidateConnection(connectionID string) {
 	wr.mu.Lock()
 	defer wr.mu.Unlock()
 	delete(wr.cache, connectionID)
+}
+
+// getOrCreatePendingCache returns a shared background-refreshing cache for the
+// given upstream. All users on the same upstream share a single cache instance.
+func (wr *WorkspaceResolver) getOrCreatePendingCache(provider *remote.DoltHubProvider, upOrg, upDB string) *pendingUpstreamCache {
+	key := upOrg + "/" + upDB
+	wr.pendingMu.Lock()
+	defer wr.pendingMu.Unlock()
+	if c, ok := wr.pendingCache[key]; ok {
+		return c
+	}
+	c := newPendingUpstreamCache(provider, upOrg, upDB, 2*time.Minute)
+	wr.pendingCache[key] = c
+	return c
 }
 
 func (wr *WorkspaceResolver) buildClient(wl *WastelandConfig, rigHandle, connectionID, apiKey string, _ *UserMetadata) (*sdk.Client, error) {
@@ -162,30 +241,9 @@ func (wr *WorkspaceResolver) buildClient(wl *WastelandConfig, rigHandle, connect
 			}
 			return provider.ClosePR(upOrg, upDB, prID)
 		},
-		ListPendingItems: func() (map[string][]sdk.PendingItem, error) {
-			states, err := provider.ListPendingWantedIDs(upOrg, upDB)
-			if err != nil {
-				return nil, err
-			}
-			result := make(map[string][]sdk.PendingItem, len(states))
-			for id, pending := range states {
-				items := make([]sdk.PendingItem, len(pending))
-				for i, p := range pending {
-					items[i] = sdk.PendingItem{
-						RigHandle: p.RigHandle,
-						Status:    p.Status,
-						ClaimedBy: p.ClaimedBy,
-						Branch:    p.Branch,
-						BranchURL: p.BranchURL,
-						PRURL:     p.PRURL,
-					}
-				}
-				result[id] = items
-			}
-			return result, nil
-		},
-		BranchURL: branchURL,
-		Signing:   wl.Signing,
+		ListPendingItems: wr.getOrCreatePendingCache(provider, upOrg, upDB).Get,
+		BranchURL:        branchURL,
+		Signing:          wl.Signing,
 		SaveConfig: func(mode string, signing bool) error {
 			// Read-modify-write: fetch current metadata, update just this wasteland, write back.
 			_, currentMeta, err := wr.nango.GetConnection(connectionID)
