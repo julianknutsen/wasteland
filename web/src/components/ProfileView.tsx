@@ -69,9 +69,7 @@ export function ProfileView() {
               {data.stamp_count} {data.stamp_count === 1 ? "stamp" : "stamps"} earned
             </span>
           )}
-          {data.stamp_count === 0 && (
-            <span className={styles.unverifiedNote}>No Wasteland stamps yet</span>
-          )}
+          {data.stamp_count === 0 && <span className={styles.unverifiedNote}>No Wasteland stamps yet</span>}
         </div>
       </div>
 
