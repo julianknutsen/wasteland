@@ -519,13 +519,18 @@ func (f *fakeDB) PushWithSync(_ io.Writer) error {
 func (f *fakeDB) CanWildWest() error { return nil }
 
 // resolveItem returns the item from branch or main.
+// Non-existent branches return nil (matching DoltHub 404 behavior).
 func (f *fakeDB) resolveItem(id, ref string) *fakeItem {
 	if ref != "" && ref != "main" {
+		if !f.branches[ref] {
+			return nil // branch doesn't exist
+		}
 		if bi, ok := f.branchItems[ref]; ok {
 			if item, ok := bi[id]; ok {
 				return item
 			}
 		}
+		// Branch exists but hasn't modified this item — inherit from main.
 	}
 	return f.items[id]
 }

@@ -321,13 +321,18 @@ func matchesBrowseFilter(item *WantedItem, f BrowseFilter) bool {
 func FindBranchForItem(db DB, rigHandle, wantedID string) string {
 	branch := BranchName(rigHandle, wantedID)
 	branches, err := db.Branches(branch)
-	if err != nil || len(branches) == 0 {
-		return ""
-	}
-	for _, b := range branches {
-		if b == branch {
-			return branch
+	if err == nil {
+		for _, b := range branches {
+			if b == branch {
+				return branch
+			}
 		}
+	}
+	// Fallback: probe the branch data directly. The dolt_branches system
+	// table can lag behind the write API on DoltHub, so a branch may exist
+	// (and hold mutations) even when Branches() doesn't list it yet.
+	if status, _ := queryItemBranchState(db, wantedID, branch); status != "" {
+		return branch
 	}
 	return ""
 }
