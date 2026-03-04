@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -370,31 +371,51 @@ func (d *DoltHubProvider) CreatePR(forkOrg, upstreamOrg, db, fromBranch, title, 
 	return fmt.Sprintf("%s/%s/%s/pulls", dolthubRepoBase, upstreamOrg, db), nil
 }
 
+// pullSummary is a minimal representation of a DoltHub pull request from the list endpoint.
+type pullSummary struct {
+	PullID string `json:"pull_id"`
+	State  string `json:"state"`
+}
+
+// listPulls returns all pull requests for a repo, paginating through all pages.
+func (d *DoltHubProvider) listPulls(upstreamOrg, db string) ([]pullSummary, error) {
+	var all []pullSummary
+	listURL := fmt.Sprintf("%s/%s/%s/pulls", dolthubAPIBase, upstreamOrg, db)
+	for {
+		body, err := d.dolthubGet(listURL)
+		if err != nil {
+			return all, err
+		}
+		var page struct {
+			Pulls         []pullSummary `json:"pulls"`
+			NextPageToken string        `json:"next_page_token"`
+		}
+		if err := json.Unmarshal(body, &page); err != nil {
+			return all, err
+		}
+		all = append(all, page.Pulls...)
+		if page.NextPageToken == "" {
+			break
+		}
+		listURL = fmt.Sprintf("%s/%s/%s/pulls?pageToken=%s",
+			dolthubAPIBase, upstreamOrg, db, url.QueryEscape(page.NextPageToken))
+	}
+	return all, nil
+}
+
 // FindPR searches for an open PR on DoltHub matching the given from-branch and fork org.
 // Returns the PR URL and ID, or empty strings if none found.
 //
 // The list endpoint doesn't include branch details, so we fetch each open PR's
 // detail to match on from_branch and from_branch_owner.
 func (d *DoltHubProvider) FindPR(upstreamOrg, db, forkOrg, fromBranch string) (prURL, prID string) {
-	// List all PRs.
-	listURL := fmt.Sprintf("%s/%s/%s/pulls", dolthubAPIBase, upstreamOrg, db)
-	body, err := d.dolthubGet(listURL)
-	if err != nil {
-		return "", ""
-	}
-
-	var result struct {
-		Pulls []struct {
-			PullID string `json:"pull_id"`
-			State  string `json:"state"`
-		} `json:"pulls"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
+	pulls, err := d.listPulls(upstreamOrg, db)
+	if err != nil && len(pulls) == 0 {
 		return "", ""
 	}
 
 	// Check each open PR's detail for matching branch info.
-	for _, pr := range result.Pulls {
+	for _, pr := range pulls {
 		if !strings.EqualFold(pr.State, "open") {
 			continue
 		}
@@ -411,8 +432,8 @@ func (d *DoltHubProvider) FindPR(upstreamOrg, db, forkOrg, fromBranch string) (p
 			continue
 		}
 		if prDetail.FromBranch == fromBranch && prDetail.FromBranchOwner == forkOrg {
-			url := fmt.Sprintf("%s/%s/%s/pulls/%s", dolthubRepoBase, upstreamOrg, db, pr.PullID)
-			return url, pr.PullID
+			prURL := fmt.Sprintf("%s/%s/%s/pulls/%s", dolthubRepoBase, upstreamOrg, db, pr.PullID)
+			return prURL, pr.PullID
 		}
 	}
 	return "", ""
@@ -507,24 +528,13 @@ func (d *DoltHubProvider) ClosePR(upstreamOrg, db, prID string) error {
 // It lists open PRs on the upstream repo, fetches each PR's detail to get the
 // from_branch, and extracts the wanted ID from the wl/{rig}/{wantedID} convention.
 func (d *DoltHubProvider) ListPendingWantedIDs(upstreamOrg, db string) (map[string]bool, error) {
-	listURL := fmt.Sprintf("%s/%s/%s/pulls", dolthubAPIBase, upstreamOrg, db)
-	body, err := d.dolthubGet(listURL)
+	pulls, err := d.listPulls(upstreamOrg, db)
 	if err != nil {
 		return nil, fmt.Errorf("listing PRs: %w", err)
 	}
 
-	var result struct {
-		Pulls []struct {
-			PullID string `json:"pull_id"`
-			State  string `json:"state"`
-		} `json:"pulls"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("parsing PR list: %w", err)
-	}
-
 	ids := make(map[string]bool)
-	for _, pr := range result.Pulls {
+	for _, pr := range pulls {
 		if !strings.EqualFold(pr.State, "open") {
 			continue
 		}

@@ -375,6 +375,102 @@ func TestDoltHubProvider_Type(t *testing.T) {
 	}
 }
 
+func TestDoltHubProvider_FindPR(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/org/db/pulls", func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/pulls/") {
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"pulls": []map[string]any{
+				{"pull_id": "1", "state": "open"},
+				{"pull_id": "2", "state": "closed"},
+				{"pull_id": "3", "state": "open"},
+			},
+		})
+	})
+	mux.HandleFunc("/org/db/pulls/1", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"from_branch":       "wl/alice/fix-login",
+			"from_branch_owner": "alice",
+		})
+	})
+	mux.HandleFunc("/org/db/pulls/3", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"from_branch":       "wl/bob/add-feature",
+			"from_branch_owner": "bob",
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	dolthubAPIBase = server.URL
+
+	provider := NewDoltHubProvider("token")
+
+	// Find existing PR.
+	url, id := provider.FindPR("org", "db", "bob", "wl/bob/add-feature")
+	if id != "3" {
+		t.Errorf("expected PR id 3, got %q", id)
+	}
+	if url == "" {
+		t.Error("expected non-empty URL")
+	}
+
+	// No match.
+	url, id = provider.FindPR("org", "db", "charlie", "wl/charlie/nope")
+	if id != "" || url != "" {
+		t.Errorf("expected empty result for non-matching PR, got url=%q id=%q", url, id)
+	}
+}
+
+func TestDoltHubProvider_FindPR_Pagination(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/org/db/pulls", func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/pulls/") {
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("pageToken") == "page2" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"pulls": []map[string]any{
+					{"pull_id": "5", "state": "open"},
+				},
+			})
+		} else {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"pulls": []map[string]any{
+					{"pull_id": "10", "state": "closed"},
+				},
+				"next_page_token": "page2",
+			})
+		}
+	})
+	mux.HandleFunc("/org/db/pulls/5", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"from_branch":       "wl/alice/w-001",
+			"from_branch_owner": "alice",
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	dolthubAPIBase = server.URL
+
+	provider := NewDoltHubProvider("token")
+	url, id := provider.FindPR("org", "db", "alice", "wl/alice/w-001")
+	if id != "5" {
+		t.Errorf("expected PR id 5 from page 2, got %q", id)
+	}
+	if url == "" {
+		t.Error("expected non-empty URL for paginated PR")
+	}
+}
+
 func TestDoltHubProvider_ListPendingWantedIDs(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/upstream-org/wl-commons/pulls", func(w http.ResponseWriter, r *http.Request) {
