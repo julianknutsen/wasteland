@@ -104,7 +104,12 @@ export function Layout() {
               sign in
             </NavLink>
           )}
-          <a href="/wasteland-skill.md" className={styles.navLink} download title="Claude Code skill — drop into .claude/skills/">
+          <a
+            href="/wasteland-skill.md"
+            className={styles.navLink}
+            download
+            title="Claude Code skill — drop into .claude/skills/"
+          >
             get skill
           </a>
         </nav>

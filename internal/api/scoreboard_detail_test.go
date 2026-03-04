@@ -13,15 +13,15 @@ import (
 func TestScoreboardDetail_Handler(t *testing.T) {
 	db := newFakeDB()
 	db.results = map[string]string{
-		"GROUP BY s.subject":            "subject,stamp_count,weighted_score,unique_towns,avg_quality,avg_reliability\nalice,4,15,3,4.2,3.8\n",
-		"stamp_id IS NOT NULL":          "completed_by,completions\nalice,2\n",
-		"s.skill_tags":                  "subject,skill_tags\n",
-		"display_name\nFROM rigs":       "handle,display_name\nalice,Alice Chen\n",
-		"registered_at":                 "handle,registered_at,rig_type\nalice,2024-01-15,human\n",
-		"GROUP BY subject, severity":    "subject,severity,cnt\nalice,root,1\nalice,branch,2\nalice,leaf,1\n",
-		"FROM stamps\nWHERE subject IN": "subject,author,severity,quality,reliability,skill_tags,message,created_at\nalice,bob,root,5,4,,great,2024-06-01\n",
-		"FROM completions c":            "completed_by,wanted_id,wanted_title,completed_at,validated_at\nalice,w-1,Fix bug,2024-06-01,2024-06-02\n",
-		"FROM badges":                   "rig_handle,badge_type,awarded_at\nalice,pioneer,2024-03-01\n",
+		"GROUP BY s.subject":           "subject,stamp_count,weighted_score,unique_towns,avg_quality,avg_reliability\nalice,4,15,3,4.2,3.8\n",
+		"stamp_id IS NOT NULL":         "completed_by,completions\nalice,2\n",
+		"s.skill_tags":                 "subject,skill_tags\n",
+		"display_name\nFROM rigs":      "handle,display_name\nalice,Alice Chen\n",
+		"registered_at":                "handle,registered_at,rig_type\nalice,2024-01-15,human\n",
+		"GROUP BY subject, severity":   "subject,severity,cnt\nalice,root,1\nalice,branch,2\nalice,leaf,1\n",
+		"ORDER BY subject, created_at": "subject,author,severity,quality,reliability,skill_tags,message,created_at\nalice,bob,root,5,4,,great,2024-06-01\n",
+		"FROM completions c":           "completed_by,wanted_id,wanted_title,completed_at,validated_at\nalice,w-1,Fix bug,2024-06-01,2024-06-02\n",
+		"FROM badges":                  "rig_handle,badge_type,awarded_at\nalice,pioneer,2024-03-01\n",
 	}
 
 	client := newTestClient(db)

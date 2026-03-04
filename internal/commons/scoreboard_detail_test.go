@@ -20,7 +20,7 @@ func TestQueryScoreboardDetail_Basic(t *testing.T) {
 		// Severity counts.
 		"GROUP BY subject, severity": "subject,severity,cnt\nalice,root,1\nalice,branch,2\nalice,leaf,1\n",
 		// Individual stamps.
-		"FROM stamps\nWHERE subject IN": "subject,author,severity,quality,reliability,skill_tags,message,created_at\nalice,bob,root,5,4,,great work,2024-06-01\nalice,charlie,leaf,3,3,,ok,2024-05-01\n",
+		"ORDER BY subject, created_at": "subject,author,severity,quality,reliability,skill_tags,message,created_at\nalice,bob,root,5,4,,great work,2024-06-01\nalice,charlie,leaf,3,3,,ok,2024-05-01\n",
 		// Completion history.
 		"FROM completions c": "completed_by,wanted_id,wanted_title,completed_at,validated_at\nalice,w-1,Fix bug,2024-06-01,2024-06-02\n",
 		// Badges.
@@ -109,15 +109,15 @@ func TestQueryScoreboardDetail_QueryError(t *testing.T) {
 func TestQueryScoreboardDetail_EmptyNested(t *testing.T) {
 	t.Parallel()
 	db := &fakeDB{results: map[string]string{
-		"GROUP BY s.subject":            "subject,stamp_count,weighted_score,unique_towns,avg_quality,avg_reliability\nalice,1,3,1,3.0,3.0\n",
-		"stamp_id IS NOT NULL":          "completed_by,completions\n",
-		"s.skill_tags":                  "subject,skill_tags\n",
-		"display_name\nFROM rigs":       "handle,display_name\n",
-		"registered_at":                 "handle,registered_at,rig_type\n",
-		"GROUP BY subject, severity":    "subject,severity,cnt\n",
-		"FROM stamps\nWHERE subject IN": "subject,author,severity,quality,reliability,skill_tags,message,created_at\n",
-		"FROM completions c":            "completed_by,wanted_id,wanted_title,completed_at,validated_at\n",
-		"FROM badges":                   "rig_handle,badge_type,awarded_at\n",
+		"GROUP BY s.subject":           "subject,stamp_count,weighted_score,unique_towns,avg_quality,avg_reliability\nalice,1,3,1,3.0,3.0\n",
+		"stamp_id IS NOT NULL":         "completed_by,completions\n",
+		"s.skill_tags":                 "subject,skill_tags\n",
+		"display_name\nFROM rigs":      "handle,display_name\n",
+		"registered_at":                "handle,registered_at,rig_type\n",
+		"GROUP BY subject, severity":   "subject,severity,cnt\n",
+		"ORDER BY subject, created_at": "subject,author,severity,quality,reliability,skill_tags,message,created_at\n",
+		"FROM completions c":           "completed_by,wanted_id,wanted_title,completed_at,validated_at\n",
+		"FROM badges":                  "rig_handle,badge_type,awarded_at\n",
 	}}
 
 	entries, err := QueryScoreboardDetail(db, 10)
