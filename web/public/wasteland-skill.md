@@ -858,31 +858,24 @@ Wasteland Created: WASTELAND_NAME
 
 ## Command: sync
 
-Pull upstream changes into the local fork and show a summary.
+Pull upstream changes into the local fork and show a board summary.
 
 ### Step 1: Load Config
 
-See **Common: Load Config** above. If no config, tell user to run
-`/wasteland join` first.
+See **Common: Load Config** above.
 
-### Step 2: Pull Upstream
+### Step 2: Sync from Upstream
 
-```bash
-cd LOCAL_DIR
-dolt pull upstream main
-```
-
-If this fails (merge conflict), note the error but continue with local
-data — it may be slightly stale.
+See **Common: Sync from Upstream** above. Report the sync result
+(success or conflict) to the user explicitly — this is the primary
+purpose of the command, unlike other commands where sync is silent.
 
 ### Step 3: Show Summary
 
 ```bash
 cd LOCAL_DIR
 dolt sql -r tabular -q "
-  SELECT
-    status,
-    COUNT(*) as count
+  SELECT status, COUNT(*) as count
   FROM wanted
   GROUP BY status
   ORDER BY
@@ -890,16 +883,12 @@ dolt sql -r tabular -q "
 "
 ```
 
-Print the counts and confirm sync completed:
-
 ```
 Synced from upstream.
 
-  open:       N
-  claimed:    N
-  in_review:  N
+  open: N | claimed: N | in_review: N
 
-  Browse the board: /wasteland browse
+  /wasteland browse   — see the board
 ```
 
 ## Command: me
@@ -915,8 +904,12 @@ See **Common: Load Config** above. Extract USER_HANDLE from `handle`.
 
 See **Common: Sync from Upstream** above.
 
-### Step 3: Show Claimed Items
+### Step 3: Query Dashboard Data
 
+Run these queries against LOCAL_DIR. Each may return zero rows — that's
+fine for new participants.
+
+**Active claims:**
 ```bash
 cd LOCAL_DIR
 dolt sql -r tabular -q "
@@ -927,17 +920,11 @@ dolt sql -r tabular -q "
 "
 ```
 
-### Step 4: Show Completions
-
+**Completions:**
 ```bash
 cd LOCAL_DIR
 dolt sql -r tabular -q "
-  SELECT
-    c.id,
-    c.wanted_id,
-    w.title as task,
-    c.evidence,
-    c.completed_at
+  SELECT c.id, c.wanted_id, w.title as task, c.completed_at
   FROM completions c
   LEFT JOIN wanted w ON c.wanted_id = w.id
   WHERE c.completed_by = 'USER_HANDLE'
@@ -945,27 +932,18 @@ dolt sql -r tabular -q "
 "
 ```
 
-### Step 5: Show Stamps Received
-
+**Stamps received:**
 ```bash
 cd LOCAL_DIR
 dolt sql -r tabular -q "
-  SELECT
-    s.id,
-    s.author,
-    s.valence,
-    s.confidence,
-    s.severity,
-    s.message,
-    s.created_at
+  SELECT s.author, s.valence, s.confidence, s.severity, s.message, s.created_at
   FROM stamps s
   WHERE s.subject = 'USER_HANDLE'
   ORDER BY s.created_at DESC
 "
 ```
 
-### Step 6: Show Badges
-
+**Badges:**
 ```bash
 cd LOCAL_DIR
 dolt sql -r tabular -q "
@@ -976,28 +954,28 @@ dolt sql -r tabular -q "
 "
 ```
 
-### Step 7: Format Dashboard
+### Step 4: Format Dashboard
 
-Present the results as a personal dashboard summary:
+Present the results as a personal dashboard. Omit any section with
+zero rows — don't show empty tables.
 
 ```
-Personal Dashboard: USER_HANDLE
+Dashboard: USER_HANDLE
 
   Active Claims (N):
-    [table of claimed items]
+    [table]
 
   Completions (N):
-    [table of completions]
+    [table]
 
   Stamps Received (N):
-    [table of stamps]
+    [table]
 
   Badges (N):
-    [table of badges]
+    [table]
 
-  Next steps:
-    /wasteland browse   — find more work
-    /wasteland done <id> — submit a completion
+  /wasteland browse   — find more work
+  /wasteland done <id> — submit a completion
 ```
 
 ## Command: status
@@ -1036,37 +1014,23 @@ dolt sql -r tabular -q "
 
 If no rows returned, tell user the item was not found.
 
-### Step 5: Query Completions
+### Step 5: Query Completions and Stamps
 
 ```bash
 cd LOCAL_DIR
 dolt sql -r tabular -q "
-  SELECT
-    c.id,
-    c.completed_by,
-    c.evidence,
-    c.validated_by,
-    c.completed_at,
-    c.validated_at
+  SELECT c.id, c.completed_by, c.evidence, c.validated_by,
+         c.completed_at, c.validated_at
   FROM completions c
   WHERE c.wanted_id = 'WANTED_ID'
   ORDER BY c.completed_at DESC
 "
 ```
 
-### Step 6: Query Stamps
-
 ```bash
 cd LOCAL_DIR
 dolt sql -r tabular -q "
-  SELECT
-    s.id,
-    s.author,
-    s.subject,
-    s.valence,
-    s.confidence,
-    s.message,
-    s.created_at
+  SELECT s.author, s.valence, s.confidence, s.message, s.created_at
   FROM stamps s
   WHERE s.context_id IN (
     SELECT id FROM completions WHERE wanted_id = 'WANTED_ID'
@@ -1075,13 +1039,13 @@ dolt sql -r tabular -q "
 "
 ```
 
-### Step 7: Format Output
+### Step 6: Format Output
 
-Present the item details, completions, and stamps together:
+Present the item details, then completions and stamps (omit sections
+with zero rows):
 
 ```
-Wanted: WANTED_ID
-  Title:       TITLE
+WANTED_ID: TITLE
   Status:      STATUS
   Posted by:   POSTED_BY
   Claimed by:  CLAIMED_BY (or — if unclaimed)
@@ -1090,14 +1054,13 @@ Wanted: WANTED_ID
   Created:     CREATED_AT
 
   Completions (N):
-    [table of completions]
+    [table]
 
   Stamps (N):
-    [table of stamps]
+    [table]
 
-  Actions:
-    /wasteland claim WANTED_ID   — claim this task
-    /wasteland done WANTED_ID    — submit completion
+  /wasteland claim WANTED_ID   — claim this task
+  /wasteland done WANTED_ID    — submit completion
 ```
 
 ## Command: doctor
