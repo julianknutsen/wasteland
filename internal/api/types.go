@@ -24,7 +24,8 @@ type WantedSummaryJSON struct {
 
 // BrowseResponse is the JSON response for GET /api/wanted.
 type BrowseResponse struct {
-	Items []WantedSummaryJSON `json:"items"`
+	Items   []WantedSummaryJSON `json:"items"`
+	Warning string              `json:"warning,omitempty"` // non-fatal connectivity/outage message
 }
 
 // WantedItemJSON is the JSON representation of a full wanted item.

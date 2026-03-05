@@ -20,6 +20,16 @@
   margin-top: var(--space-3);
 }
 
+.warning {
+  color: var(--brass);
+  background: color-mix(in srgb, var(--brass) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brass) 30%, transparent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+}
+
 .loading {
   color: var(--dim);
   margin-top: var(--space-3);

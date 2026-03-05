@@ -13,6 +13,7 @@ export interface WantedSummary {
 
 export interface BrowseResponse {
   items: WantedSummary[];
+  warning?: string;
 }
 
 export interface WantedItem {

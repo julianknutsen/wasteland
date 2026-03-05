@@ -50,7 +50,18 @@ func (c *ReadCache) Get(key string) []byte {
 		return nil
 	}
 	if time.Since(e.storedAt) > c.maxAge {
-		delete(c.entries, key)
+		return nil
+	}
+	return e.data
+}
+
+// GetStale returns cached bytes even if expired, for fallback during outages.
+// Returns nil only if the key was never cached.
+func (c *ReadCache) GetStale(key string) []byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.entries[key]
+	if !ok {
 		return nil
 	}
 	return e.data

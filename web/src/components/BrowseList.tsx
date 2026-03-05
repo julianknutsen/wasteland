@@ -19,6 +19,7 @@ export function BrowseList() {
   const [filter, setFilter] = useFilterParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [showInferForm, setShowInferForm] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
@@ -28,11 +29,13 @@ export function BrowseList() {
   const load = useCallback(async () => {
     if (!hasLoadedRef.current) setLoading(true);
     setError("");
+    setWarning("");
     try {
       // On first load with default filters, use prefetched data if available.
       const prefetched = !hasLoadedRef.current ? consumePrefetch() : null;
       const resp = (prefetched && (await prefetched)) || (await browse(filter));
       setItems(resp.items);
+      if (resp.warning) setWarning(resp.warning);
       setSelectedIndex(-1);
       hasLoadedRef.current = true;
     } catch (e) {
@@ -118,6 +121,7 @@ export function BrowseList() {
       <FilterBar filter={filter} onChange={setFilter} searchRef={searchRef} />
 
       {error && <p className={styles.error}>{error}</p>}
+      {warning && <p className={styles.warning}>{warning}</p>}
 
       {loading ? (
         <SkeletonRows count={6} />

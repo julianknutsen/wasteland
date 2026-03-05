@@ -44,7 +44,28 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		return json.Marshal(toBrowseResponse(result))
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		// Try to serve stale cache data with a warning instead of a hard error.
+		stale := s.browseCache.GetStale(key)
+		if stale != nil {
+			slog.Warn("serving stale browse data due to upstream error", "error", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusOK)
+			// Inject a warning into the stale response.
+			var resp BrowseResponse
+			if json.Unmarshal(stale, &resp) == nil {
+				resp.Warning = "Upstream database is temporarily unavailable. Showing cached data."
+				if patched, merr := json.Marshal(resp); merr == nil {
+					stale = patched
+				}
+			}
+			_, _ = w.Write(stale)
+			return
+		}
+		// No stale data — return a 503 with a clear outage message.
+		msg := "Upstream database is temporarily unavailable — please try again in a moment."
+		slog.Error("browse failed with no stale data", "error", err)
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: msg})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -72,9 +93,20 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			writeError(w, http.StatusNotFound, err.Error())
-		} else {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			return
 		}
+		// Try stale cache before returning a hard error.
+		if stale := s.detailCache.GetStale(key); stale != nil {
+			slog.Warn("serving stale detail data due to upstream error", "error", err)
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(stale)
+			return
+		}
+		msg := "Upstream database is temporarily unavailable — please try again in a moment."
+		slog.Error("detail failed with no stale data", "error", err)
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: msg})
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
