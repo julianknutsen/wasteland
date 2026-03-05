@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react";
 import type {
   AuthStatusResponse,
   BrowseFilter,
@@ -94,7 +95,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(resp.status, resp.statusText || "Invalid response");
   }
   if (!resp.ok) {
-    throw new ApiError(resp.status, (body as ErrorResponse).error || resp.statusText);
+    const err = new ApiError(resp.status, (body as ErrorResponse).error || resp.statusText);
+    if (resp.status >= 500) {
+      Sentry.captureException(err);
+    }
+    throw err;
   }
   return body as T;
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/gastownhall/wasteland/internal/commons"
 	"github.com/gastownhall/wasteland/internal/sdk"
+	"github.com/getsentry/sentry-go"
 )
 
 // resolveClient extracts the sdk.Client from the request. Returns false if
@@ -65,6 +66,7 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		// No stale data — return a 503 with a clear outage message.
 		msg := "Upstream database is temporarily unavailable — please try again in a moment."
 		slog.Error("browse failed with no stale data", "error", err)
+		sentry.CaptureException(err)
 		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: msg})
 		return
 	}
@@ -106,6 +108,7 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 		}
 		msg := "Upstream database is temporarily unavailable — please try again in a moment."
 		slog.Error("detail failed with no stale data", "error", err)
+		sentry.CaptureException(err)
 		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: msg})
 		return
 	}

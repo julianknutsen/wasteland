@@ -25,6 +25,8 @@ import (
 	"github.com/gastownhall/wasteland/internal/sdk"
 	"github.com/gastownhall/wasteland/internal/style"
 	"github.com/gastownhall/wasteland/web"
+	"github.com/getsentry/sentry-go"
+	sentryhttp "github.com/getsentry/sentry-go/http"
 	"github.com/spf13/cobra"
 )
 
@@ -83,9 +85,27 @@ func listenAndServeGraceful(srv *http.Server) error {
 	}
 }
 
+func initSentry(environment string) {
+	dsn := os.Getenv("SENTRY_DSN")
+	if dsn == "" {
+		return
+	}
+	if err := sentry.Init(sentry.ClientOptions{
+		Dsn:              dsn,
+		Environment:      environment,
+		Release:          version,
+		TracesSampleRate: 0.2,
+	}); err != nil {
+		slog.Error("sentry init failed", "error", err)
+	}
+}
+
 func runServe(cmd *cobra.Command, stdout, stderr io.Writer) error {
 	logger := slog.New(slog.NewJSONHandler(stdout, nil))
 	slog.SetDefault(logger)
+
+	initSentry("self-sovereign")
+	defer sentry.Flush(2 * time.Second)
 
 	port := resolvePort(cmd)
 	devMode, _ := cmd.Flags().GetBool("dev")
@@ -209,7 +229,8 @@ func runServe(cmd *cobra.Command, stdout, stderr io.Writer) error {
 	defer rateLimiter.Stop()
 	generalRL := api.RateLimit(rateLimiter)
 	bodyLimit := api.MaxBytesBody(64 << 10) // 64 KB
-	handler := api.RequestLog(logger)(api.SecurityHeaders(generalRL(bodyLimit(api.SPAHandler(server, web.Assets)))))
+	sentryMiddleware := sentryhttp.New(sentryhttp.Options{Repanic: true})
+	handler := sentryMiddleware.Handle(api.RequestLog(logger)(api.SecurityHeaders(generalRL(bodyLimit(api.SPAHandler(server, web.Assets))))))
 	if devMode {
 		handler = api.CORSMiddleware(handler)
 	}
@@ -227,6 +248,13 @@ func runServeHosted(cmd *cobra.Command, stdout, _ io.Writer) error {
 	port := resolvePort(cmd)
 	devMode, _ := cmd.Flags().GetBool("dev")
 
+	environment := os.Getenv("WL_ENVIRONMENT")
+	if environment == "" {
+		environment = "production"
+	}
+	initSentry(environment)
+	defer sentry.Flush(2 * time.Second)
+
 	// Read required env vars.
 	nangoSecretKey := os.Getenv("NANGO_SECRET_KEY")
 	if nangoSecretKey == "" {
@@ -236,7 +264,6 @@ func runServeHosted(cmd *cobra.Command, stdout, _ io.Writer) error {
 	if sessionSecret == "" {
 		return fmt.Errorf("WL_SESSION_SECRET environment variable is required for hosted mode")
 	}
-	environment := os.Getenv("WL_ENVIRONMENT")
 
 	// Optional env vars with defaults.
 	nangoBaseURL := os.Getenv("NANGO_BASE_URL")
@@ -293,7 +320,8 @@ func runServeHosted(cmd *cobra.Command, stdout, _ io.Writer) error {
 	defer hostedRateLimiter.Stop()
 	generalRL := api.RateLimit(hostedRateLimiter)
 	bodyLimit := api.MaxBytesBody(64 << 10) // 64 KB
-	handler := api.RequestLog(logger)(api.SecurityHeaders(generalRL(bodyLimit(hostedServer.Handler(apiServer, web.Assets)))))
+	sentryMiddleware := sentryhttp.New(sentryhttp.Options{Repanic: true})
+	handler := sentryMiddleware.Handle(api.RequestLog(logger)(api.SecurityHeaders(generalRL(bodyLimit(hostedServer.Handler(apiServer, web.Assets))))))
 	if devMode {
 		handler = api.CORSMiddleware(handler)
 	}
