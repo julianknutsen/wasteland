@@ -175,6 +175,14 @@ func TestIsNothingToCommit_Nil(t *testing.T) {
 	}
 }
 
+func TestIsNothingToCommit_DoltHubToCommitID(t *testing.T) {
+	t.Parallel()
+	err := fmt.Errorf(`polling write operation "op-123": HTTP 400: cannot return null for non-nullable field sqlwrite.tocommitid`)
+	if !isNothingToCommit(err) {
+		t.Error("isNothingToCommit should return true for DoltHub tocommitid error")
+	}
+}
+
 func TestGenerateWantedID_Uniqueness(t *testing.T) {
 	t.Parallel()
 	seen := make(map[string]bool)

@@ -216,9 +216,15 @@ type ConflictError struct{ Message string }
 func (e *ConflictError) Error() string { return e.Message }
 
 // isNothingToCommit returns true if the error indicates DOLT_COMMIT found no
-// changes to commit.
+// changes to commit. Also matches the DoltHub write API variant where a
+// no-change write returns a GraphQL error about sqlwrite.tocommitid being null.
 func isNothingToCommit(err error) bool {
-	return err != nil && strings.Contains(strings.ToLower(err.Error()), "nothing to commit")
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "nothing to commit") ||
+		strings.Contains(lower, "sqlwrite.tocommitid")
 }
 
 // EscapeSQL escapes backslashes and single quotes for SQL string literals.
