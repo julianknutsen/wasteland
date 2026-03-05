@@ -32,6 +32,18 @@ export function getActiveUpstream(): string | null {
   return _activeUpstream;
 }
 
+// --- Staging impersonation ---
+
+let _impersonateHandle: string | null = null;
+
+export function setImpersonation(handle: string | null) {
+  _impersonateHandle = handle;
+}
+
+export function getImpersonation(): string | null {
+  return _impersonateHandle;
+}
+
 // --- API client ---
 
 class ApiError extends Error {
@@ -45,11 +57,16 @@ class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  // Inject X-Wasteland header on non-auth API calls.
+  // Inject X-Wasteland and X-Impersonate headers on non-auth API calls.
   let fetchInit = init;
-  if (_activeUpstream && !path.startsWith("/api/auth/")) {
+  if ((_activeUpstream || _impersonateHandle) && !path.startsWith("/api/auth/")) {
     const headers = new Headers(init?.headers);
-    headers.set("X-Wasteland", _activeUpstream);
+    if (_activeUpstream) {
+      headers.set("X-Wasteland", _activeUpstream);
+    }
+    if (_impersonateHandle) {
+      headers.set("X-Impersonate", _impersonateHandle);
+    }
     fetchInit = { ...init, headers };
   }
 

@@ -79,3 +79,25 @@ func (c *Client) Mode() string { return c.mode }
 
 // RigHandle returns the current rig handle.
 func (c *Client) RigHandle() string { return c.rigHandle }
+
+// WithRigHandle returns a shallow copy of the client with a different rig handle.
+// The copy shares the same DB connection and read-only callbacks but uses the
+// new handle for browse/detail/dashboard filtering. Intended for staging-only
+// impersonation of another user's read-only view.
+func (c *Client) WithRigHandle(handle string) *Client {
+	return &Client{
+		db:               c.db,
+		rigHandle:        handle,
+		mode:             c.mode,
+		signing:          c.signing,
+		hopURI:           c.hopURI,
+		noPush:           c.noPush,
+		CreatePR:         c.CreatePR,
+		CheckPR:          c.CheckPR,
+		ClosePR:          c.ClosePR,
+		LoadDiff:         c.LoadDiff,
+		SaveConfig:       c.SaveConfig,
+		ListPendingItems: c.ListPendingItems,
+		BranchURL:        c.BranchURL,
+	}
+}

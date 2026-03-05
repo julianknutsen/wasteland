@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { getImpersonation, setImpersonation } from "../api/client";
 import { useWasteland } from "../context/WastelandContext";
 import { CommandsContext, useCommandRegistry } from "../hooks/useCommands";
 import { useGlobalShortcuts } from "../hooks/useGlobalShortcuts";
@@ -10,6 +11,8 @@ import { ShortcutHelp } from "./ShortcutHelp";
 export function Layout() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [impersonating, setImpersonating] = useState<string>(getImpersonation() ?? "");
+  const [impersonateInput, setImpersonateInput] = useState(getImpersonation() ?? "");
   const navigate = useNavigate();
   const { wastelands, active, authenticated, environment, switchTo } = useWasteland();
 
@@ -60,7 +63,61 @@ export function Layout() {
   return (
     <CommandsContext.Provider value={contextValue}>
       <div className={styles.layout}>
-        {environment === "staging" && <div className={styles.stagingBanner}>staging</div>}
+        {environment === "staging" && (
+          <div className={styles.stagingBanner}>
+            <span>staging</span>
+            <span className={styles.impersonateBar}>
+              {impersonating ? (
+                <>
+                  <span className={styles.impersonateLabel}>viewing as {impersonating}</span>
+                  <button
+                    type="button"
+                    className={styles.impersonateBtn}
+                    onClick={() => {
+                      setImpersonation(null);
+                      setImpersonating("");
+                      setImpersonateInput("");
+                      window.location.reload();
+                    }}
+                  >
+                    stop
+                  </button>
+                </>
+              ) : (
+                <>
+                  <input
+                    className={styles.impersonateInput}
+                    type="text"
+                    placeholder="impersonate rig handle..."
+                    value={impersonateInput}
+                    onChange={(e) => setImpersonateInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && impersonateInput.trim()) {
+                        setImpersonation(impersonateInput.trim());
+                        setImpersonating(impersonateInput.trim());
+                        window.location.reload();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={styles.impersonateBtn}
+                    disabled={!impersonateInput.trim()}
+                    onClick={() => {
+                      if (impersonateInput.trim()) {
+                        setImpersonation(impersonateInput.trim());
+                        setImpersonating(impersonateInput.trim());
+                        window.location.reload();
+                      }
+                    }}
+                  >
+                    go
+                  </button>
+                </>
+              )}
+            </span>
+          </div>
+        )}
         <a href="#main-content" className="skip-link">
           Skip to content
         </a>

@@ -135,6 +135,17 @@ func (s *Server) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// Staging-only impersonation: X-Impersonate header overrides rig handle
+		// for read-only requests so operators can see the UI as another user.
+		if impersonate := r.Header.Get("X-Impersonate"); impersonate != "" && s.environment == "staging" {
+			if r.Method != http.MethodGet {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "impersonation is read-only"})
+				return
+			}
+			slog.Info("staging impersonation active", "real", client.RigHandle(), "impersonate", impersonate)
+			client = client.WithRigHandle(impersonate)
+		}
+
 		// Inject both workspace and client into context.
 		ctx := r.Context()
 		ctx = context.WithValue(ctx, workspaceContextKey, workspace)

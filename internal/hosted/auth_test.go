@@ -810,3 +810,125 @@ func TestAuthMiddleware_OldFormatCookie_NoRehydration(t *testing.T) {
 		t.Errorf("expected 401 for old-format cookie, got %d", resp.StatusCode)
 	}
 }
+
+// setupStagingTestServer is like setupHostedTestServer but with environment="staging".
+// The inner handler echoes the client's rig_handle so tests can verify impersonation.
+func setupStagingTestServer(t *testing.T) (*SessionStore, *httptest.Server) {
+	t.Helper()
+
+	meta := &UserMetadata{
+		RigHandle: "alice",
+		Wastelands: []WastelandConfig{
+			{Upstream: "wasteland/wl-commons", ForkOrg: "alice-org", ForkDB: "wl-commons", Mode: "wild-west"},
+		},
+	}
+
+	nangoTS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/connection/conn-1":
+			resp := nangoConnectionResponse{ConnectionID: "conn-1"}
+			resp.Credentials.APIKey = "test-token"
+			b, _ := json.Marshal(meta)
+			resp.Metadata = json.RawMessage(b)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(nangoTS.Close)
+
+	nango := NewNangoClient(NangoConfig{BaseURL: nangoTS.URL, SecretKey: "nango-secret", IntegrationID: "dolthub"})
+	sessions := NewSessionStore()
+	resolver := NewWorkspaceResolver(nango, sessions)
+	server := NewServer(resolver, sessions, nango, testSecret, "staging")
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			client, ok := ClientFromContext(r.Context())
+			if ok {
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]string{"rig_handle": client.RigHandle()})
+			} else {
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux := http.NewServeMux()
+	mux.Handle("/", server.AuthMiddleware(inner))
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	return sessions, ts
+}
+
+func TestAuthMiddleware_Impersonate_Staging_GET(t *testing.T) {
+	sessions, ts := setupStagingTestServer(t)
+	sessionID, _ := sessions.Create("conn-1")
+
+	req, _ := http.NewRequest("GET", ts.URL+"/api/wanted", nil)
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: SignSessionCookie(sessionID, "conn-1", testSecret)})
+	req.Header.Set("X-Impersonate", "bob")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result map[string]string
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	if result["rig_handle"] != "bob" {
+		t.Errorf("expected impersonated rig_handle=bob, got %s", result["rig_handle"])
+	}
+}
+
+func TestAuthMiddleware_Impersonate_Staging_POST_Blocked(t *testing.T) {
+	sessions, ts := setupStagingTestServer(t)
+	sessionID, _ := sessions.Create("conn-1")
+
+	req, _ := http.NewRequest("POST", ts.URL+"/api/wanted", nil)
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: SignSessionCookie(sessionID, "conn-1", testSecret)})
+	req.Header.Set("X-Wasteland", "wasteland/wl-commons")
+	req.Header.Set("X-Impersonate", "bob")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	if resp.StatusCode != http.StatusForbidden {
+		body, _ := io.ReadAll(resp.Body)
+		t.Errorf("expected 403, got %d: %s", resp.StatusCode, string(body))
+	}
+}
+
+func TestAuthMiddleware_Impersonate_NonStaging_Ignored(t *testing.T) {
+	// Use the default (non-staging) test server.
+	sessions, ts := setupHostedTestServer(t)
+	sessionID, _ := sessions.Create("conn-1")
+
+	req, _ := http.NewRequest("GET", ts.URL+"/api/wanted", nil)
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: SignSessionCookie(sessionID, "conn-1", testSecret)})
+	req.Header.Set("X-Impersonate", "bob")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+	// Should succeed — the header is ignored on non-staging.
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Errorf("expected 200 (header ignored), got %d: %s", resp.StatusCode, string(body))
+	}
+}

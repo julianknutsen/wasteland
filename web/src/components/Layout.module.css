@@ -8,12 +8,62 @@
   background: var(--orange);
   color: var(--bg-dark);
   text-align: center;
-  padding: 4px 0;
+  padding: 4px 12px;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.15em;
   text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.impersonateBar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.impersonateLabel {
+  font-weight: 600;
+}
+
+.impersonateInput {
+  padding: 2px 6px;
+  border: 1px solid var(--bg-dark);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--bg-dark);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  width: 180px;
+}
+
+.impersonateInput::placeholder {
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.impersonateBtn {
+  padding: 2px 8px;
+  border: 1px solid var(--bg-dark);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--bg-dark);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.impersonateBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .nav {
