@@ -20,7 +20,14 @@ func (s *Server) resolveClient(w http.ResponseWriter, r *http.Request) (*sdk.Cli
 	client, err := s.clientFunc(r)
 	if err != nil {
 		if r.Method == http.MethodGet && s.publicClient != nil {
-			return s.publicClient, true
+			c := s.publicClient
+			// Staging impersonation: if the user isn't authenticated but
+			// is impersonating, swap the rig handle on the public client
+			// so actions reflect the impersonated user's permissions.
+			if impersonate := r.Header.Get("X-Impersonate"); impersonate != "" && s.hosted {
+				c = c.WithRigHandle(impersonate)
+			}
+			return c, true
 		}
 		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return nil, false
