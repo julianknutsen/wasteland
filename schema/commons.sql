@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS _meta (
     value TEXT
 );
 
-INSERT IGNORE INTO _meta (`key`, value) VALUES ('schema_version', '1.1');
+INSERT IGNORE INTO _meta (`key`, value) VALUES ('schema_version', '1.2');
 
 CREATE TABLE IF NOT EXISTS rigs (
     handle VARCHAR(255) PRIMARY KEY,
@@ -96,4 +96,20 @@ CREATE TABLE IF NOT EXISTS chain_meta (
     hop_uri VARCHAR(512),
     dolt_database VARCHAR(255),
     created_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS rig_links (
+    id VARCHAR(64) PRIMARY KEY,
+    rig_a VARCHAR(255) NOT NULL,
+    rig_b VARCHAR(255) NOT NULL,
+    link_type VARCHAR(32) DEFAULT 'same_owner',
+    assertion_a TEXT,
+    assertion_b TEXT,
+    status VARCHAR(32) DEFAULT 'pending',
+    created_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    revoked_at TIMESTAMP,
+    revoked_by VARCHAR(255),
+    UNIQUE KEY uq_rig_pair (rig_a, rig_b),
+    CHECK (rig_a != rig_b)
 );
