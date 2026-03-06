@@ -8,6 +8,7 @@ import {
   branchDiff,
   claim,
   close,
+  closeUpstream,
   config,
   deleteItem,
   detail,
@@ -15,6 +16,7 @@ import {
   done,
   isConflictError,
   reject,
+  rejectUpstream,
   submitPR,
   unclaim,
 } from "../api/client";
@@ -303,55 +305,93 @@ export function DetailView() {
       </div>
 
       {upstream_prs && upstream_prs.length > 0 && (
-        <Section title="Competing Submissions">
+        <Section title={upstream_prs.length === 1 ? "Submission" : "Competing Submissions"}>
           <div className={styles.sectionContent}>
-            {upstream_prs.map((pr, i) => (
-              <div key={i} className={styles.sectionText}>
-                <span className={styles.highlightBrass}>{pr.rig_handle}</span>
-                {": "}
-                {pr.delta || pr.status}
-                {pr.pr_url && (
-                  <>
-                    {" "}
-                    <a href={pr.pr_url} target="_blank" rel="noopener noreferrer" className={styles.prLink}>
-                      PR
-                    </a>
-                  </>
-                )}
-                {pr.branch_url && (
-                  <>
-                    {" "}
-                    <a href={pr.branch_url} target="_blank" rel="noopener noreferrer" className={styles.prLink}>
-                      branch
-                    </a>
-                  </>
-                )}
-                {pr.evidence && <div className={styles.evidenceText}>{pr.evidence}</div>}
-                {pr.status === "in_review" && pr.evidence && rigHandle === item.posted_by && (
-                  <ActionButton
-                    action="accept"
-                    onAction={async () => {
-                      try {
-                        const result = await acceptUpstream(id!, pr.rig_handle);
-                        toast.success(`Accepted ${pr.rig_handle}'s submission`);
-                        if (result?.detail) {
-                          setData(result.detail);
-                        } else {
-                          await load();
-                        }
-                      } catch (e) {
-                        toast.error(e instanceof Error ? e.message : "Failed to accept upstream");
-                      }
-                    }}
-                  />
-                )}
-              </div>
-            ))}
+            {upstream_prs.map((pr, i) => {
+              const isUpstream = !!pr.pr_url || !!pr.branch_url;
+              return (
+                <div key={i} className={styles.sectionText}>
+                  <span className={styles.highlightBrass}>{pr.rig_handle}</span>
+                  {": "}
+                  {pr.delta || pr.status}
+                  {!isUpstream && " (main)"}
+                  {pr.pr_url && (
+                    <>
+                      {" "}
+                      <a href={pr.pr_url} target="_blank" rel="noopener noreferrer" className={styles.prLink}>
+                        PR
+                      </a>
+                    </>
+                  )}
+                  {pr.branch_url && (
+                    <>
+                      {" "}
+                      <a href={pr.branch_url} target="_blank" rel="noopener noreferrer" className={styles.prLink}>
+                        branch
+                      </a>
+                    </>
+                  )}
+                  {pr.evidence && <div className={styles.evidenceText}>{pr.evidence}</div>}
+                  {pr.status === "in_review" && pr.evidence && rigHandle === item.posted_by && (
+                    <div className={styles.actions}>
+                      <ActionButton
+                        action="accept"
+                        onAction={async () => {
+                          try {
+                            const result = isUpstream ? await acceptUpstream(id!, pr.rig_handle) : await accept(id!);
+                            toast.success(`Accepted ${pr.rig_handle}'s submission`);
+                            if (result?.detail) {
+                              setData(result.detail);
+                            } else {
+                              await load();
+                            }
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : "Failed to accept");
+                          }
+                        }}
+                      />
+                      <ActionButton
+                        action="reject"
+                        onAction={async () => {
+                          try {
+                            if (isUpstream) {
+                              await rejectUpstream(id!, pr.rig_handle);
+                            } else {
+                              await reject(id!);
+                            }
+                            toast.success(`Rejected ${pr.rig_handle}'s submission`);
+                            await load();
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : "Failed to reject");
+                          }
+                        }}
+                      />
+                      <ActionButton
+                        action="close"
+                        onAction={async () => {
+                          try {
+                            const result = isUpstream ? await closeUpstream(id!, pr.rig_handle) : await close(id!);
+                            toast.success(`Closed ${pr.rig_handle}'s submission`);
+                            if (result?.detail) {
+                              setData(result.detail);
+                            } else {
+                              await load();
+                            }
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : "Failed to close");
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </Section>
       )}
 
-      {completion && (
+      {completion && displayStatus === "completed" && (
         <Section title="Completion">
           <div className={styles.sectionContent}>
             <p className={styles.sectionText}>

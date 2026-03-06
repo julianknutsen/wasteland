@@ -123,6 +123,7 @@ func runTUI(cmd *cobra.Command, _, stderr io.Writer) error {
 		},
 		ListPendingItems: listPendingItemsFromPRs(cfg),
 		BranchURL:        branchURLCallback(cfg),
+		CloseUpstreamPR:  closeUpstreamPRCallback(cfg),
 	})
 
 	m := tui.New(tui.Config{

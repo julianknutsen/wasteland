@@ -794,12 +794,14 @@ func (d *DoltHubProvider) ListPendingWantedIDs(upstreamOrg, db string) (map[stri
 			//
 			// Filter rules:
 			// 1. status "open" = untouched item (stale copy)
-			// 2. claimed_by set to someone other than the PR author =
-			//    inherited claim from a previous upstream state
+			// 2. status "claimed" with claimed_by set to someone other than
+			//    the PR author = inherited claim from a previous upstream state
+			// Items at "in_review" or "completed" always pass — those statuses
+			// require intentional action (submitting evidence / accepting).
 			if e.state.Status == "open" {
 				continue
 			}
-			if e.state.ClaimedBy != "" && e.state.ClaimedBy != e.author {
+			if e.state.Status == "claimed" && e.state.ClaimedBy != "" && e.state.ClaimedBy != e.author {
 				continue
 			}
 			ids[e.wantedID] = append(ids[e.wantedID], e.state)

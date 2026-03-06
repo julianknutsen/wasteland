@@ -243,6 +243,13 @@ func (wr *WorkspaceResolver) buildClient(wl *WastelandConfig, rigHandle, connect
 			}
 			return provider.ClosePR(upOrg, upDB, prID)
 		},
+		CloseUpstreamPR: func(prURL string) error {
+			prID := extractPRID(prURL)
+			if prID == "" {
+				return fmt.Errorf("cannot extract PR ID from URL: %s", prURL)
+			}
+			return provider.ClosePR(upOrg, upDB, prID)
+		},
 		ListPendingItems: wr.getOrCreatePendingCache(provider, upOrg, upDB).Get,
 		BranchURL:        branchURL,
 		Signing:          wl.Signing,
@@ -276,4 +283,14 @@ func extractWantedIDFromBranch(branch string) string {
 		return parts[2]
 	}
 	return branch
+}
+
+// extractPRID extracts the pull request ID from a DoltHub PR URL like
+// "https://www.dolthub.com/repositories/org/db/pulls/123".
+func extractPRID(prURL string) string {
+	idx := strings.LastIndex(prURL, "/pulls/")
+	if idx < 0 {
+		return ""
+	}
+	return prURL[idx+len("/pulls/"):]
 }

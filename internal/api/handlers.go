@@ -428,6 +428,53 @@ func (s *Server) handleAcceptUpstream(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toMutationResponse(result, client.Mode()))
 }
 
+func (s *Server) handleRejectUpstream(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+	var req RejectUpstreamRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if req.RigHandle == "" {
+		writeError(w, http.StatusBadRequest, "rig_handle is required")
+		return
+	}
+	if err := client.RejectUpstream(id, req.RigHandle); err != nil {
+		writeMutationError(w, err)
+		return
+	}
+	s.invalidateReadCaches(id)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "rejected"})
+}
+
+func (s *Server) handleCloseUpstream(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+	var req CloseUpstreamRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if req.RigHandle == "" {
+		writeError(w, http.StatusBadRequest, "rig_handle is required")
+		return
+	}
+	result, err := client.CloseUpstream(id, req.RigHandle)
+	if err != nil {
+		writeMutationError(w, err)
+		return
+	}
+	s.invalidateReadCaches(id)
+	writeJSON(w, http.StatusOK, toMutationResponse(result, client.Mode()))
+}
+
 func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 	client, ok := s.resolveClient(w, r)
 	if !ok {

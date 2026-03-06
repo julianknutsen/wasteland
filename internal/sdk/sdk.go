@@ -27,6 +27,7 @@ type ClientConfig struct {
 	SaveConfig       func(mode string, signing bool) error
 	ListPendingItems func() (map[string][]PendingItem, error) // returns wanted IDs with pending upstream PR state
 	BranchURL        func(branch string) string               // returns a web URL for the branch
+	CloseUpstreamPR  func(prURL string) error                 // close an upstream PR by its web URL
 }
 
 // Client provides mode-aware operations against the Wasteland wanted board.
@@ -53,6 +54,8 @@ type Client struct {
 	ListPendingItems func() (map[string][]PendingItem, error)
 	// BranchURL returns a web URL for the given branch. Nil disables the feature.
 	BranchURL func(branch string) string
+	// CloseUpstreamPR closes an upstream PR by its web URL. Nil disables the feature.
+	CloseUpstreamPR func(prURL string) error
 }
 
 // New creates a Client from the given config.
@@ -71,6 +74,7 @@ func New(cfg ClientConfig) *Client {
 		SaveConfig:       cfg.SaveConfig,
 		ListPendingItems: cfg.ListPendingItems,
 		BranchURL:        cfg.BranchURL,
+		CloseUpstreamPR:  cfg.CloseUpstreamPR,
 	}
 }
 
@@ -99,5 +103,6 @@ func (c *Client) WithRigHandle(handle string) *Client {
 		SaveConfig:       c.SaveConfig,
 		ListPendingItems: c.ListPendingItems,
 		BranchURL:        c.BranchURL,
+		CloseUpstreamPR:  c.CloseUpstreamPR,
 	}
 }

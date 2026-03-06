@@ -18,6 +18,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/wanted/{id}/done", s.handleDone)
 	s.mux.HandleFunc("POST /api/wanted/{id}/accept", s.handleAccept)
 	s.mux.HandleFunc("POST /api/wanted/{id}/accept-upstream", s.handleAcceptUpstream)
+	s.mux.HandleFunc("POST /api/wanted/{id}/reject-upstream", s.handleRejectUpstream)
+	s.mux.HandleFunc("POST /api/wanted/{id}/close-upstream", s.handleCloseUpstream)
 	s.mux.HandleFunc("POST /api/wanted/{id}/reject", s.handleReject)
 	s.mux.HandleFunc("POST /api/wanted/{id}/close", s.handleClose)
 

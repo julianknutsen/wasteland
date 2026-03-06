@@ -155,6 +155,79 @@ func (c *Client) AcceptUpstream(wantedID, submitterHandle string, input AcceptIn
 	return c.mutateLocked(wantedID, "wl accept-upstream: "+wantedID, stmts...)
 }
 
+// RejectUpstream declines a fork submission by closing its upstream DoltHub PR.
+// No local state is modified — the item remains in its current status.
+func (c *Client) RejectUpstream(wantedID, submitterHandle string) error {
+	match, err := c.findUpstreamSubmission(wantedID, submitterHandle)
+	if err != nil {
+		return err
+	}
+	if match.PRURL == "" {
+		return fmt.Errorf("submission has no upstream PR to close")
+	}
+	if c.CloseUpstreamPR == nil {
+		return fmt.Errorf("upstream PR closing not available")
+	}
+	return c.CloseUpstreamPR(match.PRURL)
+}
+
+// CloseUpstream adopts a fork submission without creating a stamp, then closes
+// the upstream DoltHub PR.
+func (c *Client) CloseUpstream(wantedID, submitterHandle string) (*MutationResult, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if result := c.prIdempotentLocked(wantedID, "completed"); result != nil {
+		return result, nil
+	}
+
+	match, err := c.findUpstreamSubmission(wantedID, submitterHandle)
+	if err != nil {
+		return nil, err
+	}
+
+	if match.Status != "in_review" {
+		return nil, fmt.Errorf("submission is not in review")
+	}
+	if match.CompletedBy == "" {
+		return nil, fmt.Errorf("submission has no completion data")
+	}
+	if submitterHandle == c.rigHandle {
+		return nil, fmt.Errorf("cannot close your own completion")
+	}
+
+	completionID := commons.GeneratePrefixedID("c", wantedID, match.CompletedBy)
+	stmts := commons.CloseUpstreamDML(wantedID, completionID, match.CompletedBy, match.Evidence, c.hopURI)
+	result, err := c.mutateLocked(wantedID, "wl close-upstream: "+wantedID, stmts...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Best-effort close the upstream PR.
+	if match.PRURL != "" && c.CloseUpstreamPR != nil {
+		_ = c.CloseUpstreamPR(match.PRURL)
+	}
+	return result, nil
+}
+
+// findUpstreamSubmission looks up a pending upstream submission by rig handle.
+func (c *Client) findUpstreamSubmission(wantedID, submitterHandle string) (*PendingItem, error) {
+	if c.ListPendingItems == nil {
+		return nil, fmt.Errorf("upstream PR listing not available")
+	}
+	pending, err := c.ListPendingItems()
+	if err != nil {
+		return nil, fmt.Errorf("listing pending items: %w", err)
+	}
+	items := pending[wantedID]
+	for i := range items {
+		if items[i].RigHandle == submitterHandle {
+			return &items[i], nil
+		}
+	}
+	return nil, fmt.Errorf("no pending submission from %s", submitterHandle)
+}
+
 // Reject rejects a completion, reverting the item from in_review to claimed.
 func (c *Client) Reject(wantedID, reason string) (*MutationResult, error) {
 	if result := c.prIdempotent(wantedID, "claimed"); result != nil {

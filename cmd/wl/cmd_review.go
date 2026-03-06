@@ -965,3 +965,30 @@ func branchURLCallback(cfg *federation.Config) func(string) string {
 		return nil
 	}
 }
+
+// closeUpstreamPRCallback returns a callback that closes an upstream PR by its web URL.
+func closeUpstreamPRCallback(cfg *federation.Config) func(string) error {
+	switch cfg.ResolveProviderType() {
+	case "dolthub":
+		token := os.Getenv("DOLTHUB_TOKEN")
+		if token == "" {
+			return nil
+		}
+		upstreamOrg, db, err := federation.ParseUpstream(cfg.Upstream)
+		if err != nil {
+			return nil
+		}
+		provider := remote.NewDoltHubProvider(token)
+		return func(prURL string) error {
+			// Extract PR ID from URL like ".../pulls/123"
+			idx := strings.LastIndex(prURL, "/pulls/")
+			if idx < 0 {
+				return fmt.Errorf("cannot extract PR ID from URL: %s", prURL)
+			}
+			prID := prURL[idx+len("/pulls/"):]
+			return provider.ClosePR(upstreamOrg, db, prID)
+		}
+	default:
+		return nil
+	}
+}

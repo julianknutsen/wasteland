@@ -206,6 +206,7 @@ func runServe(cmd *cobra.Command, stdout, stderr io.Writer) error {
 		},
 		ListPendingItems: listPendingItemsFromPRs(cfg),
 		BranchURL:        branchURLCallback(cfg),
+		CloseUpstreamPR:  closeUpstreamPRCallback(cfg),
 	})
 
 	server := api.New(client)

@@ -199,6 +199,16 @@ type AcceptUpstreamRequest struct {
 	Message     string   `json:"message"`
 }
 
+// RejectUpstreamRequest is the JSON body for POST /api/wanted/{id}/reject-upstream.
+type RejectUpstreamRequest struct {
+	RigHandle string `json:"rig_handle"`
+}
+
+// CloseUpstreamRequest is the JSON body for POST /api/wanted/{id}/close-upstream.
+type CloseUpstreamRequest struct {
+	RigHandle string `json:"rig_handle"`
+}
+
 // RejectRequest is the JSON body for POST /api/wanted/{id}/reject.
 type RejectRequest struct {
 	Reason string `json:"reason"`
@@ -284,6 +294,18 @@ func toDetailResponse(d *sdk.DetailResult, mode string) *DetailResponse {
 		actions[i] = commons.TransitionName(t)
 	}
 	var upstreamPRs []UpstreamPRJSON
+
+	// If the item is in_review and has a completion on main, include it as
+	// the first entry so the poster sees all submissions in one place.
+	if d.Item != nil && d.Item.Status == "in_review" && d.Completion != nil {
+		upstreamPRs = append(upstreamPRs, UpstreamPRJSON{
+			RigHandle:   d.Completion.CompletedBy,
+			Status:      "in_review",
+			CompletedBy: d.Completion.CompletedBy,
+			Evidence:    d.Completion.Evidence,
+		})
+	}
+
 	for _, p := range d.UpstreamPRs {
 		delta := ""
 		if p.Status != "" && d.Item != nil && p.Status != d.Item.Status {

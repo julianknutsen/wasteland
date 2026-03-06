@@ -693,6 +693,27 @@ func AcceptUpstreamDML(wantedID, completionID, completedBy, evidence, rigHandle,
 	return []string{deleteCompletion, insertCompletion, updateWanted, insertStamp, updateCompletion}
 }
 
+// CloseUpstreamDML returns the pure DML statements for adopting a fork submission
+// without creating a stamp. Statements: DELETE existing completion, INSERT fork
+// completion, UPDATE wanted to completed.
+func CloseUpstreamDML(wantedID, completionID, completedBy, evidence, hopURI string) []string {
+	hopField := "NULL"
+	if hopURI != "" {
+		hopField = fmt.Sprintf("'%s'", EscapeSQL(hopURI))
+	}
+
+	deleteCompletion := fmt.Sprintf(`DELETE FROM completions WHERE wanted_id='%s'`,
+		EscapeSQL(wantedID))
+
+	insertCompletion := fmt.Sprintf(`INSERT IGNORE INTO completions (id, wanted_id, completed_by, evidence, hop_uri, completed_at) VALUES ('%s', '%s', '%s', '%s', %s, NOW())`,
+		EscapeSQL(completionID), EscapeSQL(wantedID), EscapeSQL(completedBy), EscapeSQL(evidence), hopField)
+
+	updateWanted := fmt.Sprintf(`UPDATE wanted SET status='completed', claimed_by='%s', evidence_url='%s', updated_at=NOW() WHERE id='%s'`,
+		EscapeSQL(completedBy), EscapeSQL(evidence), EscapeSQL(wantedID))
+
+	return []string{deleteCompletion, insertCompletion, updateWanted}
+}
+
 // AcceptCompletion validates a completion, creates a stamp, and marks the item completed.
 func AcceptCompletion(db DB, wantedID, completionID, rigHandle, hopURI string, stamp *Stamp, signed bool) error {
 	stmts := AcceptCompletionDML(wantedID, completionID, rigHandle, hopURI, stamp)

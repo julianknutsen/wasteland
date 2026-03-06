@@ -230,6 +230,22 @@ export async function acceptUpstream(
   });
 }
 
+export async function rejectUpstream(id: string, rigHandle: string): Promise<void> {
+  await request<Record<string, string>>(`/api/wanted/${id}/reject-upstream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rig_handle: rigHandle }),
+  });
+}
+
+export async function closeUpstream(id: string, rigHandle: string): Promise<MutationResponse> {
+  return request<MutationResponse>(`/api/wanted/${id}/close-upstream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rig_handle: rigHandle }),
+  });
+}
+
 export async function deleteItem(id: string): Promise<MutationResponse> {
   return request<MutationResponse>(`/api/wanted/${id}`, { method: "DELETE" });
 }
