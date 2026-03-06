@@ -80,21 +80,23 @@ func (c *Client) Browse(filter commons.BrowseFilter) (*BrowseResult, error) {
 				best = p
 			}
 		}
-		// Only overlay if upstream state is further than current.
+		// Only overlay status if upstream state is further than current.
 		if stateRank[best.Status] > stateRank[items[i].Status] {
 			items[i].Status = best.Status
-			if len(pending) > 1 {
-				items[i].ClaimedBy = "Multiple (pending)"
-			} else if best.ClaimedBy != "" {
-				items[i].ClaimedBy = best.ClaimedBy + " (pending)"
-			}
-		} else if items[i].ClaimedBy == "" && best.RigHandle != "" {
-			// Status not further, but no claimed_by yet — show rig handle.
-			if len(pending) > 1 {
-				items[i].ClaimedBy = "Multiple (pending)"
-			} else {
-				items[i].ClaimedBy = best.RigHandle + " (pending)"
-			}
+		}
+		// Overlay claimed_by to reflect the full set of candidates
+		// (main claimer + upstream PRs).
+		totalCandidates := len(pending)
+		if items[i].ClaimedBy != "" {
+			totalCandidates++
+		}
+		switch {
+		case totalCandidates > 1:
+			items[i].ClaimedBy = "Multiple (pending)"
+		case best.ClaimedBy != "":
+			items[i].ClaimedBy = best.ClaimedBy + " (pending)"
+		case best.RigHandle != "":
+			items[i].ClaimedBy = best.RigHandle + " (pending)"
 		}
 	}
 

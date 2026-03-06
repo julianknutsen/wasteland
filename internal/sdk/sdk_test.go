@@ -855,10 +855,10 @@ func TestBrowse_PendingFurthestState(t *testing.T) {
 	t.Error("w-1 not found in results")
 }
 
-func TestBrowse_PendingClaimedBy_PreservesExisting(t *testing.T) {
+func TestBrowse_PendingClaimedBy_MultipleWithExisting(t *testing.T) {
 	db := newFakeDB()
 	// In PR mode, branch overlays set ClaimedBy before upstream merge.
-	// Verify upstream doesn't overwrite branch-overlay ClaimedBy.
+	// When there's also an upstream PR, both are candidates → "Multiple (pending)".
 	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", Priority: 1, PostedBy: "alice", EffortLevel: "medium"})
 	db.branches["wl/bob/w-1"] = true
 	db.branchItems["wl/bob/w-1"] = map[string]*fakeItem{
@@ -883,9 +883,9 @@ func TestBrowse_PendingClaimedBy_PreservesExisting(t *testing.T) {
 
 	for _, item := range result.Items {
 		if item.ID == "w-1" {
-			// Branch overlay set ClaimedBy="bob"; upstream with same rank should NOT overwrite.
-			if item.ClaimedBy != "bob" {
-				t.Errorf("w-1: expected ClaimedBy='bob' (from branch overlay), got %q", item.ClaimedBy)
+			// bob (branch overlay) + charlie (upstream) = 2 candidates.
+			if item.ClaimedBy != "Multiple (pending)" {
+				t.Errorf("w-1: expected ClaimedBy='Multiple (pending)', got %q", item.ClaimedBy)
 			}
 			return
 		}

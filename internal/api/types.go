@@ -292,8 +292,24 @@ func toDetailResponse(d *sdk.DetailResult, mode string) *DetailResponse {
 		})
 	}
 
+	itemJSON := toWantedItemJSON(d.Item)
+	// If there are competing upstream submissions, overlay claimed_by to
+	// reflect the full set of candidates (main claimer + upstream PRs).
+	if itemJSON != nil && len(upstreamPRs) > 0 {
+		mainClaimer := itemJSON.ClaimedBy
+		totalCandidates := len(upstreamPRs)
+		if mainClaimer != "" {
+			totalCandidates++
+		}
+		if totalCandidates > 1 {
+			itemJSON.ClaimedBy = "Multiple (pending)"
+		} else if upstreamPRs[0].ClaimedBy != "" {
+			itemJSON.ClaimedBy = upstreamPRs[0].ClaimedBy + " (pending)"
+		}
+	}
+
 	return &DetailResponse{
-		Item:          toWantedItemJSON(d.Item),
+		Item:          itemJSON,
 		Completion:    toCompletionJSON(d.Completion),
 		Stamp:         toStampJSON(d.Stamp),
 		Branch:        d.Branch,
