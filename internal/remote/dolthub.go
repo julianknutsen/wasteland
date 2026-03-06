@@ -28,6 +28,15 @@ const dolthubRemoteBase = "https://doltremoteapi.dolthub.com"
 // dolthubRepoBase is the DoltHub web base URL. Var so tests can override.
 var dolthubRepoBase = "https://www.dolthub.com/repositories"
 
+// validStatus is the set of lifecycle statuses we recognize. Fork branches
+// with statuses outside this set are ignored (non-standard protocol usage).
+var validStatus = map[string]bool{
+	"open":      true,
+	"claimed":   true,
+	"in_review": true,
+	"completed": true,
+}
+
 // DoltHubProvider implements Provider for DoltHub-hosted databases.
 type DoltHubProvider struct {
 	token      string
@@ -791,16 +800,14 @@ func (d *DoltHubProvider) ListPendingWantedIDs(upstreamOrg, db string) (map[stri
 	ids := make(map[string][]PendingWantedState)
 	for entries := range diffCh {
 		for _, e := range entries {
+			// Reject fork statuses not in our lifecycle table. Forks we
+			// don't control may use non-standard values — skip those.
+			if !validStatus[e.state.Status] {
+				continue
+			}
 			// Skip stale fork state that doesn't represent intentional action.
 			// A diff appears when a branch predates an upstream update — the
 			// branch carries forward old state the fork owner never touched.
-			//
-			// Filter rules:
-			// 1. status "open" = untouched item (stale copy)
-			// 2. status "claimed" with claimed_by set to someone other than
-			//    the PR author = inherited claim from a previous upstream state
-			// Items at "in_review" or "completed" always pass — those statuses
-			// require intentional action (submitting evidence / accepting).
 			if e.state.Status == "open" {
 				continue
 			}
@@ -814,10 +821,9 @@ func (d *DoltHubProvider) ListPendingWantedIDs(upstreamOrg, db string) (map[stri
 	// For entries past the claiming stage, query the fork branch's completions
 	// table to surface evidence from competing submissions.
 	completionQuery := "SELECT completed_by, COALESCE(evidence,'') as evidence FROM completions WHERE wanted_id='%s'"
-	noCompletions := map[string]bool{"open": true, "claimed": true}
 	for wantedID, states := range ids {
 		for i := range states {
-			if noCompletions[states[i].Status] {
+			if states[i].Status == "open" || states[i].Status == "claimed" {
 				continue
 			}
 			owner := states[i].ForkOwner
