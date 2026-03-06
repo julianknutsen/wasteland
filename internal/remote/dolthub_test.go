@@ -502,23 +502,12 @@ func TestDoltHubProvider_ListPendingWantedIDs(t *testing.T) {
 			"author":            "bob",
 		})
 	})
-	// Upstream main: baseline state of all wanted items.
-	mux.HandleFunc("/upstream-org/wl-commons/main", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"rows": []map[string]string{
-				{"id": "fix-login", "status": "open", "claimed_by": ""},
-				{"id": "add-feature", "status": "open", "claimed_by": ""},
-			},
-		})
-	})
-	// Fork queries return ALL wanted items; only diffs are reported.
+	// Fork queries return dolt_diff results — only actually-changed rows.
 	mux.HandleFunc("/alice-fork/wl-commons/", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"rows": []map[string]string{
-				{"id": "fix-login", "status": "claimed", "claimed_by": "alice"},
-				{"id": "add-feature", "status": "open", "claimed_by": ""},
+				{"id": "fix-login", "status": "claimed", "claimed_by": "alice", "diff_type": "modified"},
 			},
 		})
 	})
@@ -526,8 +515,7 @@ func TestDoltHubProvider_ListPendingWantedIDs(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"rows": []map[string]string{
-				{"id": "fix-login", "status": "open", "claimed_by": ""},
-				{"id": "add-feature", "status": "in_review", "claimed_by": "bob"},
+				{"id": "add-feature", "status": "in_review", "claimed_by": "bob", "diff_type": "modified"},
 			},
 		})
 	})
@@ -591,15 +579,6 @@ func TestDoltHubProvider_ListPendingWantedIDs_ForkQueryFails_Skipped(t *testing.
 			"author":            "alice",
 		})
 	})
-	// Upstream main baseline.
-	mux.HandleFunc("/org/db/main", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"rows": []map[string]string{
-				{"id": "w-001", "status": "open", "claimed_by": ""},
-			},
-		})
-	})
 	// Fork query returns 404 (fork deleted) — can't determine diffs.
 	mux.HandleFunc("/alice-fork/db/", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(404)
@@ -643,19 +622,12 @@ func TestDoltHubProvider_ListPendingWantedIDs_NoDiffs(t *testing.T) {
 			"author":            "someone",
 		})
 	})
-	// Upstream and fork have identical data → no diffs.
-	wantedRows := map[string]any{
-		"rows": []map[string]string{
-			{"id": "w-001", "status": "open", "claimed_by": ""},
-		},
-	}
-	mux.HandleFunc("/org/db/main", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(wantedRows)
-	})
+	// Fork branch has no diffs vs its own main → dolt_diff returns empty.
 	mux.HandleFunc("/someone/db/", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(wantedRows)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"rows": []map[string]string{},
+		})
 	})
 
 	server := httptest.NewServer(mux)
@@ -693,21 +665,12 @@ func TestDoltHubProvider_ListPendingWantedIDs_NonStandardBranch(t *testing.T) {
 			"author":            "alice",
 		})
 	})
-	// Upstream baseline.
-	mux.HandleFunc("/org/db/main", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"rows": []map[string]string{
-				{"id": "w-com-001", "status": "open", "claimed_by": ""},
-			},
-		})
-	})
-	// Fork branch returns all wanted items — w-com-001 differs from upstream.
+	// Fork branch dolt_diff shows w-com-001 was actually modified on the branch.
 	mux.HandleFunc("/alice-fork/db/", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"rows": []map[string]string{
-				{"id": "w-com-001", "status": "completed", "claimed_by": "alice"},
+				{"id": "w-com-001", "status": "completed", "claimed_by": "alice", "diff_type": "modified"},
 			},
 		})
 	})
@@ -758,7 +721,7 @@ func TestDoltHubProvider_ListPendingWantedIDs_PRFromMain(t *testing.T) {
 			"author":            "bob",
 		})
 	})
-	// Upstream baseline.
+	// Upstream baseline — needed for PRs from "main" (snapshot fallback).
 	mux.HandleFunc("/org/db/main", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -769,6 +732,7 @@ func TestDoltHubProvider_ListPendingWantedIDs_PRFromMain(t *testing.T) {
 		})
 	})
 	// Fork main has multiple changes (common for manual DoltHub edits).
+	// Snapshot comparison against upstream main catches these.
 	mux.HandleFunc("/bob-fork/db/", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{

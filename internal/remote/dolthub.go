@@ -618,29 +618,44 @@ func (d *DoltHubProvider) ListPendingWantedIDs(upstreamOrg, db string) (map[stri
 		}
 	}
 
-	// Query upstream main once for all wanted items (baseline for diffing).
+	// For PRs from "main" (commits directly on the fork's main), dolt_diff
+	// between main and main is a no-op. Fall back to snapshot comparison
+	// against upstream main for those PRs.
 	type wantedItem struct {
 		status    string
 		claimedBy string
 	}
-	upstreamItems := make(map[string]wantedItem)
-
-	wantedQuery := "SELECT id, status, COALESCE(claimed_by, '') as claimed_by FROM wanted"
-	upstreamURL := fmt.Sprintf("%s/%s/%s/main?q=%s",
-		dolthubAPIBase, upstreamOrg, db, url.QueryEscape(wantedQuery))
-	if body, err := d.dolthubGet(upstreamURL); err == nil {
-		var qr queryResponse
-		if json.Unmarshal(body, &qr) == nil {
-			for _, row := range qr.Rows {
-				upstreamItems[row["id"]] = wantedItem{
-					status:    row["status"],
-					claimedBy: row["claimed_by"],
+	var upstreamItems map[string]wantedItem
+	needsUpstream := false
+	for _, pr := range prs {
+		if pr.fromBranch == "main" {
+			needsUpstream = true
+			break
+		}
+	}
+	if needsUpstream {
+		upstreamItems = make(map[string]wantedItem)
+		snapshotQuery := "SELECT id, status, COALESCE(claimed_by, '') as claimed_by FROM wanted"
+		upstreamURL := fmt.Sprintf("%s/%s/%s/main?q=%s",
+			dolthubAPIBase, upstreamOrg, db, url.QueryEscape(snapshotQuery))
+		if body, err := d.dolthubGet(upstreamURL); err == nil {
+			var qr queryResponse
+			if json.Unmarshal(body, &qr) == nil {
+				for _, row := range qr.Rows {
+					upstreamItems[row["id"]] = wantedItem{
+						status:    row["status"],
+						claimedBy: row["claimed_by"],
+					}
 				}
 			}
 		}
 	}
 
-	// Query each PR's fork branch in parallel, diff against upstream.
+	// Query each PR's fork branch in parallel using dolt_diff to find rows
+	// the branch actually changed. The old approach compared the fork's full
+	// wanted snapshot against current upstream main, which produced false
+	// positives: any fork branched before a main commit would show every
+	// subsequently-changed row as "pending" even if the fork never touched it.
 	type pendingEntry struct {
 		wantedID string
 		state    PendingWantedState
@@ -648,6 +663,11 @@ func (d *DoltHubProvider) ListPendingWantedIDs(upstreamOrg, db string) (map[stri
 	diffCh := make(chan []pendingEntry, len(prs))
 	var wg sync.WaitGroup
 	sem2 := make(chan struct{}, maxConcurrency)
+
+	// dolt_diff query: returns only rows the branch actually modified vs its
+	// own main. The to_* columns hold the branch's version of each changed row.
+	diffQuery := "SELECT COALESCE(to_id, from_id) as id, COALESCE(to_status, '') as status, COALESCE(to_claimed_by, '') as claimed_by, diff_type FROM dolt_diff('main', '%s', 'wanted')"
+	snapshotQuery := "SELECT id, status, COALESCE(claimed_by, '') as claimed_by FROM wanted"
 
 	for _, pr := range prs {
 		wg.Add(1)
@@ -664,8 +684,54 @@ func (d *DoltHubProvider) ListPendingWantedIDs(upstreamOrg, db string) (map[stri
 			if owner == "" {
 				owner = upstreamOrg
 			}
+
+			// For PRs from "main", dolt_diff('main','main') is a no-op.
+			// Fall back to snapshot comparison against upstream main.
+			if pr.fromBranch == "main" {
+				forkURL := fmt.Sprintf("%s/%s/%s/main?q=%s",
+					dolthubAPIBase, owner, db, url.QueryEscape(snapshotQuery))
+				body, err := d.dolthubGet(forkURL)
+				if err != nil {
+					diffCh <- nil
+					return
+				}
+				var qr queryResponse
+				if err := json.Unmarshal(body, &qr); err != nil {
+					diffCh <- nil
+					return
+				}
+				var entries []pendingEntry
+				for _, row := range qr.Rows {
+					id := row["id"]
+					forkStatus := row["status"]
+					forkClaimedBy := row["claimed_by"]
+					upstream, exists := upstreamItems[id]
+					if !exists || upstream.status != forkStatus || upstream.claimedBy != forkClaimedBy {
+						rigHandle := forkClaimedBy
+						if rigHandle == "" {
+							rigHandle = pr.author
+						}
+						entries = append(entries, pendingEntry{
+							wantedID: id,
+							state: PendingWantedState{
+								RigHandle: rigHandle,
+								Status:    forkStatus,
+								ClaimedBy: forkClaimedBy,
+								Branch:    pr.fromBranch,
+								BranchURL: branchURL,
+								PRURL:     prURL,
+							},
+						})
+					}
+				}
+				diffCh <- entries
+				return
+			}
+
+			escaped := strings.ReplaceAll(pr.fromBranch, "'", "''")
+			q := fmt.Sprintf(diffQuery, escaped)
 			forkURL := fmt.Sprintf("%s/%s/%s/%s?q=%s",
-				dolthubAPIBase, owner, db, url.PathEscape(pr.fromBranch), url.QueryEscape(wantedQuery))
+				dolthubAPIBase, owner, db, url.PathEscape(pr.fromBranch), url.QueryEscape(q))
 
 			body, err := d.dolthubGet(forkURL)
 			if err != nil {
@@ -681,27 +747,31 @@ func (d *DoltHubProvider) ListPendingWantedIDs(upstreamOrg, db string) (map[stri
 			var entries []pendingEntry
 			for _, row := range qr.Rows {
 				id := row["id"]
+				if id == "" {
+					continue
+				}
+				// Skip deleted rows — they have no to_* state to display.
+				if row["diff_type"] == "removed" {
+					continue
+				}
 				forkStatus := row["status"]
 				forkClaimedBy := row["claimed_by"]
 
-				upstream, exists := upstreamItems[id]
-				if !exists || upstream.status != forkStatus || upstream.claimedBy != forkClaimedBy {
-					rigHandle := forkClaimedBy
-					if rigHandle == "" {
-						rigHandle = pr.author
-					}
-					entries = append(entries, pendingEntry{
-						wantedID: id,
-						state: PendingWantedState{
-							RigHandle: rigHandle,
-							Status:    forkStatus,
-							ClaimedBy: forkClaimedBy,
-							Branch:    pr.fromBranch,
-							BranchURL: branchURL,
-							PRURL:     prURL,
-						},
-					})
+				rigHandle := forkClaimedBy
+				if rigHandle == "" {
+					rigHandle = pr.author
 				}
+				entries = append(entries, pendingEntry{
+					wantedID: id,
+					state: PendingWantedState{
+						RigHandle: rigHandle,
+						Status:    forkStatus,
+						ClaimedBy: forkClaimedBy,
+						Branch:    pr.fromBranch,
+						BranchURL: branchURL,
+						PRURL:     prURL,
+					},
+				})
 			}
 			diffCh <- entries
 		}(pr)
