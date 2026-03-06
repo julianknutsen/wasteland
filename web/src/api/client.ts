@@ -125,7 +125,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!resp.ok) {
     const err = new ApiError(resp.status, (body as ErrorResponse).error || resp.statusText);
-    if (resp.status >= 500) {
+    if (resp.status >= 500 && resp.status !== 503) {
       Sentry.captureException(err);
     }
     throw err;

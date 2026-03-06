@@ -143,7 +143,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	data, err := client.Dashboard()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeUpstreamError(w, err, "dashboard")
 		return
 	}
 	writeJSON(w, http.StatusOK, toDashboardResponse(data))
@@ -157,7 +157,7 @@ func (s *Server) handleLeaderboard(w http.ResponseWriter, r *http.Request) {
 	limit := parseIntParam(r, "limit", 20)
 	entries, err := client.Leaderboard(limit)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeUpstreamError(w, err, "leaderboard")
 		return
 	}
 	writeJSON(w, http.StatusOK, toLeaderboardResponse(entries))
@@ -225,6 +225,21 @@ func (s *Server) invalidateReadCaches(_ string) {
 func (s *Server) invalidateAllCaches() {
 	s.browseCache.Invalidate()
 	s.detailCache.Invalidate()
+}
+
+// writeUpstreamError classifies DoltHub errors and writes an appropriate response:
+//   - "invalid authorization" → 401 (triggers frontend re-auth)
+//   - other upstream errors → 503 with sanitized message + Sentry capture
+func writeUpstreamError(w http.ResponseWriter, err error, label string) {
+	msg := err.Error()
+	if strings.Contains(msg, "invalid authorization") {
+		writeError(w, http.StatusUnauthorized, "DoltHub credentials expired — please reconnect.")
+		return
+	}
+	slog.Error(label+" failed", "error", err)
+	sentry.CaptureException(err)
+	writeError(w, http.StatusServiceUnavailable,
+		"Upstream database is temporarily unavailable — please try again in a moment.")
 }
 
 // writeMutationError writes a 409 for ConflictError, 400 for everything else.
