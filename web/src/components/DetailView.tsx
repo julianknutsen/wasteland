@@ -332,24 +332,26 @@ export function DetailView() {
                     </>
                   )}
                   {pr.evidence && <div className={styles.evidenceText}>{pr.evidence}</div>}
-                  {pr.status === "in_review" && pr.evidence && rigHandle === item.posted_by && (
+                  {rigHandle === item.posted_by && (
                     <div className={styles.actions}>
-                      <ActionButton
-                        action="accept"
-                        onAction={async () => {
-                          try {
-                            const result = isUpstream ? await acceptUpstream(id!, pr.rig_handle) : await accept(id!);
-                            toast.success(`Accepted ${pr.rig_handle}'s submission`);
-                            if (result?.detail) {
-                              setData(result.detail);
-                            } else {
-                              await load();
+                      {pr.status === "in_review" && pr.evidence && (
+                        <ActionButton
+                          action="accept"
+                          onAction={async () => {
+                            try {
+                              const result = isUpstream ? await acceptUpstream(id!, pr.rig_handle) : await accept(id!);
+                              toast.success(`Accepted ${pr.rig_handle}'s submission`);
+                              if (result?.detail) {
+                                setData(result.detail);
+                              } else {
+                                await load();
+                              }
+                            } catch (e) {
+                              toast.error(e instanceof Error ? e.message : "Failed to accept");
                             }
-                          } catch (e) {
-                            toast.error(e instanceof Error ? e.message : "Failed to accept");
-                          }
-                        }}
-                      />
+                          }}
+                        />
+                      )}
                       <ActionButton
                         action="reject"
                         onAction={async () => {
@@ -366,22 +368,24 @@ export function DetailView() {
                           }
                         }}
                       />
-                      <ActionButton
-                        action="close"
-                        onAction={async () => {
-                          try {
-                            const result = isUpstream ? await closeUpstream(id!, pr.rig_handle) : await close(id!);
-                            toast.success(`Closed ${pr.rig_handle}'s submission`);
-                            if (result?.detail) {
-                              setData(result.detail);
-                            } else {
-                              await load();
+                      {pr.status === "in_review" && pr.evidence && (
+                        <ActionButton
+                          action="close"
+                          onAction={async () => {
+                            try {
+                              const result = isUpstream ? await closeUpstream(id!, pr.rig_handle) : await close(id!);
+                              toast.success(`Closed ${pr.rig_handle}'s submission`);
+                              if (result?.detail) {
+                                setData(result.detail);
+                              } else {
+                                await load();
+                              }
+                            } catch (e) {
+                              toast.error(e instanceof Error ? e.message : "Failed to close");
                             }
-                          } catch (e) {
-                            toast.error(e instanceof Error ? e.message : "Failed to close");
-                          }
-                        }}
-                      />
+                          }}
+                        />
+                      )}
                     </div>
                   )}
                 </div>
