@@ -7,19 +7,28 @@ import (
 
 // --- Response types ---
 
+// PendingItemJSON is a summary of a pending upstream PR for browse list hover cards.
+type PendingItemJSON struct {
+	RigHandle string `json:"rig_handle"`
+	Status    string `json:"status,omitempty"`
+	PRURL     string `json:"pr_url,omitempty"`
+	BranchURL string `json:"branch_url,omitempty"`
+}
+
 // WantedSummaryJSON is the JSON representation of a browse list item.
 type WantedSummaryJSON struct {
-	ID           string `json:"id"`
-	Title        string `json:"title"`
-	Description  string `json:"description,omitempty"`
-	Project      string `json:"project,omitempty"`
-	Type         string `json:"type,omitempty"`
-	Priority     int    `json:"priority"`
-	PostedBy     string `json:"posted_by,omitempty"`
-	ClaimedBy    string `json:"claimed_by,omitempty"`
-	Status       string `json:"status"`
-	EffortLevel  string `json:"effort_level"`
-	PendingCount int    `json:"pending_count,omitempty"`
+	ID           string            `json:"id"`
+	Title        string            `json:"title"`
+	Description  string            `json:"description,omitempty"`
+	Project      string            `json:"project,omitempty"`
+	Type         string            `json:"type,omitempty"`
+	Priority     int               `json:"priority"`
+	PostedBy     string            `json:"posted_by,omitempty"`
+	ClaimedBy    string            `json:"claimed_by,omitempty"`
+	Status       string            `json:"status"`
+	EffortLevel  string            `json:"effort_level"`
+	PendingCount int               `json:"pending_count,omitempty"`
+	PendingItems []PendingItemJSON `json:"pending_items,omitempty"`
 }
 
 // BrowseResponse is the JSON response for GET /api/wanted.
@@ -335,7 +344,16 @@ func toMutationResponse(r *sdk.MutationResult, mode string) *MutationResponse {
 	}
 }
 
-func toSummaryJSON(s commons.WantedSummary, pendingCount int) WantedSummaryJSON {
+func toSummaryJSON(s commons.WantedSummary, pendingCount int, pending []sdk.PendingItem) WantedSummaryJSON {
+	var pendingItems []PendingItemJSON
+	for _, p := range pending {
+		pendingItems = append(pendingItems, PendingItemJSON{
+			RigHandle: p.RigHandle,
+			Status:    p.Status,
+			PRURL:     p.PRURL,
+			BranchURL: p.BranchURL,
+		})
+	}
 	return WantedSummaryJSON{
 		ID:           s.ID,
 		Title:        s.Title,
@@ -348,13 +366,14 @@ func toSummaryJSON(s commons.WantedSummary, pendingCount int) WantedSummaryJSON 
 		Status:       s.Status,
 		EffortLevel:  s.EffortLevel,
 		PendingCount: pendingCount,
+		PendingItems: pendingItems,
 	}
 }
 
 func toBrowseResponse(r *sdk.BrowseResult) *BrowseResponse {
 	items := make([]WantedSummaryJSON, len(r.Items))
 	for i, s := range r.Items {
-		items[i] = toSummaryJSON(s, r.PendingIDs[s.ID])
+		items[i] = toSummaryJSON(s, r.PendingIDs[s.ID], r.UpstreamPending[s.ID])
 	}
 	return &BrowseResponse{Items: items}
 }
@@ -378,7 +397,7 @@ func toDashboardResponse(d *commons.DashboardData) *DashboardResponse {
 	convert := func(items []commons.WantedSummary) []WantedSummaryJSON {
 		result := make([]WantedSummaryJSON, len(items))
 		for i, s := range items {
-			result[i] = toSummaryJSON(s, 0)
+			result[i] = toSummaryJSON(s, 0, nil)
 		}
 		return result
 	}

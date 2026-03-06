@@ -1,3 +1,10 @@
+export interface PendingItemSummary {
+  rig_handle: string;
+  status?: string;
+  pr_url?: string;
+  branch_url?: string;
+}
+
 export interface WantedSummary {
   id: string;
   title: string;
@@ -9,6 +16,7 @@ export interface WantedSummary {
   status: string;
   effort_level: string;
   pending_count?: number;
+  pending_items?: PendingItemSummary[];
 }
 
 export interface BrowseResponse {

@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { browse } from "../api/client";
 import { consumePrefetch } from "../api/prefetch";
-import type { WantedSummary } from "../api/types";
+import type { PendingItemSummary, WantedSummary } from "../api/types";
 import { useFilterParams } from "../hooks/useFilterParams";
 import styles from "./BrowseList.module.css";
 import { EmptyState } from "./EmptyState";
@@ -169,12 +169,7 @@ export function BrowseList() {
                     <span className={styles.statusCell}>
                       <StatusBadge status={item.status} />
                       {item.pending_count != null && item.pending_count > 0 && (
-                        <span className={styles.pendingIndicator}>
-                          pending
-                          {item.pending_count > 1 && (
-                            <span className={styles.pendingCount}>&times;{item.pending_count}</span>
-                          )}
-                        </span>
+                        <PendingIndicator count={item.pending_count} items={item.pending_items} />
                       )}
                     </span>
                   </td>
@@ -193,12 +188,7 @@ export function BrowseList() {
                   <PriorityBadge priority={item.priority} />
                   <StatusBadge status={item.status} />
                   {item.pending_count != null && item.pending_count > 0 && (
-                    <span className={styles.pendingIndicator}>
-                      pending
-                      {item.pending_count > 1 && (
-                        <span className={styles.pendingCount}>&times;{item.pending_count}</span>
-                      )}
-                    </span>
+                    <PendingIndicator count={item.pending_count} items={item.pending_items} />
                   )}
                 </div>
                 <Link to={`/wanted/${item.id}`} className={styles.cardTitle}>
@@ -235,5 +225,35 @@ export function BrowseList() {
         />
       )}
     </div>
+  );
+}
+
+function PendingIndicator({ count, items }: { count: number; items?: PendingItemSummary[] }) {
+  return (
+    <span className={styles.pendingIndicator}>
+      pending
+      {count > 1 && <span className={styles.pendingCount}>&times;{count}</span>}
+      {items && items.length > 0 && (
+        <span className={styles.pendingCard}>
+          <div className={styles.pendingCardTitle}>Competing submissions</div>
+          {items.map((p, i) => (
+            <div key={i} className={styles.pendingCardRow}>
+              <span className={styles.pendingCardHandle}>{p.rig_handle}</span>
+              {p.status && <span className={styles.pendingCardStatus}>{p.status.replace("_", " ")}</span>}
+              {p.pr_url && (
+                <a href={p.pr_url} target="_blank" rel="noopener noreferrer" className={styles.pendingCardLink}>
+                  PR
+                </a>
+              )}
+              {p.branch_url && !p.pr_url && (
+                <a href={p.branch_url} target="_blank" rel="noopener noreferrer" className={styles.pendingCardLink}>
+                  branch
+                </a>
+              )}
+            </div>
+          ))}
+        </span>
+      )}
+    </span>
   );
 }

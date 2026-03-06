@@ -514,6 +514,12 @@ func (r *RemoteDB) pollOperation(operationName string) error {
 
 		body, err := r.doGet(apiURL)
 		if err != nil {
+			// DoltHub returns HTTP 400 with toCommitId null when the write
+			// produced no changes (e.g. ON DUPLICATE KEY UPDATE with same
+			// values). Treat this as a no-op success.
+			if strings.Contains(strings.ToLower(err.Error()), "sqlwrite.tocommitid") {
+				return nil
+			}
 			lastErr = err
 			consecutiveErrors++
 			// Fail fast: if every poll attempt errors, don't wait the full 2 minutes.

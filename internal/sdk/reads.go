@@ -80,10 +80,6 @@ func (c *Client) Browse(filter commons.BrowseFilter) (*BrowseResult, error) {
 				best = p
 			}
 		}
-		// Only overlay status if upstream state is further than current.
-		if stateRank[best.Status] > stateRank[items[i].Status] {
-			items[i].Status = best.Status
-		}
 		// Overlay claimed_by to reflect the full set of candidates
 		// (main claimer + upstream PRs).
 		totalCandidates := len(pending)

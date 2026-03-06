@@ -800,9 +800,9 @@ func TestBrowse_PendingClaimedBy_Single(t *testing.T) {
 			if item.ClaimedBy != "charlie (pending)" {
 				t.Errorf("w-1: expected ClaimedBy='charlie (pending)', got %q", item.ClaimedBy)
 			}
-			// Status should be promoted from "open" to "claimed" to match the pending claim.
-			if item.Status != "claimed" {
-				t.Errorf("w-1: expected Status='claimed', got %q", item.Status)
+			// Status reflects the raw DB value; pending state is conveyed via ClaimedBy and PendingIDs.
+			if item.Status != "open" {
+				t.Errorf("w-1: expected Status='open' (raw DB), got %q", item.Status)
 			}
 		case "w-2":
 			// Already claimed on main — should not be overwritten.
@@ -838,9 +838,9 @@ func TestBrowse_PendingFurthestState(t *testing.T) {
 
 	for _, item := range result.Items {
 		if item.ID == "w-1" {
-			// Furthest state is "in_review" from dave.
-			if item.Status != "in_review" {
-				t.Errorf("w-1: expected Status='in_review' (furthest), got %q", item.Status)
+			// Status stays as raw DB value; pending state is conveyed via ClaimedBy and PendingIDs.
+			if item.Status != "open" {
+				t.Errorf("w-1: expected Status='open' (raw DB), got %q", item.Status)
 			}
 			if item.ClaimedBy != "Multiple (pending)" {
 				t.Errorf("w-1: expected ClaimedBy='Multiple (pending)', got %q", item.ClaimedBy)
