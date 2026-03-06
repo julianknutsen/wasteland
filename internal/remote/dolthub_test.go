@@ -503,16 +503,32 @@ func TestDoltHubProvider_ListPendingWantedIDs(t *testing.T) {
 		})
 	})
 	// Fork queries return dolt_diff results — only actually-changed rows.
-	mux.HandleFunc("/alice-fork/wl-commons/", func(w http.ResponseWriter, _ *http.Request) {
+	// Also serve completions queries for in_review entries.
+	mux.HandleFunc("/alice-fork/wl-commons/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		q := r.URL.Query().Get("q")
+		if strings.Contains(q, "FROM completions") {
+			// alice's PR is "claimed", not in_review — no completions query expected.
+			_ = json.NewEncoder(w).Encode(map[string]any{"rows": []map[string]string{}})
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"rows": []map[string]string{
 				{"id": "fix-login", "status": "claimed", "claimed_by": "alice", "diff_type": "modified"},
 			},
 		})
 	})
-	mux.HandleFunc("/bob-fork/wl-commons/", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/bob-fork/wl-commons/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		q := r.URL.Query().Get("q")
+		if strings.Contains(q, "FROM completions") {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"rows": []map[string]string{
+					{"completed_by": "bob", "evidence": "https://github.com/bob/pr/42"},
+				},
+			})
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"rows": []map[string]string{
 				{"id": "add-feature", "status": "in_review", "claimed_by": "bob", "diff_type": "modified"},
@@ -548,6 +564,17 @@ func TestDoltHubProvider_ListPendingWantedIDs(t *testing.T) {
 	}
 	if pending := ids["add-feature"]; len(pending) != 1 || pending[0].Status != "in_review" {
 		t.Errorf("expected add-feature status=in_review, got %+v", pending)
+	}
+	// Verify completions fields are populated for in_review entry.
+	if pending := ids["add-feature"]; len(pending) != 1 || pending[0].CompletedBy != "bob" {
+		t.Errorf("expected add-feature CompletedBy=bob, got %+v", pending)
+	}
+	if pending := ids["add-feature"]; len(pending) != 1 || pending[0].Evidence != "https://github.com/bob/pr/42" {
+		t.Errorf("expected add-feature Evidence, got %+v", pending)
+	}
+	// Verify claimed entry has no completions fields.
+	if pending := ids["fix-login"]; len(pending) != 1 || pending[0].CompletedBy != "" {
+		t.Errorf("expected fix-login CompletedBy empty, got %+v", pending)
 	}
 	// Verify URLs are populated.
 	if pending := ids["fix-login"]; len(pending) != 1 || pending[0].PRURL == "" {
@@ -598,6 +625,75 @@ func TestDoltHubProvider_ListPendingWantedIDs_ForkQueryFails_Skipped(t *testing.
 	// Fork query failed → no diffs can be determined → PR skipped.
 	if len(ids) != 0 {
 		t.Errorf("expected 0 pending IDs when fork query fails, got %d: %v", len(ids), ids)
+	}
+}
+
+func TestDoltHubProvider_ListPendingWantedIDs_CompletionQueryFails_GracefulDegradation(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/org/db/pulls", func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/pulls/") {
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"pulls": []map[string]any{
+				{"pull_id": "1", "state": "open"},
+			},
+		})
+	})
+	mux.HandleFunc("/org/db/pulls/1", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"from_branch":       "wl/alice/w-001",
+			"from_branch_owner": "alice-fork",
+			"author":            "alice",
+		})
+	})
+	requestCount := 0
+	mux.HandleFunc("/alice-fork/db/", func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.Header().Set("Content-Type", "application/json")
+		q := r.URL.Query().Get("q")
+		if strings.Contains(q, "FROM completions") {
+			// Completions query fails.
+			w.WriteHeader(500)
+			_, _ = w.Write([]byte("internal error"))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"rows": []map[string]string{
+				{"id": "w-001", "status": "in_review", "claimed_by": "alice", "diff_type": "modified"},
+			},
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	dolthubAPIBase = server.URL
+	dolthubRepoBase = server.URL + "/repositories"
+
+	provider := NewDoltHubProvider("token")
+	ids, err := provider.ListPendingWantedIDs("org", "db")
+	if err != nil {
+		t.Fatalf("ListPendingWantedIDs() error: %v", err)
+	}
+	// The entry should still exist — just without completion data.
+	if len(ids) != 1 {
+		t.Fatalf("expected 1 pending ID, got %d", len(ids))
+	}
+	pending := ids["w-001"]
+	if len(pending) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(pending))
+	}
+	if pending[0].Status != "in_review" {
+		t.Errorf("expected status=in_review, got %s", pending[0].Status)
+	}
+	// Completions fields should be empty (graceful degradation).
+	if pending[0].CompletedBy != "" {
+		t.Errorf("expected empty CompletedBy on failure, got %q", pending[0].CompletedBy)
+	}
+	if pending[0].Evidence != "" {
+		t.Errorf("expected empty Evidence on failure, got %q", pending[0].Evidence)
 	}
 }
 

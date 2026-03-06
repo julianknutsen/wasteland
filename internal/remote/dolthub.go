@@ -534,12 +534,14 @@ func (d *DoltHubProvider) ClosePR(upstreamOrg, db, prID string) error {
 
 // PendingWantedState represents the state of a wanted item from a pending upstream PR's fork branch.
 type PendingWantedState struct {
-	RigHandle string
-	Status    string
-	ClaimedBy string
-	Branch    string // e.g. "wl/alice/w-001"
-	BranchURL string // web URL for the fork branch
-	PRURL     string // web URL for the upstream PR
+	RigHandle   string
+	Status      string
+	ClaimedBy   string
+	Branch      string // e.g. "wl/alice/w-001"
+	BranchURL   string // web URL for the fork branch
+	PRURL       string // web URL for the upstream PR
+	CompletedBy string // from fork branch completions table
+	Evidence    string // from fork branch completions table
 }
 
 // ListPendingWantedIDs returns wanted IDs that have open upstream PRs, detected
@@ -787,6 +789,46 @@ func (d *DoltHubProvider) ListPendingWantedIDs(upstreamOrg, db string) (map[stri
 			ids[e.wantedID] = append(ids[e.wantedID], e.state)
 		}
 	}
+
+	// For entries at in_review or completed, query the fork branch's completions
+	// table to surface evidence from competing submissions.
+	completionQuery := "SELECT completed_by, COALESCE(evidence,'') as evidence FROM completions WHERE wanted_id='%s'"
+	for wantedID, states := range ids {
+		for i := range states {
+			if states[i].Status != "in_review" && states[i].Status != "completed" {
+				continue
+			}
+			// Determine fork owner from the branch URL or PR info.
+			owner := ""
+			branch := states[i].Branch
+			for _, pr := range prs {
+				if pr.fromBranch == branch {
+					owner = pr.fromBranchOwner
+					if owner == "" {
+						owner = upstreamOrg
+					}
+					break
+				}
+			}
+			if owner == "" {
+				continue
+			}
+			q := fmt.Sprintf(completionQuery, strings.ReplaceAll(wantedID, "'", "''"))
+			cURL := fmt.Sprintf("%s/%s/%s/%s?q=%s",
+				dolthubAPIBase, owner, db, url.PathEscape(branch), url.QueryEscape(q))
+			body, err := d.dolthubGet(cURL)
+			if err != nil {
+				continue
+			}
+			var qr queryResponse
+			if json.Unmarshal(body, &qr) != nil || len(qr.Rows) == 0 {
+				continue
+			}
+			states[i].CompletedBy = qr.Rows[0]["completed_by"]
+			states[i].Evidence = qr.Rows[0]["evidence"]
+		}
+	}
+
 	return ids, nil
 }
 

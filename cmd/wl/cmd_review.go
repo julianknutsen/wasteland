@@ -858,12 +858,14 @@ func dolthubListPendingItems(cfg *federation.Config) func() (map[string][]sdk.Pe
 			items := make([]sdk.PendingItem, len(pending))
 			for i, p := range pending {
 				items[i] = sdk.PendingItem{
-					RigHandle: p.RigHandle,
-					Status:    p.Status,
-					ClaimedBy: p.ClaimedBy,
-					Branch:    p.Branch,
-					BranchURL: p.BranchURL,
-					PRURL:     p.PRURL,
+					RigHandle:   p.RigHandle,
+					Status:      p.Status,
+					ClaimedBy:   p.ClaimedBy,
+					Branch:      p.Branch,
+					BranchURL:   p.BranchURL,
+					PRURL:       p.PRURL,
+					CompletedBy: p.CompletedBy,
+					Evidence:    p.Evidence,
 				}
 			}
 			result[id] = items

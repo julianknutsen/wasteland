@@ -6,12 +6,14 @@ import (
 
 // PendingItem represents state from a pending upstream PR's fork branch.
 type PendingItem struct {
-	RigHandle string
-	Status    string
-	ClaimedBy string
-	Branch    string // e.g. "wl/alice/w-001"
-	BranchURL string // web URL for the fork branch
-	PRURL     string // web URL for the upstream PR
+	RigHandle   string
+	Status      string
+	ClaimedBy   string
+	Branch      string // e.g. "wl/alice/w-001"
+	BranchURL   string // web URL for the fork branch
+	PRURL       string // web URL for the upstream PR
+	CompletedBy string // from fork branch completions table
+	Evidence    string // from fork branch completions table
 }
 
 // stateRank defines lifecycle ordering for furthest-future state overlay.

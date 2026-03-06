@@ -258,6 +258,13 @@
   text-decoration: none;
 }
 
+.evidenceText {
+  color: var(--dim);
+  font-size: var(--text-sm);
+  font-style: italic;
+  margin-top: 2px;
+}
+
 @media (max-width: 768px) {
   .metadata {
     grid-template-columns: 1fr;

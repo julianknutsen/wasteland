@@ -71,13 +71,15 @@ type StampJSON struct {
 
 // UpstreamPRJSON is the JSON representation of a pending upstream PR.
 type UpstreamPRJSON struct {
-	RigHandle string `json:"rig_handle"`
-	Status    string `json:"status"`
-	ClaimedBy string `json:"claimed_by,omitempty"`
-	Branch    string `json:"branch,omitempty"`
-	BranchURL string `json:"branch_url,omitempty"`
-	PRURL     string `json:"pr_url,omitempty"`
-	Delta     string `json:"delta,omitempty"`
+	RigHandle   string `json:"rig_handle"`
+	Status      string `json:"status"`
+	ClaimedBy   string `json:"claimed_by,omitempty"`
+	Branch      string `json:"branch,omitempty"`
+	BranchURL   string `json:"branch_url,omitempty"`
+	PRURL       string `json:"pr_url,omitempty"`
+	Delta       string `json:"delta,omitempty"`
+	CompletedBy string `json:"completed_by,omitempty"`
+	Evidence    string `json:"evidence,omitempty"`
 }
 
 // DetailResponse is the JSON response for GET /api/wanted/{id}.
@@ -278,13 +280,15 @@ func toDetailResponse(d *sdk.DetailResult, mode string) *DetailResponse {
 			delta = d.Item.Status + " → " + p.Status
 		}
 		upstreamPRs = append(upstreamPRs, UpstreamPRJSON{
-			RigHandle: p.RigHandle,
-			Status:    p.Status,
-			ClaimedBy: p.ClaimedBy,
-			Branch:    p.Branch,
-			BranchURL: p.BranchURL,
-			PRURL:     p.PRURL,
-			Delta:     delta,
+			RigHandle:   p.RigHandle,
+			Status:      p.Status,
+			ClaimedBy:   p.ClaimedBy,
+			Branch:      p.Branch,
+			BranchURL:   p.BranchURL,
+			PRURL:       p.PRURL,
+			Delta:       delta,
+			CompletedBy: p.CompletedBy,
+			Evidence:    p.Evidence,
 		})
 	}
 

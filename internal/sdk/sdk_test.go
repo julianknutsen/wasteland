@@ -925,6 +925,46 @@ func TestDetail_UpstreamPRs(t *testing.T) {
 	}
 }
 
+func TestDetail_UpstreamPRs_WithEvidence(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", Priority: 1, PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "bob",
+		Mode:      "wild-west",
+		ListPendingItems: func() (map[string][]PendingItem, error) {
+			return map[string][]PendingItem{
+				"w-1": {
+					{
+						RigHandle:   "charlie",
+						Status:      "in_review",
+						Branch:      "wl/charlie/w-1",
+						PRURL:       "https://example.com/pr/1",
+						CompletedBy: "charlie",
+						Evidence:    "https://github.com/charlie/evidence",
+					},
+				},
+			}, nil
+		},
+	})
+
+	result, err := c.Detail("w-1")
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if len(result.UpstreamPRs) != 1 {
+		t.Fatalf("expected 1 upstream PR, got %d", len(result.UpstreamPRs))
+	}
+	pr := result.UpstreamPRs[0]
+	if pr.CompletedBy != "charlie" {
+		t.Errorf("expected CompletedBy=charlie, got %q", pr.CompletedBy)
+	}
+	if pr.Evidence != "https://github.com/charlie/evidence" {
+		t.Errorf("expected Evidence, got %q", pr.Evidence)
+	}
+}
+
 func TestDetail_WildWest(t *testing.T) {
 	db := newFakeDB()
 	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", Priority: 1, PostedBy: "alice", EffortLevel: "medium"})

@@ -62,6 +62,8 @@ export interface UpstreamPR {
   branch_url?: string;
   pr_url?: string;
   delta?: string;
+  completed_by?: string;
+  evidence?: string;
 }
 
 export interface DetailResponse {

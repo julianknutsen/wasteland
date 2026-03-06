@@ -302,7 +302,7 @@ export function DetailView() {
       </div>
 
       {upstream_prs && upstream_prs.length > 0 && (
-        <Section title="Upstream PRs">
+        <Section title="Competing Submissions">
           <div className={styles.sectionContent}>
             {upstream_prs.map((pr, i) => (
               <div key={i} className={styles.sectionText}>
@@ -325,6 +325,7 @@ export function DetailView() {
                     </a>
                   </>
                 )}
+                {pr.evidence && <div className={styles.evidenceText}>{pr.evidence}</div>}
               </div>
             ))}
           </div>
