@@ -540,6 +540,7 @@ type PendingWantedState struct {
 	Branch      string // e.g. "wl/alice/w-001"
 	BranchURL   string // web URL for the fork branch
 	PRURL       string // web URL for the upstream PR
+	ForkOwner   string // DoltHub org that owns the fork
 	CompletedBy string // from fork branch completions table
 	Evidence    string // from fork branch completions table
 }
@@ -724,6 +725,7 @@ func (d *DoltHubProvider) ListPendingWantedIDs(upstreamOrg, db string) (map[stri
 								Branch:    pr.fromBranch,
 								BranchURL: branchURL,
 								PRURL:     prURL,
+								ForkOwner: owner,
 							},
 						})
 					}
@@ -775,6 +777,7 @@ func (d *DoltHubProvider) ListPendingWantedIDs(upstreamOrg, db string) (map[stri
 						Branch:    pr.fromBranch,
 						BranchURL: branchURL,
 						PRURL:     prURL,
+						ForkOwner: owner,
 					},
 				})
 			}
@@ -816,21 +819,11 @@ func (d *DoltHubProvider) ListPendingWantedIDs(upstreamOrg, db string) (map[stri
 			if states[i].Status != "in_review" && states[i].Status != "completed" {
 				continue
 			}
-			// Determine fork owner from the branch URL or PR info.
-			owner := ""
-			branch := states[i].Branch
-			for _, pr := range prs {
-				if pr.fromBranch == branch {
-					owner = pr.fromBranchOwner
-					if owner == "" {
-						owner = upstreamOrg
-					}
-					break
-				}
-			}
+			owner := states[i].ForkOwner
 			if owner == "" {
 				continue
 			}
+			branch := states[i].Branch
 			q := fmt.Sprintf(completionQuery, strings.ReplaceAll(wantedID, "'", "''"))
 			cURL := fmt.Sprintf("%s/%s/%s/%s?q=%s",
 				dolthubAPIBase, owner, db, url.PathEscape(branch), url.QueryEscape(q))
