@@ -212,6 +212,24 @@ export async function accept(
   });
 }
 
+export async function acceptUpstream(
+  id: string,
+  rigHandle: string,
+  stamp?: {
+    quality?: number;
+    reliability?: number;
+    severity?: string;
+    skill_tags?: string[];
+    message?: string;
+  },
+): Promise<MutationResponse> {
+  return request<MutationResponse>(`/api/wanted/${id}/accept-upstream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rig_handle: rigHandle, ...stamp }),
+  });
+}
+
 export async function deleteItem(id: string): Promise<MutationResponse> {
   return request<MutationResponse>(`/api/wanted/${id}`, { method: "DELETE" });
 }

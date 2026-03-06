@@ -300,6 +300,9 @@ func (f *fakeDB) applyUpdateWanted(stmt string, target map[string]*fakeItem) boo
 		changed = true
 	case strings.Contains(setClause, "status='completed'"):
 		item.Status = "completed"
+		if cb := extractSetValue(stmt, "claimed_by"); cb != "" {
+			item.ClaimedBy = cb
+		}
 		changed = true
 	case strings.Contains(setClause, "status='withdrawn'"):
 		item.Status = "withdrawn"
@@ -372,10 +375,33 @@ func (f *fakeDB) applyInsertWanted(stmt string, target map[string]*fakeItem) boo
 	return true
 }
 
-// applyInsertCompletion handles INSERT IGNORE INTO completions (...) SELECT ... FROM wanted WHERE ...
-// Validates the WHERE subquery conditions (item must be in_review, claimed_by must match).
+// applyInsertCompletion handles two patterns:
+// 1. INSERT IGNORE INTO completions (...) SELECT ... FROM wanted WHERE ... (SubmitCompletionDML)
+// 2. INSERT IGNORE INTO completions (...) VALUES (...) (AcceptUpstreamDML)
 func (f *fakeDB) applyInsertCompletion(stmt string, target map[string]*fakeItem) bool {
 	lower := strings.ToLower(stmt)
+
+	// Pattern 2: direct VALUES — used by AcceptUpstreamDML
+	if strings.Contains(lower, "values") && !strings.Contains(lower, "select") {
+		values := extractInsertValues(stmt)
+		if len(values) < 4 {
+			return false
+		}
+		cid := values[0]
+		wid := values[1]
+		completedBy := values[2]
+		evidence := values[3]
+
+		f.completions[wid] = &fakeCompletion{
+			ID:          cid,
+			WantedID:    wid,
+			CompletedBy: completedBy,
+			Evidence:    evidence,
+		}
+		return true
+	}
+
+	// Pattern 1: SELECT subquery — used by SubmitCompletionDML
 	idx := strings.Index(lower, "select ")
 	if idx < 0 {
 		return false
@@ -1430,5 +1456,369 @@ func TestRigHandle(t *testing.T) {
 	c := New(ClientConfig{DB: newFakeDB(), RigHandle: "bob"})
 	if c.RigHandle() != "bob" {
 		t.Errorf("expected bob, got %s", c.RigHandle())
+	}
+}
+
+// --- AcceptUpstream tests ---
+
+func pendingItems(items map[string][]PendingItem) func() (map[string][]PendingItem, error) {
+	return func() (map[string][]PendingItem, error) {
+		return items, nil
+	}
+}
+
+func TestAcceptUpstream_InReview_Succeeds(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "in_review", ClaimedBy: "bob", PostedBy: "alice", EffortLevel: "medium"})
+	db.completions["w-1"] = &fakeCompletion{ID: "c-old", WantedID: "w-1", CompletedBy: "bob", Evidence: "old-proof"}
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "wild-west",
+		ListPendingItems: pendingItems(map[string][]PendingItem{
+			"w-1": {{RigHandle: "charlie", Status: "in_review", CompletedBy: "charlie", Evidence: "https://proof.example.com"}},
+		}),
+	})
+
+	result, err := c.AcceptUpstream("w-1", "charlie", AcceptInput{Quality: 4, Reliability: 3, Severity: "medium"})
+	if err != nil {
+		t.Fatalf("AcceptUpstream: %v", err)
+	}
+	if result.Detail == nil {
+		t.Fatal("expected detail in result")
+	}
+	if result.Detail.Item.Status != "completed" {
+		t.Errorf("expected completed, got %s", result.Detail.Item.Status)
+	}
+	if result.Detail.Item.ClaimedBy != "charlie" {
+		t.Errorf("expected claimed_by=charlie, got %s", result.Detail.Item.ClaimedBy)
+	}
+	// Completion should be charlie's
+	if db.completions["w-1"] == nil || db.completions["w-1"].CompletedBy != "charlie" {
+		t.Error("expected completion by charlie")
+	}
+	// Stamp should exist
+	if len(db.stamps) != 1 {
+		t.Errorf("expected 1 stamp, got %d", len(db.stamps))
+	}
+	if db.pushCalls != 1 {
+		t.Errorf("expected 1 push, got %d", db.pushCalls)
+	}
+}
+
+func TestAcceptUpstream_PRMode_Succeeds(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "in_review", ClaimedBy: "bob", PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "pr",
+		ListPendingItems: pendingItems(map[string][]PendingItem{
+			"w-1": {{RigHandle: "charlie", Status: "in_review", CompletedBy: "charlie", Evidence: "proof"}},
+		}),
+	})
+
+	result, err := c.AcceptUpstream("w-1", "charlie", AcceptInput{Quality: 4, Reliability: 3})
+	if err != nil {
+		t.Fatalf("AcceptUpstream: %v", err)
+	}
+	if result.Detail.Branch == "" {
+		t.Error("expected branch in PR mode")
+	}
+	if len(db.pushBranchCalls) != 1 {
+		t.Errorf("expected 1 branch push, got %d", len(db.pushBranchCalls))
+	}
+}
+
+func TestAcceptUpstream_MainOpen_ForkInReview(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "wild-west",
+		ListPendingItems: pendingItems(map[string][]PendingItem{
+			"w-1": {{RigHandle: "charlie", Status: "in_review", CompletedBy: "charlie", Evidence: "proof"}},
+		}),
+	})
+
+	result, err := c.AcceptUpstream("w-1", "charlie", AcceptInput{})
+	if err != nil {
+		t.Fatalf("AcceptUpstream: %v", err)
+	}
+	if result.Detail.Item.Status != "completed" {
+		t.Errorf("expected completed, got %s", result.Detail.Item.Status)
+	}
+}
+
+func TestAcceptUpstream_MainClaimed_ForkInReview(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "claimed", ClaimedBy: "bob", PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "wild-west",
+		ListPendingItems: pendingItems(map[string][]PendingItem{
+			"w-1": {{RigHandle: "charlie", Status: "in_review", CompletedBy: "charlie", Evidence: "proof"}},
+		}),
+	})
+
+	result, err := c.AcceptUpstream("w-1", "charlie", AcceptInput{})
+	if err != nil {
+		t.Fatalf("AcceptUpstream: %v", err)
+	}
+	if result.Detail.Item.Status != "completed" {
+		t.Errorf("expected completed, got %s", result.Detail.Item.Status)
+	}
+	if result.Detail.Item.ClaimedBy != "charlie" {
+		t.Errorf("expected claimed_by=charlie, got %s", result.Detail.Item.ClaimedBy)
+	}
+}
+
+func TestAcceptUpstream_MainInReview_ForkInReview(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "in_review", ClaimedBy: "bob", PostedBy: "alice", EffortLevel: "medium"})
+	db.completions["w-1"] = &fakeCompletion{ID: "c-bob", WantedID: "w-1", CompletedBy: "bob", Evidence: "bob-proof"}
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "wild-west",
+		ListPendingItems: pendingItems(map[string][]PendingItem{
+			"w-1": {{RigHandle: "charlie", Status: "in_review", CompletedBy: "charlie", Evidence: "charlie-proof"}},
+		}),
+	})
+
+	result, err := c.AcceptUpstream("w-1", "charlie", AcceptInput{})
+	if err != nil {
+		t.Fatalf("AcceptUpstream: %v", err)
+	}
+	if result.Detail.Item.Status != "completed" {
+		t.Errorf("expected completed, got %s", result.Detail.Item.Status)
+	}
+	// Bob's completion should be replaced by charlie's
+	if db.completions["w-1"].CompletedBy != "charlie" {
+		t.Errorf("expected charlie's completion, got %s", db.completions["w-1"].CompletedBy)
+	}
+}
+
+func TestAcceptUpstream_SelfAccept(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "in_review", PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "charlie",
+		Mode:      "wild-west",
+		ListPendingItems: pendingItems(map[string][]PendingItem{
+			"w-1": {{RigHandle: "charlie", Status: "in_review", CompletedBy: "charlie", Evidence: "proof"}},
+		}),
+	})
+
+	_, err := c.AcceptUpstream("w-1", "charlie", AcceptInput{})
+	if err == nil {
+		t.Fatal("expected error for self-accept")
+	}
+	if !strings.Contains(err.Error(), "cannot accept your own completion") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAcceptUpstream_NotInReview(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "wild-west",
+		ListPendingItems: pendingItems(map[string][]PendingItem{
+			"w-1": {{RigHandle: "charlie", Status: "claimed", ClaimedBy: "charlie"}},
+		}),
+	})
+
+	_, err := c.AcceptUpstream("w-1", "charlie", AcceptInput{})
+	if err == nil {
+		t.Fatal("expected error for claimed-only submission")
+	}
+	if !strings.Contains(err.Error(), "not in review") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAcceptUpstream_SubmitterNotFound(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "wild-west",
+		ListPendingItems: pendingItems(map[string][]PendingItem{
+			"w-1": {{RigHandle: "bob", Status: "in_review", CompletedBy: "bob", Evidence: "proof"}},
+		}),
+	})
+
+	_, err := c.AcceptUpstream("w-1", "charlie", AcceptInput{})
+	if err == nil {
+		t.Fatal("expected error for unknown submitter")
+	}
+	if !strings.Contains(err.Error(), "no pending submission from charlie") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAcceptUpstream_NilListPendingItems(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "wild-west",
+	})
+
+	_, err := c.AcceptUpstream("w-1", "charlie", AcceptInput{})
+	if err == nil {
+		t.Fatal("expected error when ListPendingItems is nil")
+	}
+	if !strings.Contains(err.Error(), "upstream PR listing not available") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAcceptUpstream_ListPendingItemsError(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "wild-west",
+		ListPendingItems: func() (map[string][]PendingItem, error) {
+			return nil, fmt.Errorf("upstream unavailable")
+		},
+	})
+
+	_, err := c.AcceptUpstream("w-1", "charlie", AcceptInput{})
+	if err == nil {
+		t.Fatal("expected error when ListPendingItems fails")
+	}
+	if !strings.Contains(err.Error(), "upstream unavailable") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAcceptUpstream_NoEvidence(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "wild-west",
+		ListPendingItems: pendingItems(map[string][]PendingItem{
+			"w-1": {{RigHandle: "charlie", Status: "in_review"}},
+		}),
+	})
+
+	_, err := c.AcceptUpstream("w-1", "charlie", AcceptInput{})
+	if err == nil {
+		t.Fatal("expected error for missing completion data")
+	}
+	if !strings.Contains(err.Error(), "no completion data") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestAcceptUpstream_MultipleSubmitters_PickOne(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", PostedBy: "alice", EffortLevel: "medium"})
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "wild-west",
+		ListPendingItems: pendingItems(map[string][]PendingItem{
+			"w-1": {
+				{RigHandle: "charlie", Status: "in_review", CompletedBy: "charlie", Evidence: "charlie-proof"},
+				{RigHandle: "dave", Status: "in_review", CompletedBy: "dave", Evidence: "dave-proof"},
+			},
+		}),
+	})
+
+	result, err := c.AcceptUpstream("w-1", "charlie", AcceptInput{})
+	if err != nil {
+		t.Fatalf("AcceptUpstream: %v", err)
+	}
+	if db.completions["w-1"].CompletedBy != "charlie" {
+		t.Errorf("expected charlie's completion, got %s", db.completions["w-1"].CompletedBy)
+	}
+	if result.Detail.Item.Status != "completed" {
+		t.Errorf("expected completed, got %s", result.Detail.Item.Status)
+	}
+}
+
+func TestAcceptUpstream_ExistingCompletion_Replaced(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "in_review", ClaimedBy: "bob", PostedBy: "alice", EffortLevel: "medium"})
+	db.completions["w-1"] = &fakeCompletion{ID: "c-bob", WantedID: "w-1", CompletedBy: "bob", Evidence: "bob-proof"}
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "wild-west",
+		ListPendingItems: pendingItems(map[string][]PendingItem{
+			"w-1": {{RigHandle: "charlie", Status: "in_review", CompletedBy: "charlie", Evidence: "charlie-proof"}},
+		}),
+	})
+
+	_, err := c.AcceptUpstream("w-1", "charlie", AcceptInput{})
+	if err != nil {
+		t.Fatalf("AcceptUpstream: %v", err)
+	}
+	// Bob's completion should be replaced
+	if db.completions["w-1"].CompletedBy != "charlie" {
+		t.Errorf("expected charlie's completion, got %s", db.completions["w-1"].CompletedBy)
+	}
+	if db.completions["w-1"].Evidence != "charlie-proof" {
+		t.Errorf("expected charlie-proof, got %s", db.completions["w-1"].Evidence)
+	}
+}
+
+func TestAcceptUpstream_AlreadyCompleted_Idempotent(t *testing.T) {
+	db := newFakeDB()
+	db.seedItem(fakeItem{ID: "w-1", Title: "Fix bug", Status: "open", PostedBy: "alice", EffortLevel: "medium"})
+
+	// Set up branch with completed status (simulating prior accept)
+	branch := "wl/alice/w-1"
+	db.branches[branch] = true
+	db.branchItems[branch] = map[string]*fakeItem{
+		"w-1": {ID: "w-1", Title: "Fix bug", Status: "completed", ClaimedBy: "charlie", PostedBy: "alice", EffortLevel: "medium"},
+	}
+
+	c := New(ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "pr",
+		ListPendingItems: pendingItems(map[string][]PendingItem{
+			"w-1": {{RigHandle: "charlie", Status: "in_review", CompletedBy: "charlie", Evidence: "proof"}},
+		}),
+	})
+
+	result, err := c.AcceptUpstream("w-1", "charlie", AcceptInput{})
+	if err != nil {
+		t.Fatalf("AcceptUpstream: %v", err)
+	}
+	// Should return existing detail without mutation
+	if result.Detail == nil {
+		t.Fatal("expected detail in result")
+	}
+	if result.Detail.Item.Status != "completed" {
+		t.Errorf("expected completed, got %s", result.Detail.Item.Status)
 	}
 }

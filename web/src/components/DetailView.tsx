@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import {
   accept,
+  acceptUpstream,
   applyBranch,
   branchDiff,
   claim,
@@ -326,6 +327,24 @@ export function DetailView() {
                   </>
                 )}
                 {pr.evidence && <div className={styles.evidenceText}>{pr.evidence}</div>}
+                {pr.status === "in_review" && pr.evidence && rigHandle === item.posted_by && (
+                  <ActionButton
+                    action="accept"
+                    onAction={async () => {
+                      try {
+                        const result = await acceptUpstream(id!, pr.rig_handle);
+                        toast.success(`Accepted ${pr.rig_handle}'s submission`);
+                        if (result?.detail) {
+                          setData(result.detail);
+                        } else {
+                          await load();
+                        }
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : "Failed to accept upstream");
+                      }
+                    }}
+                  />
+                )}
               </div>
             ))}
           </div>

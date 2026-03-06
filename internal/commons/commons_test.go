@@ -388,3 +388,108 @@ func TestFormatTagsJSON_RoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// --- AcceptUpstreamDML tests ---
+
+func testAcceptUpstreamDML() []string {
+	stamp := &Stamp{
+		ID:          "s-test",
+		Author:      "alice",
+		Subject:     "charlie",
+		Quality:     4,
+		Reliability: 3,
+		Severity:    "medium",
+		ContextID:   "c-test",
+		ContextType: "completion",
+		SkillTags:   []string{"go", "sql"},
+		Message:     "great work",
+	}
+	return AcceptUpstreamDML("w-1", "c-test", "charlie", "https://proof.example.com", "alice", "hop://alice", stamp)
+}
+
+func TestAcceptUpstreamDML_StatementCount(t *testing.T) {
+	t.Parallel()
+	stmts := testAcceptUpstreamDML()
+	if len(stmts) != 5 {
+		t.Fatalf("expected 5 statements, got %d", len(stmts))
+	}
+}
+
+func TestAcceptUpstreamDML_DeleteCompletion(t *testing.T) {
+	t.Parallel()
+	stmts := testAcceptUpstreamDML()
+	s := stmts[0]
+	if !strings.HasPrefix(s, "DELETE FROM completions") {
+		t.Errorf("stmt[0] should be DELETE FROM completions, got %s", s)
+	}
+	if !strings.Contains(s, "wanted_id='w-1'") {
+		t.Errorf("stmt[0] missing wanted_id, got %s", s)
+	}
+}
+
+func TestAcceptUpstreamDML_InsertCompletion(t *testing.T) {
+	t.Parallel()
+	stmts := testAcceptUpstreamDML()
+	s := stmts[1]
+	if !strings.HasPrefix(s, "INSERT IGNORE INTO completions") {
+		t.Errorf("stmt[1] should be INSERT IGNORE INTO completions, got %s", s)
+	}
+	if !strings.Contains(s, "'c-test'") {
+		t.Errorf("stmt[1] missing completion ID, got %s", s)
+	}
+	if !strings.Contains(s, "'charlie'") {
+		t.Errorf("stmt[1] missing completed_by, got %s", s)
+	}
+	if !strings.Contains(s, "https://proof.example.com") {
+		t.Errorf("stmt[1] missing evidence, got %s", s)
+	}
+}
+
+func TestAcceptUpstreamDML_UpdateWanted(t *testing.T) {
+	t.Parallel()
+	stmts := testAcceptUpstreamDML()
+	s := stmts[2]
+	if !strings.HasPrefix(s, "UPDATE wanted SET") {
+		t.Errorf("stmt[2] should be UPDATE wanted SET, got %s", s)
+	}
+	if !strings.Contains(s, "status='completed'") {
+		t.Errorf("stmt[2] missing status=completed, got %s", s)
+	}
+	if !strings.Contains(s, "claimed_by='charlie'") {
+		t.Errorf("stmt[2] missing claimed_by=charlie, got %s", s)
+	}
+	// No status precondition in WHERE
+	if strings.Contains(s, "AND status=") {
+		t.Errorf("stmt[2] should not have status precondition in WHERE, got %s", s)
+	}
+}
+
+func TestAcceptUpstreamDML_InsertStamp(t *testing.T) {
+	t.Parallel()
+	stmts := testAcceptUpstreamDML()
+	s := stmts[3]
+	if !strings.HasPrefix(s, "INSERT INTO stamps") {
+		t.Errorf("stmt[3] should be INSERT INTO stamps, got %s", s)
+	}
+	if !strings.Contains(s, "'s-test'") {
+		t.Errorf("stmt[3] missing stamp ID, got %s", s)
+	}
+	if !strings.Contains(s, "'alice'") {
+		t.Errorf("stmt[3] missing author, got %s", s)
+	}
+}
+
+func TestAcceptUpstreamDML_UpdateCompletion(t *testing.T) {
+	t.Parallel()
+	stmts := testAcceptUpstreamDML()
+	s := stmts[4]
+	if !strings.HasPrefix(s, "UPDATE completions SET") {
+		t.Errorf("stmt[4] should be UPDATE completions SET, got %s", s)
+	}
+	if !strings.Contains(s, "validated_by='alice'") {
+		t.Errorf("stmt[4] missing validated_by, got %s", s)
+	}
+	if !strings.Contains(s, "stamp_id='s-test'") {
+		t.Errorf("stmt[4] missing stamp_id, got %s", s)
+	}
+}

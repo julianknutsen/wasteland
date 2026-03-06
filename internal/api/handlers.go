@@ -398,6 +398,36 @@ func (s *Server) handleAccept(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toMutationResponse(result, client.Mode()))
 }
 
+func (s *Server) handleAcceptUpstream(w http.ResponseWriter, r *http.Request) {
+	client, ok := s.resolveClient(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+	var req AcceptUpstreamRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if req.RigHandle == "" {
+		writeError(w, http.StatusBadRequest, "rig_handle is required")
+		return
+	}
+	result, err := client.AcceptUpstream(id, req.RigHandle, sdk.AcceptInput{
+		Quality:     req.Quality,
+		Reliability: req.Reliability,
+		Severity:    req.Severity,
+		SkillTags:   req.SkillTags,
+		Message:     req.Message,
+	})
+	if err != nil {
+		writeMutationError(w, err)
+		return
+	}
+	s.invalidateReadCaches(id)
+	writeJSON(w, http.StatusOK, toMutationResponse(result, client.Mode()))
+}
+
 func (s *Server) handleReject(w http.ResponseWriter, r *http.Request) {
 	client, ok := s.resolveClient(w, r)
 	if !ok {

@@ -654,6 +654,45 @@ func AcceptCompletionDML(wantedID, completionID, rigHandle, hopURI string, stamp
 	return []string{insertStamp, updateCompletion, updateWanted}
 }
 
+// AcceptUpstreamDML returns the pure DML statements for accepting a fork submission.
+// It atomically adopts the fork's completion data onto the poster's branch.
+// Statements: DELETE existing completion, INSERT fork completion, UPDATE wanted to completed,
+// INSERT stamp, UPDATE completion with stamp reference.
+func AcceptUpstreamDML(wantedID, completionID, completedBy, evidence, rigHandle, hopURI string, stamp *Stamp) []string {
+	tagsField := formatTagsJSON(stamp.SkillTags)
+
+	msgField := "NULL"
+	if stamp.Message != "" {
+		msgField = fmt.Sprintf("'%s'", EscapeSQL(stamp.Message))
+	}
+
+	hopField := "NULL"
+	if hopURI != "" {
+		hopField = fmt.Sprintf("'%s'", EscapeSQL(hopURI))
+	}
+
+	valence := fmt.Sprintf(`{"quality": %d, "reliability": %d}`, stamp.Quality, stamp.Reliability)
+
+	deleteCompletion := fmt.Sprintf(`DELETE FROM completions WHERE wanted_id='%s'`,
+		EscapeSQL(wantedID))
+
+	insertCompletion := fmt.Sprintf(`INSERT IGNORE INTO completions (id, wanted_id, completed_by, evidence, hop_uri, completed_at) VALUES ('%s', '%s', '%s', '%s', %s, NOW())`,
+		EscapeSQL(completionID), EscapeSQL(wantedID), EscapeSQL(completedBy), EscapeSQL(evidence), hopField)
+
+	updateWanted := fmt.Sprintf(`UPDATE wanted SET status='completed', claimed_by='%s', evidence_url='%s', updated_at=NOW() WHERE id='%s'`,
+		EscapeSQL(completedBy), EscapeSQL(evidence), EscapeSQL(wantedID))
+
+	insertStamp := fmt.Sprintf(`INSERT INTO stamps (id, author, subject, valence, confidence, severity, context_id, context_type, skill_tags, message, hop_uri, created_at) VALUES ('%s', '%s', '%s', '%s', 1.0, '%s', '%s', 'completion', %s, %s, %s, NOW())`,
+		EscapeSQL(stamp.ID), EscapeSQL(rigHandle), EscapeSQL(stamp.Subject),
+		EscapeSQL(valence), EscapeSQL(stamp.Severity),
+		EscapeSQL(completionID), tagsField, msgField, hopField)
+
+	updateCompletion := fmt.Sprintf(`UPDATE completions SET validated_by='%s', stamp_id='%s', validated_at=NOW() WHERE id='%s'`,
+		EscapeSQL(rigHandle), EscapeSQL(stamp.ID), EscapeSQL(completionID))
+
+	return []string{deleteCompletion, insertCompletion, updateWanted, insertStamp, updateCompletion}
+}
+
 // AcceptCompletion validates a completion, creates a stamp, and marks the item completed.
 func AcceptCompletion(db DB, wantedID, completionID, rigHandle, hopURI string, stamp *Stamp, signed bool) error {
 	stmts := AcceptCompletionDML(wantedID, completionID, rigHandle, hopURI, stamp)

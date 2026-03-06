@@ -96,6 +96,65 @@ func (c *Client) Accept(wantedID string, input AcceptInput) (*MutationResult, er
 	return c.mutateLocked(wantedID, "wl accept: "+wantedID, stmts...)
 }
 
+// AcceptUpstream adopts a fork submission, creating a completion and stamp on the poster's branch.
+func (c *Client) AcceptUpstream(wantedID, submitterHandle string, input AcceptInput) (*MutationResult, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if result := c.prIdempotentLocked(wantedID, "completed"); result != nil {
+		return result, nil
+	}
+
+	if c.ListPendingItems == nil {
+		return nil, fmt.Errorf("upstream PR listing not available")
+	}
+
+	pending, err := c.ListPendingItems()
+	if err != nil {
+		return nil, fmt.Errorf("listing pending items: %w", err)
+	}
+
+	items := pending[wantedID]
+	var match *PendingItem
+	for i := range items {
+		if items[i].RigHandle == submitterHandle {
+			match = &items[i]
+			break
+		}
+	}
+	if match == nil {
+		return nil, fmt.Errorf("no pending submission from %s", submitterHandle)
+	}
+
+	if match.Status != "in_review" {
+		return nil, fmt.Errorf("submission is not in review")
+	}
+	if match.CompletedBy == "" {
+		return nil, fmt.Errorf("submission has no completion data")
+	}
+
+	if submitterHandle == c.rigHandle {
+		return nil, fmt.Errorf("cannot accept your own completion")
+	}
+
+	completionID := commons.GeneratePrefixedID("c", wantedID, match.CompletedBy)
+	stamp := &commons.Stamp{
+		ID:          commons.GeneratePrefixedID("s", wantedID, c.rigHandle),
+		Author:      c.rigHandle,
+		Subject:     match.CompletedBy,
+		Quality:     input.Quality,
+		Reliability: input.Reliability,
+		Severity:    input.Severity,
+		ContextID:   completionID,
+		ContextType: "completion",
+		SkillTags:   input.SkillTags,
+		Message:     input.Message,
+	}
+
+	stmts := commons.AcceptUpstreamDML(wantedID, completionID, match.CompletedBy, match.Evidence, c.rigHandle, c.hopURI, stamp)
+	return c.mutateLocked(wantedID, "wl accept-upstream: "+wantedID, stmts...)
+}
+
 // Reject rejects a completion, reverting the item from in_review to claimed.
 func (c *Client) Reject(wantedID, reason string) (*MutationResult, error) {
 	if result := c.prIdempotent(wantedID, "claimed"); result != nil {

@@ -662,3 +662,72 @@ func TestLeaderboard_InvalidLimit(t *testing.T) {
 		t.Errorf("expected 200 for negative limit (coerced to default), got %d", r.StatusCode)
 	}
 }
+
+func TestAcceptUpstream_Handler(t *testing.T) {
+	db := newFakeDB()
+	db.items["w-1"] = &fakeItem{id: "w-1", title: "Fix bug", status: "open", priority: 1, postedBy: "bob", effortLevel: "medium"}
+
+	client := sdk.New(sdk.ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "wild-west",
+		ListPendingItems: func() (map[string][]sdk.PendingItem, error) {
+			return map[string][]sdk.PendingItem{
+				"w-1": {{RigHandle: "charlie", Status: "in_review", CompletedBy: "charlie", Evidence: "proof"}},
+			}, nil
+		},
+	})
+	srv := New(client)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	var resp MutationResponse
+	r := postJSON(t, ts, "/api/wanted/w-1/accept-upstream", `{"rig_handle":"charlie"}`, &resp)
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", r.StatusCode)
+	}
+	if resp.Detail == nil || resp.Detail.Item == nil {
+		t.Fatal("expected detail in response")
+	}
+	if resp.Detail.Item.Status != "completed" {
+		t.Errorf("expected completed, got %s", resp.Detail.Item.Status)
+	}
+}
+
+func TestAcceptUpstream_Handler_MissingRigHandle(t *testing.T) {
+	db := newFakeDB()
+	db.items["w-1"] = &fakeItem{id: "w-1", title: "Fix bug", status: "open", priority: 1, postedBy: "bob", effortLevel: "medium"}
+
+	ts := newTestServer(db, "wild-west")
+	defer ts.Close()
+
+	var resp ErrorResponse
+	r := postJSON(t, ts, "/api/wanted/w-1/accept-upstream", `{}`, &resp)
+	if r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", r.StatusCode)
+	}
+	if !strings.Contains(resp.Error, "rig_handle is required") {
+		t.Errorf("unexpected error: %s", resp.Error)
+	}
+}
+
+func TestAcceptUpstream_Handler_NotFound(t *testing.T) {
+	db := newFakeDB()
+	client := sdk.New(sdk.ClientConfig{
+		DB:        db,
+		RigHandle: "alice",
+		Mode:      "wild-west",
+		ListPendingItems: func() (map[string][]sdk.PendingItem, error) {
+			return map[string][]sdk.PendingItem{}, nil
+		},
+	})
+	srv := New(client)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	var resp ErrorResponse
+	r := postJSON(t, ts, "/api/wanted/w-nonexistent/accept-upstream", `{"rig_handle":"charlie"}`, &resp)
+	if r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", r.StatusCode)
+	}
+}

@@ -189,6 +189,16 @@ type AcceptRequest struct {
 	Message     string   `json:"message"`
 }
 
+// AcceptUpstreamRequest is the JSON body for POST /api/wanted/{id}/accept-upstream.
+type AcceptUpstreamRequest struct {
+	RigHandle   string   `json:"rig_handle"`
+	Quality     int      `json:"quality"`
+	Reliability int      `json:"reliability"`
+	Severity    string   `json:"severity"`
+	SkillTags   []string `json:"skill_tags"`
+	Message     string   `json:"message"`
+}
+
 // RejectRequest is the JSON body for POST /api/wanted/{id}/reject.
 type RejectRequest struct {
 	Reason string `json:"reason"`
