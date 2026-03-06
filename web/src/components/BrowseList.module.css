@@ -97,7 +97,6 @@
 }
 
 .pendingIndicator {
-  all: unset;
   color: var(--brass);
   font-size: var(--text-xs);
   font-weight: 600;

@@ -230,11 +230,11 @@ export function BrowseList() {
 
 function PendingIndicator({ count, items }: { count: number; items?: PendingItemSummary[] }) {
   return (
-    <button type="button" className={styles.pendingIndicator} aria-haspopup="true">
+    <span className={styles.pendingIndicator}>
       pending
       {count > 1 && <span className={styles.pendingCount}>&times;{count}</span>}
       {items && items.length > 0 && (
-        <span className={styles.pendingCard} role="tooltip">
+        <span className={styles.pendingCard}>
           <div className={styles.pendingCardTitle}>Competing submissions</div>
           {items.map((p, i) => (
             <div key={i} className={styles.pendingCardRow}>
@@ -254,6 +254,6 @@ function PendingIndicator({ count, items }: { count: number; items?: PendingItem
           ))}
         </span>
       )}
-    </button>
+    </span>
   );
 }
