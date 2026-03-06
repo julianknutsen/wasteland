@@ -33,12 +33,31 @@ export function getActiveUpstream(): string | null {
   return _activeUpstream;
 }
 
-// --- Staging impersonation ---
+// --- Staging impersonation (persisted in sessionStorage to survive reloads) ---
 
-let _impersonateHandle: string | null = null;
+const IMPERSONATE_KEY = "wl_impersonate";
+
+function loadImpersonation(): string | null {
+  try {
+    return sessionStorage.getItem(IMPERSONATE_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+let _impersonateHandle: string | null = loadImpersonation();
 
 export function setImpersonation(handle: string | null) {
   _impersonateHandle = handle;
+  try {
+    if (handle) {
+      sessionStorage.setItem(IMPERSONATE_KEY, handle);
+    } else {
+      sessionStorage.removeItem(IMPERSONATE_KEY);
+    }
+  } catch {
+    // sessionStorage unavailable — in-memory only
+  }
 }
 
 export function getImpersonation(): string | null {
