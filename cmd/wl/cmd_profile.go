@@ -163,8 +163,8 @@ func runProfile(_ *cobra.Command, stdout, _ io.Writer, handle string) error {
 	}
 
 	// Stats footer
-	fmt.Fprintf(stdout, "Stamps: %d  Total stars: %d  Repos: %d\n",
-		profile.StampCount, profile.TotalStars, profile.TotalRepos)
+	fmt.Fprintf(stdout, "Assessments: %d  Total stars: %d  Repos: %d\n",
+		profile.AssessmentCount, profile.TotalStars, profile.TotalRepos)
 
 	return nil
 }
