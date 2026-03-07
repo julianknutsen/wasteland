@@ -73,6 +73,20 @@
   background-color: var(--green);
 }
 
+.assessmentBadge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--fg);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  cursor: help;
+}
+
 .unverifiedNote {
   font-size: 0.75rem;
   color: var(--dim);

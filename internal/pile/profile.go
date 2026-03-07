@@ -32,8 +32,8 @@ type Profile struct {
 	Reliability float64 `json:"reliability"`
 	Creativity  float64 `json:"creativity"`
 
-	// Aggregated from stamps
-	StampCount   int          `json:"stamp_count"`
+	// Aggregated from the-pile stamps (GitHub analysis, NOT wasteland reputation)
+	AssessmentCount int          `json:"assessment_count"`
 	Languages    []SkillEntry `json:"languages,omitempty"`
 	Domains      []SkillEntry `json:"domains,omitempty"`
 	Capabilities []SkillEntry `json:"capabilities,omitempty"`
@@ -119,7 +119,7 @@ func QueryProfile(p RowQuerier, handle string) (*Profile, error) {
 		return nil, fmt.Errorf("querying stamps: %w", err)
 	}
 
-	profile.StampCount = len(stampRows)
+	profile.AssessmentCount = len(stampRows)
 	parseStamps(stampRows, profile)
 
 	return profile, nil

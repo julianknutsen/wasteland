@@ -243,7 +243,7 @@ export interface ProfileResponse {
   quality: number;
   reliability: number;
   creativity: number;
-  stamp_count: number;
+  assessment_count: number;
   languages?: ProfileSkillEntry[];
   domains?: ProfileSkillEntry[];
   capabilities?: ProfileSkillEntry[];
