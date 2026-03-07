@@ -64,12 +64,12 @@ export function ProfileView() {
           <span className={styles.confidence} title="How confident the system is in this profile data">
             {(data.confidence * 100).toFixed(0)}% confidence
           </span>
-          {data.stamp_count > 0 && (
-            <span className={styles.verifiedBadge}>
-              {data.stamp_count} {data.stamp_count === 1 ? "stamp" : "stamps"} earned
+          {data.assessment_count > 0 && (
+            <span className={styles.assessmentBadge} title="Skill assessments from GitHub profile analysis — not Wasteland reputation stamps">
+              {data.assessment_count} {data.assessment_count === 1 ? "assessment" : "assessments"}
             </span>
           )}
-          {data.stamp_count === 0 && <span className={styles.unverifiedNote}>No Wasteland stamps yet</span>}
+          {data.assessment_count === 0 && <span className={styles.unverifiedNote}>No assessments yet</span>}
         </div>
       </div>
 
