@@ -163,7 +163,7 @@ export function Layout() {
             </NavLink>
           )}
           <a
-            href="https://github.com/gastownhall/marketplace"
+            href="https://github.com/gastownhall/marketplace/blob/main/plugins/wasteland/skills/wasteland/SKILL.md"
             target="_blank"
             rel="noopener noreferrer"
             className={styles.navLink}

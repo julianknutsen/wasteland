@@ -9,7 +9,7 @@ ARG VITE_ENVIRONMENT
 RUN bun run build
 
 # Stage 2: Build Go binary
-FROM golang:1.24 AS backend
+FROM golang:1.26 AS backend
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download

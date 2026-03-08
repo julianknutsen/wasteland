@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/react";
+import { useEffect } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { BrowseList } from "./components/BrowseList";
 import { ConnectPage } from "./components/ConnectPage";
@@ -10,6 +11,16 @@ import { ProfileView } from "./components/ProfileView";
 import { Scoreboard } from "./components/Scoreboard";
 import { Settings } from "./components/Settings";
 import { WastelandProvider } from "./context/WastelandContext";
+
+const MARKETPLACE_URL =
+  "https://github.com/gastownhall/marketplace/blob/main/plugins/wasteland/skills/wasteland/SKILL.md";
+
+function SkillRedirect() {
+  useEffect(() => {
+    window.location.replace(MARKETPLACE_URL);
+  }, []);
+  return null;
+}
 
 export function App() {
   return (
@@ -27,6 +38,7 @@ export function App() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/connect" element={<ConnectPage />} />
               <Route path="/join" element={<ConnectPage />} />
+              <Route path="/skill" element={<SkillRedirect />} />
             </Route>
           </Routes>
         </BrowserRouter>
