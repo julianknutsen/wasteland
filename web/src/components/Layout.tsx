@@ -162,14 +162,9 @@ export function Layout() {
               sign in
             </NavLink>
           )}
-          <a
-            href="https://github.com/gastownhall/marketplace"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.navLink}
-          >
+          <NavLink to="/skill" className={({ isActive }) => (isActive ? styles.navLinkActive : styles.navLink)}>
             skill
-          </a>
+          </NavLink>
         </nav>
         <main id="main-content" className={styles.main}>
           <Outlet />
